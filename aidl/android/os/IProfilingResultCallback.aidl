@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 The Android Open Source Project
+ * Copyright (C) 2024 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,16 +16,10 @@
 
 package android.os;
 
-import android.os.IProfilingResultCallback;
-
 /**
  * {@hide}
  */
-interface IProfilingService {
+interface IProfilingResultCallback {
 
-    void requestProfiling(in byte[] profilingRequest, String tag, long keyMostSigBits, long keyLeastSigBits);
-
-    void registerResultsCallback(IProfilingResultCallback callback);
-
-    void requestCancel(long keyMostSigBits, long keyLeastSigBits);
+    oneway void sendResult(long keyMostSigBits, long keyLeastSigBits, int status, String filePath, String tag, String error);
 }

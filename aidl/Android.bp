@@ -35,11 +35,7 @@ aidl_interface {
             enabled: false,
         },
         ndk: {
-            enabled: true,
-            apex_available: [
-                "com.android.profiling",
-            ],
-            min_sdk_version: "34",
+            enabled: false,
         },
     },
 }
