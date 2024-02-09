@@ -33,6 +33,43 @@ apex {
     file_contexts: ":apex.test-file_contexts",
     key: "com.android.profiling.key",
     certificate: ":com.android.profiling.certificate",
-    defaults: ["v-launched-apex-module"],
+    defaults: ["com.android.profiling-defaults"],
     min_sdk_version: "34",
+}
+
+apex_defaults {
+    name: "com.android.profiling-defaults",
+    bootclasspath_fragments: ["com.android.profiling-bootclasspath-fragment"],
+    systemserverclasspath_fragments: ["com.android.profiling-systemserverclasspath-fragment"],
+    defaults: ["v-launched-apex-module"],
+}
+
+systemserverclasspath_fragment {
+    name: "com.android.profiling-systemserverclasspath-fragment",
+    standalone_contents: ["service-profiling"],
+    apex_available: ["com.android.profiling"],
+}
+
+bootclasspath_fragment {
+    name: "com.android.profiling-bootclasspath-fragment",
+    contents: ["framework-profiling"],
+    apex_available: ["com.android.profiling"],
+
+    // The bootclasspath_fragments that provide APIs on which this depends.
+    fragments: [
+        {
+            apex: "com.android.art",
+            module: "art-bootclasspath-fragment",
+        },
+    ],
+
+    // Additional stubs libraries that this fragment's contents use which are
+    // not provided by another bootclasspath_fragment.
+    additional_stubs: [
+        "android-non-updatable",
+    ],
+
+    hidden_api: {
+        split_packages: ["*"],
+    },
 }
