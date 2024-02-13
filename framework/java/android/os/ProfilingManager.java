@@ -41,7 +41,7 @@ import java.util.function.Consumer;
  * API for apps to request and listen for app specific profiling.
  */
 @FlaggedApi(Flags.FLAG_TELEMETRY_APIS)
-public class ProfilingManager {
+public final class ProfilingManager {
     private static final String TAG = ProfilingManager.class.getSimpleName();
     private static final boolean DEBUG = false;
 
@@ -161,7 +161,7 @@ public class ProfilingManager {
      * @param listener Listener to unregister and no longer be triggered with the result.
      */
     public void unregisterForProfilingResults(
-            @Nullable Consumer<ProfilingResult> listener) {
+            @NonNull Consumer<ProfilingResult> listener) {
         synchronized (sLock) {
             if (mCallbacks.isEmpty()) {
                 // No callbacks, nothing to remove.
