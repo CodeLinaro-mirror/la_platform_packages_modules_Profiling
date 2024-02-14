@@ -30,15 +30,20 @@ filegroup {
 java_library {
     name: "framework-profiling-proto",
     proto: {
-        type: "stream",
+        type: "lite",
         canonical_path_from_root: false,
         include_dirs: [
             "external/protobuf/src",
+            "external/protobuf/java",
         ],
     },
     srcs: [
         "proto/**/*.proto",
     ],
+    visibility: [
+        "//packages/modules/Profiling/tests:__subpackages__",
+    ],
+    jarjar_rules: "jarjar-rules.txt",
     installable: false,
     min_sdk_version: "34",
     sdk_version: "system_34",
@@ -83,12 +88,9 @@ java_sdk_library {
 
     hostdex: true, // for hiddenapi check
 
-    lint: {
-        strict_updatability_linting: true,
-    },
-
     impl_library_visibility: [
         "//packages/modules/Profiling/service:__subpackages__",
+        "//packages/modules/Profiling/tests:__subpackages__",
     ],
 
     apex_available: [
