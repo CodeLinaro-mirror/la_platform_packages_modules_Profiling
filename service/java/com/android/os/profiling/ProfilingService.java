@@ -38,7 +38,9 @@ import java.lang.Exception;
 import java.lang.IllegalArgumentException;
 import java.lang.ProcessBuilder;
 import java.lang.RuntimeException;
+import java.nio.charset.Charset;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Executor;
 
@@ -46,20 +48,25 @@ public class ProfilingService extends IProfilingService.Stub {
     private static final String TAG = ProfilingService.class.getSimpleName();
     private static final boolean DEBUG = false;
 
-    private static final String TEMP_TRACE_DIR_KEY = "TMPDIR";
-    private static final String TEMP_TRACE_DIR =
-            "/data/local/traces/.profiling-trace-in-progress.trace";
-    private static final String PERFETTO_TAG = "profiling";
+    private static final String TEMP_TRACE_PATH = "/data/misc/perfetto-traces/trace_";
+    private static final String TRACE_SUFFIX = ".perfetto-trace";
+
+    private static final int PERFETTO_DESTROY_DEFAULT_TIMEOUT_MS = 10 * 1000;
+
+    private final int PERFETTO_DESTROY_TIMEOUT_MS;
 
     private final Context mContext;
 
     // uid indexed collecion of JNI callbacks for results.
     private @Nullable SparseArray<IProfilingResultCallback> mResultCallbacks = new SparseArray<>();
 
+    private @Nullable Process mActiveTrace = null;
+
     @VisibleForTesting
     public ProfilingService(Context context) {
         mContext = context;
         RateLimiter.loadFromDisk();
+        PERFETTO_DESTROY_TIMEOUT_MS = PERFETTO_DESTROY_DEFAULT_TIMEOUT_MS;
     }
 
     /**
@@ -78,7 +85,7 @@ public class ProfilingService extends IProfilingService.Stub {
                     null);
                 return;
             }
-        } catch (RuntimeException e) {
+        } catch (Exception e) {
             if (DEBUG) Log.d(TAG, "Perfetto error", e);
             processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
                     ProfilingResult.ERROR_UNKNOWN, null, tag, "Perfetto error");
@@ -139,7 +146,12 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     public void requestCancel(long keyMostSigBits, long keyLeastSigBits) {
-        // TODO: b/293957254
+        if (!isTraceRunning()) {
+            // No trace running, nothing to cancel.
+            if (DEBUG) Log.d(TAG, "Exited requestCancel without stopping due to no trace running.");
+            return;
+        }
+        stopProfiling();
     }
 
     private void processResultCallback(int uid, long keyMostSigBits, long keyLeastSigBits,
@@ -160,81 +172,65 @@ public class ProfilingService extends IProfilingService.Stub {
 
     private void startProfiling(String config, int uid, String packageName, long keyMostSigBits,
             long keyLeastSigBits, @Nullable String tag) throws RuntimeException {
+        String key = (new UUID(keyMostSigBits, keyLeastSigBits)).toString();
+        String filePath = TEMP_TRACE_PATH + key + TRACE_SUFFIX;
         try {
-            ProcessBuilder pb = new ProcessBuilder("/system/bin/perfetto", "--detach="
-                    + PERFETTO_TAG  + " -o " + TEMP_TRACE_DIR_KEY
-                    + " -c - --txt <<  PERFETTO_ARGUMENTS\n" + config + "\nPERFETTO_ARGUMENTS");
-            // Set temp directory for result
-            pb.environment().put(TEMP_TRACE_DIR_KEY, TEMP_TRACE_DIR);
-            Process process = pb.start();
-            if (!process.waitFor(10000 /* TODO b/324885858 make configureable */,
-                    TimeUnit.MILLISECONDS)) {
-                process.destroyForcibly();
-                processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                        ProfilingResult.ERROR_FAILED_EXECUTING, null, tag, "perfetto timeout");
-                return;
-            }
-            if (process.exitValue() != 0) {
-                processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                        ProfilingResult.ERROR_FAILED_EXECUTING, null, tag,
-                        "perfetto exitvalue: " + process.exitValue());
-                return;
-            }
+            ProcessBuilder pb = new ProcessBuilder("/system/bin/perfetto", "-o", filePath,
+                    "-c", "-", "--txt");
+            mActiveTrace = pb.start();
+            mActiveTrace.getOutputStream().write(config.getBytes(Charset.forName("UTF-8")));
+            mActiveTrace.getOutputStream().close();
         } catch (Exception e) {
             processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
                     ProfilingResult.ERROR_FAILED_EXECUTING, null, tag, null);
             throw new RuntimeException(e);
         }
         // If we got here then the trace has been started successfully.
-        spawnRedactionProcess(uid, packageName, keyMostSigBits, keyLeastSigBits, tag);
+        spawnRedactionProcess(filePath, uid, packageName, keyMostSigBits, keyLeastSigBits, tag);
     }
 
     public void stopProfiling() throws RuntimeException {
-        if (!isTraceRunning()) {
-            // No trace running, nothing to stop.
-            if (DEBUG) Log.d(TAG, "Exited stopTrace without stopping due to no trace running.");
-           return;
+        if (mActiveTrace == null) {
+            if (DEBUG) Log.d(TAG, "No active trace, nothing to stop.");
+            return;
         }
 
+        mActiveTrace.destroyForcibly();
         try {
-            Process process = new ProcessBuilder("/system/bin/perfetto", "--stop", "--attach="
-                    + PERFETTO_TAG).start();
-            if (process.waitFor() != 0) {
-                // failed to stop
-                if (DEBUG) Log.d(TAG, "Failed to stop trace");
+            if (!mActiveTrace.waitFor(PERFETTO_DESTROY_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+                if (DEBUG) Log.d(TAG, "Stopping of running trace process timed out.");
+                throw new RuntimeException("topping of running trace process timed out.");
             }
-            // TODO: b/293957254 spawn redaction if results available
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+        // TODO: b/293957254 spawn redaction if results available
+        mActiveTrace = null;
     }
 
     public boolean isTraceRunning() throws RuntimeException {
-        try {
-            Process process = new ProcessBuilder("/system/bin/perfetto", "--is_detached="
-                    + PERFETTO_TAG).start();
-            int result = process.waitFor();
-            if (result == 0) {
-                // running
-                if (DEBUG) Log.d(TAG, "A trace is currently running");
-                return true;
-            } else if (result == 2) {
-                // not running
-                if (DEBUG) Log.d(TAG, "A trace is not currently running");
-                return false;
-            } else {
-                throw new RuntimeException("Perfetto error: " + result);
-            }
-        } catch (Exception e) {
-            throw new RuntimeException(e);
+        if (mActiveTrace == null) {
+            // No subprocess, nothing running.
+            if (DEBUG) Log.d(TAG, "No subprocess, nothing running.");
+            return false;
+        } else if (mActiveTrace.isAlive()) {
+            // Subprocess exists and is alive.
+            if (DEBUG) Log.d(TAG, "Subprocess exists and is alive, trace is running.");
+            return true;
+        } else {
+            // Subprocess exists but is not alive, nothing running. Clean up before returning.
+            if (DEBUG) Log.d(TAG, "Subprocess exists but is not alive, nothing running.");
+            stopProfiling();
+            if (DEBUG) Log.d(TAG, "Non running process cleaned up.");
+            return false;
         }
     }
 
-    private void spawnRedactionProcess(int uid, String packageName, long keyMostSigBits,
-            long keyLeastSigBits, String tag) {
+    private void spawnRedactionProcess(String filePath, int uid, String packageName,
+            long keyMostSigBits, long keyLeastSigBits, String tag) {
         // todo: start redaction in its own process.
         processResultCallback(uid, keyMostSigBits, keyLeastSigBits, ProfilingResult.ERROR_NONE,
-                null, tag, null);
+                filePath, tag, null);
     }
 
     public static final class Lifecycle extends SystemService {
