@@ -182,7 +182,25 @@ public final class Configs {
         + "    name: \"android.surfaceflinger.frametimeline\"\n"
         + "    target_buffer: 0\n"
         + "  }\n"
-        + "}";
+        + "}\n"
+        + "duration_ms: {{duration}}";
+
+    private static final int DEFAULT_TRACE_DURATION_MS = 5 * 60 * 1000;
+    private static final long DEFAULT_HEAP_PROFILE_SAMPLING_INTERVAL = 4096;
+    private static final int DEFAULT_STACK_SAMPLING_FREQUENCY = 100;
+    private static final boolean DEFAULT_HEAP_PROFILE_ART = false;
+
+    private static final int sDefaultTraceDurationMs;
+    private static final long sDefaultHeapProfileSamplingInterval;
+    private static final int sDefaultStackSamplingFrequency;
+    private static final boolean sDefaultHeapProfileArt;
+
+    static {
+        sDefaultTraceDurationMs = DEFAULT_TRACE_DURATION_MS;
+        sDefaultHeapProfileSamplingInterval = DEFAULT_HEAP_PROFILE_SAMPLING_INTERVAL;
+        sDefaultStackSamplingFrequency = DEFAULT_STACK_SAMPLING_FREQUENCY;
+        sDefaultHeapProfileArt = DEFAULT_HEAP_PROFILE_ART;
+    }
 
     /** This method transforms a request into a useable config for perfetto. */
     public static String generateConfigForRequest(ProfilingRequest request, String packageName)
@@ -200,19 +218,20 @@ public final class Configs {
             result = CONFIG_JAVA_HEAP_DUMP;
         } else if (config.hasHeapProfile()) {
             ProfilingRequest.HeapProfile heapProfile = config.getHeapProfile();
-            boolean art = heapProfile.hasArt() ? heapProfile.getArt() : false;
+            boolean art = heapProfile.hasArt() ? heapProfile.getArt() : sDefaultHeapProfileArt;
             long samplingIntervalBytes = heapProfile.hasSamplingIntervalBytes()
-                    ? heapProfile.getSamplingIntervalBytes() : 0;
+                    ? heapProfile.getSamplingIntervalBytes() : sDefaultHeapProfileSamplingInterval;
             result = CONFIG_HEAP_PROFILE
                     .replace("{{sampling_interval}}", String.valueOf(samplingIntervalBytes))
                     .replace("{{art}}", String.valueOf(art));
         } else if (config.hasStackSampling()) {
             ProfilingRequest.StackSampling stackSampling = config.getStackSampling();
             int frequency = stackSampling.hasFrequency()
-                    ? stackSampling.getFrequency() : 0;
+                    ? stackSampling.getFrequency() : sDefaultStackSamplingFrequency;
             result = CONFIG_STACK_SAMPLING.replace("{{frequency}}", String.valueOf(frequency));
         } else if (config.hasSystemTrace()) {
-            result = CONFIG_SYSTEM_TRACE;
+            result = CONFIG_SYSTEM_TRACE.replace("{{duration}}",
+                    String.valueOf(sDefaultTraceDurationMs));
         }
 
         if (result == null) {
