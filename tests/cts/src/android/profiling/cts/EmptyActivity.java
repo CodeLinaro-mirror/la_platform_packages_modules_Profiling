@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 The Android Open Source Project
+ * Copyright (C) 2024 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,18 +14,9 @@
  * limitations under the License.
  */
 
-package android.os;
+package android.profiling.cts;
 
-import android.os.IProfilingResultCallback;
+import android.app.Activity;
 
-/**
- * {@hide}
- */
-interface IProfilingService {
 
-    void requestProfiling(in byte[] profilingRequest, String tag, long keyMostSigBits, long keyLeastSigBits);
-
-    void registerResultsCallback(IProfilingResultCallback callback);
-
-    void requestCancel(long keyMostSigBits, long keyLeastSigBits);
-}
+public class EmptyActivity extends Activity {}
