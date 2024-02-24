@@ -16,10 +16,13 @@
 
 package android.os;
 
+import android.os.ParcelFileDescriptor;
 /**
  * {@hide}
  */
 interface IProfilingResultCallback {
 
-    oneway void sendResult(long keyMostSigBits, long keyLeastSigBits, int status, String filePath, String tag, String error);
+    oneway void sendResult(String resultFile, long keyMostSigBits, long keyLeastSigBits, int status, String tag, String error);
+
+    ParcelFileDescriptor generateFile(String filePathAbsolute, String fileName);
 }

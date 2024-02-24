@@ -21,21 +21,3 @@ filegroup {
     name: "framework-profiling-aidl-sources",
     srcs: ["**/*.aidl"],
 }
-
-aidl_interface {
-    name: "profiling-aidl",
-    unstable: true,
-    srcs: ["android/os/*.aidl"],
-    host_supported: true,
-    backend: {
-        java: {
-            enabled: false, // framework-profiling and service-profiling use framework-profiling-aidl-sources
-        },
-        cpp: {
-            enabled: false,
-        },
-        ndk: {
-            enabled: false,
-        },
-    },
-}

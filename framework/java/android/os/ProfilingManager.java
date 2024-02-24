@@ -22,7 +22,9 @@ import android.annotation.TargetApi;
 import android.content.Context;
 import android.os.Binder;
 import android.os.CancellationSignal;
+import android.os.FileUtils;
 import android.os.IProfilingService;
+import android.os.ParcelFileDescriptor;
 import android.os.ProfilingRequest;
 import android.os.profiling.Flags;
 import android.util.Log;
@@ -30,6 +32,11 @@ import android.util.Log;
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 
+import java.io.File;
+import java.io.FileDescriptor;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.lang.Exception;
 import java.lang.IllegalArgumentException;
 import java.util.ArrayList;
@@ -114,8 +121,8 @@ public final class ProfilingManager {
                 }
                 // For key, use most and least signifcant bits so we can create an identical UUID
                 // after passing over binder.
-                service.requestProfiling(profilingRequest, tag, key.getMostSignificantBits(),
-                        key.getLeastSignificantBits());
+                service.requestProfiling(profilingRequest, mContext.getFilesDir().getPath(), tag,
+                        key.getMostSignificantBits(), key.getLeastSignificantBits());
                 if (cancellationSignal != null) {
                     cancellationSignal.setOnCancelListener(
                         () -> {
@@ -193,15 +200,27 @@ public final class ProfilingManager {
         }
         try {
             mProfilingService.registerResultsCallback(new IProfilingResultCallback.Stub() {
+
+                /**
+                 * Called by {@see ProfilingService} when a result is ready,
+                 * both for success and failure.
+                 */
                 @Override
-                public void sendResult(long keyMostSigBits, long keyLeastSigBits, int status,
-                        String filePath, String tag, String error) {
+                public void sendResult(@Nullable String resultFile, long keyMostSigBits,
+                        long keyLeastSigBits, int status, @Nullable String tag,
+                        @Nullable String error) {
                     synchronized (sLock) {
                         if (mCallbacks.isEmpty()) {
                             // This shouldn't happen - no callbacks, nowhere to report this result.
                             if (DEBUG) Log.d(TAG, "No callbacks");
                             return;
                         }
+
+                        // This shouldn't be true, but if the file is null ensure the status
+                        // represents a failure.
+                        final boolean overrideStatusToError = resultFile == null
+                                && status == ProfilingResult.ERROR_NONE;
+
                         UUID key = new UUID(keyMostSigBits, keyLeastSigBits);
                         int removeListenerPos = -1;
                         for (int i = 0; i < mCallbacks.size(); i++) {
@@ -220,12 +239,57 @@ public final class ProfilingManager {
                                 // this key belongs to another request and should not be triggered.
                                 continue;
                             }
+
+                            // TODO: check resultFile is valid before returning
+                            // Now trigger the callback for any listener that doesn't belong to
+                            // another request.
                             wrapper.mExecutor.execute(() -> wrapper.mListener.accept(
-                                    new ProfilingResult(status, filePath, tag, error)));
+                                    new ProfilingResult(overrideStatusToError
+                                            ? ProfilingResult.ERROR_UNKNOWN : status,
+                                            resultFile, tag, error)));
                         }
+
+                        // Remove the single listener that was tied to the request, if applicable.
                         if (removeListenerPos != -1) {
                             mCallbacks.remove(removeListenerPos);
                         }
+                    }
+                }
+
+                /**
+                 * Called by {@see ProfilingService} when a trace is ready and need to be copied
+                 * to callers internal storage.
+                 *
+                 * This method will open a new file and pass back the FileDescriptor for
+                 * ProfilingService to write to.
+                 */
+                @Override
+                public ParcelFileDescriptor generateFile(String filePathAbsolute, String fileName) {
+                    try {
+                        // Ensure the profiling directory exists. Create it if it doesn't.
+                        final File profilingDir = new File(filePathAbsolute);
+                        if (!profilingDir.exists()) {
+                            profilingDir.mkdir();
+                        }
+
+                        // Create the profiling file for the output to be written to.
+                        final File profilingFile = new File(profilingDir.getPath() + fileName);
+                        profilingFile.createNewFile();
+                        if (!profilingFile.exists()) {
+                            // Failed to create output file. Result will be lost.
+                            if (DEBUG) Log.d(TAG, "Output file couldn't be created");
+                            return null;
+                        }
+
+                        // Wrap the new output file in a {@link ParcelFileDescriptor} and
+                        // pass back to {@link ProfilingService} to write to.
+                        ParcelFileDescriptor pfd = ParcelFileDescriptor.open(profilingFile,
+                                ParcelFileDescriptor.MODE_READ_WRITE);
+                        return pfd;
+                    } catch (Exception e) {
+                        // Failure prepping output file. Result will be lost.
+                        if (DEBUG) Log.d(TAG, "Exception preparing file", e);
+                        return null;
                     }
                 }
             });
