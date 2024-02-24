@@ -50,7 +50,7 @@ public final class ProfilingServiceTests {
     @Test
     public void profilingNotRunningTests() {
       try {
-        boolean isRunning = mProfilingService.isTraceRunning();
+        boolean isRunning = mProfilingService.areAnyTracesRunning();
         assertThat(isRunning).isFalse();
       } catch (Exception exception) {
         assertThat(exception).isInstanceOf(RuntimeException.class);
