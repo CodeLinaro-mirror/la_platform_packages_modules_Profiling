@@ -80,6 +80,7 @@ public final class ProfilingManager {
      *                         necessary information about the collection being requested.
      * @param tag Caller defined data to help identify the output.
      * @param cancellationSignal for caller requested cancellation.
+     *                         Results will be returned if available.
      * @param executor The executor to call back with.
      * @param listener Listener to be triggered with result.
      */
