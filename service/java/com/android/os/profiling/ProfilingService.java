@@ -71,21 +71,25 @@ public class ProfilingService extends IProfilingService.Stub {
     private final int PERFETTO_DESTROY_TIMEOUT_MS;
 
     private final Context mContext;
+    @VisibleForTesting public RateLimiter mRateLimiter;
 
     private final HandlerThread mHandlerThread = new HandlerThread("ProfilingService");
     private Handler mHandler;
 
+
     // uid indexed collecion of JNI callbacks for results.
-    private @Nullable SparseArray<IProfilingResultCallback> mResultCallbacks = new SparseArray<>();
+    @VisibleForTesting
+    public SparseArray<IProfilingResultCallback> mResultCallbacks = new SparseArray<>();
 
     // Request UUID key indexed storage of active tracing sessions. Currently only 1 active session
     // is supported at a time, but this will be used in future to support multiple.
-    private ArrayMap<String, TracingSession> mTracingSessions = new ArrayMap<>();
+    @VisibleForTesting
+    public ArrayMap<String, TracingSession> mTracingSessions = new ArrayMap<>();
 
     @VisibleForTesting
     public ProfilingService(Context context) {
         mContext = context;
-        RateLimiter.loadFromDisk();
+        mRateLimiter = new RateLimiter(context);
         PERFETTO_DESTROY_TIMEOUT_MS = PERFETTO_DESTROY_DEFAULT_TIMEOUT_MS;
         mHandlerThread.start();
     }
@@ -134,7 +138,8 @@ public class ProfilingService extends IProfilingService.Stub {
         }
 
         // Check with rate limiter if this request is allowed.
-        final int status = RateLimiter.isProfilingRequestAllowed(Binder.getCallingUid(), request);
+        final int status = mRateLimiter.isProfilingRequestAllowed(Binder.getCallingUid(), request);
+        if (DEBUG) Log.d(TAG, "Rate limiter status: " + status);
         if (status == RateLimiter.RATE_LIMIT_RESULT_ALLOWED) {
             // Rate limiter approved, try to start the request.
             try {
@@ -248,7 +253,7 @@ public class ProfilingService extends IProfilingService.Stub {
         getHandler().postDelayed(session.getProcessResultRunnable(), postProcessingDelayMs);
     }
 
-    public void stopProfiling(String key) throws RuntimeException {
+    private void stopProfiling(String key) throws RuntimeException {
         TracingSession session = mTracingSessions.get(key);
         if (session == null || session.getActiveTrace() == null) {
             if (DEBUG) Log.d(TAG, "No active trace, nothing to stop.");
