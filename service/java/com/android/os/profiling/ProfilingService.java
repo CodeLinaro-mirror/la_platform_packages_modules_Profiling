@@ -71,7 +71,7 @@ public class ProfilingService extends IProfilingService.Stub {
     private final int PERFETTO_DESTROY_TIMEOUT_MS;
 
     private final Context mContext;
-    @VisibleForTesting public RateLimiter mRateLimiter;
+    @VisibleForTesting public RateLimiter mRateLimiter = null;
 
     private final HandlerThread mHandlerThread = new HandlerThread("ProfilingService");
     private Handler mHandler;
@@ -89,7 +89,6 @@ public class ProfilingService extends IProfilingService.Stub {
     @VisibleForTesting
     public ProfilingService(Context context) {
         mContext = context;
-        mRateLimiter = new RateLimiter(context);
         PERFETTO_DESTROY_TIMEOUT_MS = PERFETTO_DESTROY_DEFAULT_TIMEOUT_MS;
         mHandlerThread.start();
     }
@@ -138,7 +137,8 @@ public class ProfilingService extends IProfilingService.Stub {
         }
 
         // Check with rate limiter if this request is allowed.
-        final int status = mRateLimiter.isProfilingRequestAllowed(Binder.getCallingUid(), request);
+        final int status = getRateLimiter().isProfilingRequestAllowed(Binder.getCallingUid(),
+                request);
         if (DEBUG) Log.d(TAG, "Rate limiter status: " + status);
         if (status == RateLimiter.RATE_LIMIT_RESULT_ALLOWED) {
             // Rate limiter approved, try to start the request.
@@ -427,6 +427,13 @@ public class ProfilingService extends IProfilingService.Stub {
             mHandler = new Handler(mHandlerThread.getLooper());
         }
         return mHandler;
+    }
+
+    private RateLimiter getRateLimiter() {
+        if (mRateLimiter == null) {
+            mRateLimiter = new RateLimiter(mContext);
+        }
+        return mRateLimiter;
     }
 
     public static final class Lifecycle extends SystemService {

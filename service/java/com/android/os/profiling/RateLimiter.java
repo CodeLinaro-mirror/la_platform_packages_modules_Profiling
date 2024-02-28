@@ -17,20 +17,26 @@
 package android.os.profiling;
 
 import android.annotation.IntDef;
+import android.annotation.NonNull;
+import android.content.Context;
 import android.os.ProfilingRequest;
 import android.os.ProfilingResult;
+import android.provider.DeviceConfig;
 import android.util.SparseIntArray;
+
+import com.android.internal.annotations.GuardedBy;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayDeque;
 import java.util.Queue;
-
-import android.content.Context;
+import java.util.concurrent.Executors;
 
 public class RateLimiter {
 
     private static final String DEVICE_CONFIG_NAMESPACE = "profiling";
+    private static final String DEVICE_CONFIG_RATE_LIMITER_DISABLE_PROPERTY
+            = "rate_limiter.disabled";
 
     private static final long TIME_1_HOUR_MS = 60 * 60 * 1000;
     private static final long TIME_24_HOUR_MS = 24 * 60 * 60 * 1000;
@@ -40,9 +46,13 @@ public class RateLimiter {
     public static final int RATE_LIMIT_RESULT_BLOCKED_PROCESS = 1;
     public static final int RATE_LIMIT_RESULT_BLOCKED_SYSTEM = 2;
 
+    private final Object mLock = new Object();
+
+    private final Context mContext;
     private final long mPersistToDiskFrequency;
 
     /** To be disabled for testing only. */
+    @GuardedBy("mLock")
     private boolean mRateLimiterEnabled = true;
 
     /** Collection of run costs and entries from the last hour. */
@@ -62,40 +72,60 @@ public class RateLimiter {
     @Retention(RetentionPolicy.SOURCE)
     @interface RateLimitResult {}
 
-
     public RateLimiter(Context context) {
         // TODO: b/324885858 use DeviceConfig for adjustable values.
+        mContext = context;
         mPastRuns1Hour = new EntryGroupWrapper(10, 10, TIME_1_HOUR_MS);
         mPastRuns24Hour = new EntryGroupWrapper(100, 100, TIME_24_HOUR_MS);
         mPastRuns7Day = new EntryGroupWrapper(1000, 1000, TIME_7_DAY_MS);
         mPersistToDiskFrequency = 0;
         mLastPersistedTimestampMs = System.currentTimeMillis();
         loadFromDisk();
+
+        // Get initial value for whether rate limiter should be enforcing or if it should always
+        // allow profiling requests. This is used for (automated and manual) testing only.
+        synchronized (mLock) {
+            mRateLimiterEnabled = !DeviceConfig.getBoolean(DEVICE_CONFIG_NAMESPACE,
+                DEVICE_CONFIG_RATE_LIMITER_DISABLE_PROPERTY, false);
+        }
+        // Now subscribe to updates on rate limiter enforcing config.
+        DeviceConfig.addOnPropertiesChangedListener(DEVICE_CONFIG_NAMESPACE,
+                mContext.getMainExecutor(), new DeviceConfig.OnPropertiesChangedListener() {
+                    @Override
+                    public void onPropertiesChanged(@NonNull DeviceConfig.Properties properties) {
+                        synchronized (mLock) {
+                            mRateLimiterEnabled = properties.getBoolean(
+                                    DEVICE_CONFIG_RATE_LIMITER_DISABLE_PROPERTY, false);
+                        }
+                    }
+                });
     }
 
     public @RateLimitResult int isProfilingRequestAllowed(int uid,
             ProfilingRequest request) {
-        if (!mRateLimiterEnabled) {
-            // Rate limiter is disabled for testing, approve request and don't store cost.
-            return RATE_LIMIT_RESULT_ALLOWED;
+        synchronized (mLock) {
+            if (!mRateLimiterEnabled) {
+                // Rate limiter is disabled for testing, approve request and don't store cost.
+                return RATE_LIMIT_RESULT_ALLOWED;
+            }
+            final int cost = 1; // TODO: compute cost b/293957254
+            final long currentTimeMillis = System.currentTimeMillis();
+            int status = mPastRuns1Hour.isProfilingAllowed(uid, cost, currentTimeMillis);
+            if (status == RATE_LIMIT_RESULT_ALLOWED) {
+                status = mPastRuns24Hour.isProfilingAllowed(uid, cost, currentTimeMillis);
+            }
+            if (status == RATE_LIMIT_RESULT_ALLOWED) {
+                status = mPastRuns7Day.isProfilingAllowed(uid, cost, currentTimeMillis);
+            }
+            if (status == RATE_LIMIT_RESULT_ALLOWED) {
+                mPastRuns1Hour.add(uid, cost, currentTimeMillis);
+                mPastRuns24Hour.add(uid, cost, currentTimeMillis);
+                mPastRuns7Day.add(uid, cost, currentTimeMillis);
+                maybePersistToDisk();
+                return RATE_LIMIT_RESULT_ALLOWED;
+            }
+            return status;
         }
-        final int cost = 1; // TODO: compute cost b/293957254
-        final long currentTimeMillis = System.currentTimeMillis();
-        int status = mPastRuns1Hour.isProfilingAllowed(uid, cost, currentTimeMillis);
-        if (status == RATE_LIMIT_RESULT_ALLOWED) {
-            status = mPastRuns24Hour.isProfilingAllowed(uid, cost, currentTimeMillis);
-        }
-        if (status == RATE_LIMIT_RESULT_ALLOWED) {
-            status = mPastRuns7Day.isProfilingAllowed(uid, cost, currentTimeMillis);
-        }
-        if (status == RATE_LIMIT_RESULT_ALLOWED) {
-            mPastRuns1Hour.add(uid, cost, currentTimeMillis);
-            mPastRuns24Hour.add(uid, cost, currentTimeMillis);
-            mPastRuns7Day.add(uid, cost, currentTimeMillis);
-            maybePersistToDisk();
-            return RATE_LIMIT_RESULT_ALLOWED;
-        }
-        return status;
     }
 
     void maybePersistToDisk() {
