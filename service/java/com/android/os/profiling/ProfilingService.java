@@ -19,6 +19,9 @@ package android.os.profiling;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.Context;
+import android.icu.text.SimpleDateFormat;
+import android.icu.util.Calendar;
+import android.icu.util.TimeZone;
 import android.os.Binder;
 import android.os.FileUtils;
 import android.os.Handler;
@@ -31,6 +34,7 @@ import android.os.ParcelFileDescriptor;
 import android.os.ProfilingRequest;
 import android.os.ProfilingResult;
 import android.os.RemoteException;
+import android.text.TextUtils;
 import android.util.Log;
 import android.util.ArrayMap;
 import android.util.SparseArray;
@@ -53,6 +57,8 @@ import java.lang.ProcessBuilder;
 import java.lang.Runnable;
 import java.lang.RuntimeException;
 import java.nio.charset.Charset;
+import java.util.Date;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Executor;
@@ -61,10 +67,17 @@ public class ProfilingService extends IProfilingService.Stub {
     private static final String TAG = ProfilingService.class.getSimpleName();
     private static final boolean DEBUG = false;
 
-    private static final String TEMP_TRACE_PATH = "/data/misc/perfetto-traces/profiling";
-    private static final String TRACE_FILE_RELATIVE_PATH = "/profiling";
-    private static final String TRACE_FILE_PREFIX = "/trace_";
-    private static final String TRACE_FILE_SUFFIX = ".perfetto-trace"; // TODO: match output type.
+    private static final String TEMP_TRACE_PATH = "/data/misc/perfetto-traces/profiling/";
+    private static final String OUTPUT_FILE_RELATIVE_PATH = "/profiling/";
+    private static final String OUTPUT_FILE_SECTION_SEPARATOR = "_";
+    private static final String OUTPUT_FILE_PREFIX = "profile";
+    // Keep in sync with {@link ProfilingFrameworkTests}.
+    private static final String OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX = ".perfetto-java-heap-dump";
+    private static final String OUTPUT_FILE_HEAP_PROFILE_SUFFIX = ".perfetto-heap-profile";
+    private static final String OUTPUT_FILE_STACK_SAMPLING_SUFFIX = ".perfetto-stack-sample";
+    private static final String OUTPUT_FILE_TRACE_SUFFIX = ".perfetto-trace";
+
+    private static final int TAG_MAX_CHARS_FOR_FILENAME = 20;
 
     private static final int PERFETTO_DESTROY_DEFAULT_TIMEOUT_MS = 10 * 1000;
 
@@ -76,6 +89,8 @@ public class ProfilingService extends IProfilingService.Stub {
     private final HandlerThread mHandlerThread = new HandlerThread("ProfilingService");
     private Handler mHandler;
 
+    private Calendar mCalendar = null;
+    private SimpleDateFormat mDateFormat = null;
 
     // uid indexed collecion of JNI callbacks for results.
     @VisibleForTesting
@@ -185,7 +200,7 @@ public class ProfilingService extends IProfilingService.Stub {
     private void processResultCallback(TracingSession session, int status, @Nullable String error) {
         processResultCallback(session.getUid(), session.getKeyMostSigBits(),
                 session.getKeyLeastSigBits(), status,
-                session.getDestinationFileName(TRACE_FILE_RELATIVE_PATH),
+                session.getDestinationFileName(OUTPUT_FILE_RELATIVE_PATH),
                 session.getTag(), error);
     }
 
@@ -211,9 +226,20 @@ public class ProfilingService extends IProfilingService.Stub {
         // we can't start the trace.
         int postProcessingDelayMs;
         byte[] config;
+        String suffix;
+        String tag;
         try {
             postProcessingDelayMs = session.getPostProcessingScheduleDelayMs();
             config = session.getConfigBytes();
+            suffix = getFileSuffixForRequest(session.getRequest());
+
+            // Create a version of tag that is non null, containing only valid filename chars,
+            // and shortened to class defined max size.
+            tag = session.getTag() == null
+                    ? "" : removeInvalidFilenameChars(session.getTag());
+            if (tag.length() > TAG_MAX_CHARS_FOR_FILENAME) {
+                tag = tag.substring(0, TAG_MAX_CHARS_FOR_FILENAME);
+            }
         } catch (IllegalArgumentException e) {
             // Request couldn't be processed. This shouldn't happen.
             if (DEBUG) Log.d(TAG, "Request couldn't be processed", e);
@@ -224,7 +250,9 @@ public class ProfilingService extends IProfilingService.Stub {
         }
 
         // Now start the trace.
-        session.setFileName(TRACE_FILE_PREFIX + session.getKey() + TRACE_FILE_SUFFIX);
+        session.setFileName(OUTPUT_FILE_PREFIX
+                + (tag.isEmpty() ? "" : OUTPUT_FILE_SECTION_SEPARATOR + tag)
+                + OUTPUT_FILE_SECTION_SEPARATOR + getFormattedDate() + suffix);
         try {
             ProcessBuilder pb = new ProcessBuilder("/system/bin/perfetto", "-o",
                     TEMP_TRACE_PATH + session.getFileName(), "-c", "-", "--txt");
@@ -348,8 +376,8 @@ public class ProfilingService extends IProfilingService.Stub {
         if (!failed) {
             try {
                 pfd = mResultCallbacks.get(session.getUid())
-                    .generateFile(session.getAppFilePath() + TRACE_FILE_RELATIVE_PATH,
-                        session.getFileName());
+                        .generateFile(session.getAppFilePath() + OUTPUT_FILE_RELATIVE_PATH,
+                            session.getFileName());
                 appFileOutStream = new FileOutputStream(pfd.getFileDescriptor());
             } catch (RemoteException e) {
                 // Binder exception getting file.
@@ -434,6 +462,67 @@ public class ProfilingService extends IProfilingService.Stub {
             mRateLimiter = new RateLimiter(mContext);
         }
         return mRateLimiter;
+    }
+
+    private String getFormattedDate() {
+        if (mCalendar == null) {
+            mCalendar = Calendar.getInstance(TimeZone.getTimeZone("GMT"));
+        }
+        if (mDateFormat == null) {
+            mDateFormat = new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.US);
+        }
+        mCalendar.setTimeInMillis(System.currentTimeMillis());
+        return mDateFormat.format(mCalendar.getTime());
+    }
+
+    private static String getFileSuffixForRequest(ProfilingRequest request) {
+        if (!request.hasConfig()) {
+            // Proto has no config, not requesting anything.
+            throw new IllegalArgumentException("Proto config is missing");
+        }
+
+        ProfilingRequest.Config config = request.getConfig();
+
+        // Config can have at most one collection type, find out which and then determine suffix.
+        if (config.hasJavaHeapDump()) {
+            return OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX;
+        } else if (config.hasHeapProfile()) {
+            return OUTPUT_FILE_HEAP_PROFILE_SUFFIX;
+        } else if (config.hasStackSampling()) {
+            return OUTPUT_FILE_STACK_SAMPLING_SUFFIX;
+        } else if (config.hasSystemTrace()) {
+            return OUTPUT_FILE_TRACE_SUFFIX;
+        }
+
+        // Proto config has no type, we don't know what the app wants.
+        throw new IllegalArgumentException("Proto config type is missing");
+    }
+
+    private static String removeInvalidFilenameChars(String original) {
+        if (TextUtils.isEmpty(original)) {
+            return "";
+        }
+        final StringBuilder sb = new StringBuilder(original.length());
+        for (int i = 0; i < original.length(); i++) {
+            final char c = Character.toLowerCase(original.charAt(i));
+            if (isValidFilenameChar(c)) {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
+    }
+
+    private static boolean isValidFilenameChar(char c) {
+        if (c >= 'a' && c <= 'z') {
+            return true;
+        }
+        if (c >= '0' && c <= '9') {
+            return true;
+        }
+        if (c == '-') {
+            return true;
+        }
+        return false;
     }
 
     public static final class Lifecycle extends SystemService {
