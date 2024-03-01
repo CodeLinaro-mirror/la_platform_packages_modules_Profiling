@@ -56,6 +56,7 @@ public final class ProfilingManager {
     private final Context mContext;
 
     /** @hide */
+    @VisibleForTesting
     @GuardedBy("mLock")
     public final ArrayList<ProfilingRequestCallbackWrapper> mCallbacks = new ArrayList<>();
 
