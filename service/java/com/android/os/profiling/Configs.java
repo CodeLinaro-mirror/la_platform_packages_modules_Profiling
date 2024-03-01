@@ -235,6 +235,8 @@ public final class Configs {
         } else if (config.hasSystemTrace()) {
             result = CONFIG_SYSTEM_TRACE.replace("{{duration}}",
                     String.valueOf(sDefaultTraceDurationMs));
+            // TODO: remove when redaction is hooked up b/327423523
+            throw new IllegalArgumentException("Trace is not supported until redaction lands");
         }
 
         if (result == null) {
