@@ -52,13 +52,14 @@ public final class ProfilingManager {
     private static final String TAG = ProfilingManager.class.getSimpleName();
     private static final boolean DEBUG = false;
 
-    private static final Object sLock = new Object();
+    private final Object mLock = new Object();
     private final Context mContext;
 
-    @GuardedBy("sLock")
-    private final ArrayList<ProfilingRequestCallbackWrapper> mCallbacks = new ArrayList<>();
+    /** @hide */
+    @GuardedBy("mLock")
+    public final ArrayList<ProfilingRequestCallbackWrapper> mCallbacks = new ArrayList<>();
 
-    @GuardedBy("sLock")
+    @GuardedBy("mLock")
     private IProfilingService mProfilingService;
 
     /**
@@ -108,7 +109,7 @@ public final class ProfilingManager {
             @Nullable CancellationSignal cancellationSignal,
             @Nullable Executor executor,
             @Nullable Consumer<ProfilingResult> listener) {
-        synchronized (sLock) {
+        synchronized (mLock) {
             try {
                 final UUID key = UUID.randomUUID();
 
@@ -130,6 +131,7 @@ public final class ProfilingManager {
                     if (DEBUG) Log.d(TAG, "ProfilingService is not available");
                     return;
                 }
+
                 // For key, use most and least signifcant bits so we can create an identical UUID
                 // after passing over binder.
                 service.requestProfiling(profilingRequest, mContext.getFilesDir().getPath(), tag,
@@ -137,7 +139,7 @@ public final class ProfilingManager {
                 if (cancellationSignal != null) {
                     cancellationSignal.setOnCancelListener(
                         () -> {
-                            synchronized (sLock) {
+                            synchronized (mLock) {
                                 try {
                                     service.requestCancel(key.getMostSignificantBits(),
                                             key.getLeastSignificantBits());
@@ -168,7 +170,7 @@ public final class ProfilingManager {
     public void registerForAllProfilingResults(
             @NonNull Executor executor,
             @NonNull Consumer<ProfilingResult> listener) {
-        synchronized (sLock) {
+        synchronized (mLock) {
             mCallbacks.add(new ProfilingRequestCallbackWrapper(executor, listener, null));
         }
     }
@@ -183,7 +185,7 @@ public final class ProfilingManager {
      */
     public void unregisterForAllProfilingResults(
             @Nullable Consumer<ProfilingResult> listener) {
-        synchronized (sLock) {
+        synchronized (mLock) {
             if (mCallbacks.isEmpty()) {
                 // No callbacks, nothing to remove.
                 return;
@@ -215,7 +217,7 @@ public final class ProfilingManager {
     }
 
     @TargetApi(35)
-    @GuardedBy("sLock")
+    @GuardedBy("mLock")
     private @Nullable IProfilingService getIProfilingServiceLocked() {
         if (mProfilingService != null) {
             return mProfilingService;
@@ -238,7 +240,7 @@ public final class ProfilingManager {
                 public void sendResult(@Nullable String resultFile, long keyMostSigBits,
                         long keyLeastSigBits, int status, @Nullable String tag,
                         @Nullable String error) {
-                    synchronized (sLock) {
+                    synchronized (mLock) {
                         if (mCallbacks.isEmpty()) {
                             // This shouldn't happen - no callbacks, nowhere to report this result.
                             if (DEBUG) Log.d(TAG, "No callbacks");
