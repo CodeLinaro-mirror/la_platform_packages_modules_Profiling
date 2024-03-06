@@ -120,6 +120,9 @@ public final class TracingSession {
     }
 
   public String getDestinationFileName(String appRelativePath) {
+      if (mFileName == null) {
+          return null;
+      }
       if (mDestinationFileName == null) {
           mDestinationFileName = mAppFilePath + appRelativePath + mFileName;
       }
