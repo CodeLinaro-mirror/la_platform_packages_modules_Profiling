@@ -111,6 +111,37 @@ public final class ProfilingServiceTests {
         assertEquals(callback, mProfilingService.mResultCallbacks.get(Binder.getCallingUid()));
     }
 
+    /** Test that only the callback belonging to the requesting uid is triggered. */
+    @Test
+    public void testRequestProfiling_OnlyRequestingProcessCallbackTriggered() {
+        // Mock traces running check to simulate collection running so it fails early.
+        doReturn(true).when(mProfilingService).areAnyTracesRunning();
+
+        ProfilingResultCallback callback = new ProfilingResultCallback();
+        ProfilingResultCallback mockProcessCallback = new ProfilingResultCallback();
+        int mockProcessUid = 12345;
+
+        // Register callback.
+        mProfilingService.registerResultsCallback(callback);
+
+        // Add other process callback manually to mock uid.
+        mProfilingService.mResultCallbacks.put(mockProcessUid, mockProcessCallback);
+
+        // Confirm both callbacks are registered.
+        assertEquals(callback, mProfilingService.mResultCallbacks.get(Binder.getCallingUid()));
+        assertEquals(mockProcessCallback, mProfilingService.mResultCallbacks.get(mockProcessUid));
+
+        // Kick off request.
+        mProfilingService.requestProfiling(ProfilingTestUtils.getJavaHeapDumpProfilingRequest(),
+                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+
+        // Confirm callbacks was triggered for callback registered to this process.
+        assertTrue(callback.mResultSent);
+
+        // Confirm callbacks was not triggered for callback registered to other process.
+        assertFalse(mockProcessCallback.mResultSent);
+    }
+
     /**
      * Test that requesting profiling while another profiling is in progress fails with correct
      * error codes.

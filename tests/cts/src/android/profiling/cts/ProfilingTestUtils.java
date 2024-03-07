@@ -20,7 +20,7 @@ import android.os.IBinder;
 import android.os.IProfilingResultCallback;
 import android.os.OutcomeReceiver;
 import android.os.ParcelUuid;
-import android.os.ProfilingRequest;
+import android.profiling.cts.ClientProfilingRequest;
 import android.os.ProfilingResult;
 import android.os.RemoteException;
 import android.util.Log;
@@ -38,12 +38,12 @@ public final class ProfilingTestUtils {
 
     public static byte[] getSystemTraceProfilingRequest() {
         // Create system trace proto object.
-        ProfilingRequest.SystemTrace systemTrace
-                = ProfilingRequest.SystemTrace.newBuilder().build();
+        ClientProfilingRequest.SystemTrace systemTrace
+                = ClientProfilingRequest.SystemTrace.newBuilder().build();
 
         // Create config proto object with only system trace type set.
-        ProfilingRequest.Config config
-                = ProfilingRequest.Config.newBuilder().setSystemTrace(systemTrace).build();
+        ClientProfilingRequest.Config config
+                = ClientProfilingRequest.Config.newBuilder().setSystemTrace(systemTrace).build();
 
         // Create profiling request object with config and convert to byte array.
         return getProfilingRequestFromConfig(config);
@@ -51,12 +51,12 @@ public final class ProfilingTestUtils {
 
     public static byte[] getJavaHeapDumpProfilingRequest() {
         // Create jave heap dump proto object.
-        ProfilingRequest.JavaHeapDump javaHeapDump
-                = ProfilingRequest.JavaHeapDump.newBuilder().build();
+        ClientProfilingRequest.JavaHeapDump javaHeapDump
+                = ClientProfilingRequest.JavaHeapDump.newBuilder().build();
 
         // Create config proto object with only java heap dump type set.
-        ProfilingRequest.Config config
-                = ProfilingRequest.Config.newBuilder().setJavaHeapDump(javaHeapDump).build();
+        ClientProfilingRequest.Config config
+                = ClientProfilingRequest.Config.newBuilder().setJavaHeapDump(javaHeapDump).build();
 
         // Create profiling request object with config and convert to byte array.
         return getProfilingRequestFromConfig(config);
@@ -64,13 +64,13 @@ public final class ProfilingTestUtils {
 
     public static byte[] getHeapProfileProfilingRequest() {
         // Create heap profile proto object.
-        ProfilingRequest.HeapProfile heapProfile
-                = ProfilingRequest.HeapProfile.newBuilder().build();
+        ClientProfilingRequest.HeapProfile heapProfile
+                = ClientProfilingRequest.HeapProfile.newBuilder().build();
 
 
         // Create config proto object with only heap profile type set.
-        ProfilingRequest.Config config
-                = ProfilingRequest.Config.newBuilder().setHeapProfile(heapProfile).build();
+        ClientProfilingRequest.Config config
+                = ClientProfilingRequest.Config.newBuilder().setHeapProfile(heapProfile).build();
 
         // Create profiling request object with config and convert to byte array.
         return getProfilingRequestFromConfig(config);
@@ -78,18 +78,18 @@ public final class ProfilingTestUtils {
 
     public static byte[] getStackSamplingProfilingRequest() {
         // Create stack sampling proto object.
-        ProfilingRequest.StackSampling stackSampling
-                = ProfilingRequest.StackSampling.newBuilder().build();
+        ClientProfilingRequest.StackSampling stackSampling
+                = ClientProfilingRequest.StackSampling.newBuilder().build();
 
         // Create config proto object with only stack sampling type set.
-        ProfilingRequest.Config config
-                = ProfilingRequest.Config.newBuilder().setStackSampling(stackSampling).build();
+        ClientProfilingRequest.Config config = ClientProfilingRequest.Config
+                .newBuilder().setStackSampling(stackSampling).build();
 
         // Create profiling request object with config and convert to byte array.
         return getProfilingRequestFromConfig(config);
     }
 
-    private static byte[] getProfilingRequestFromConfig(ProfilingRequest.Config config) {
-        return ProfilingRequest.newBuilder().setConfig(config).build().toByteArray();
+    private static byte[] getProfilingRequestFromConfig(ClientProfilingRequest.Config config) {
+        return ClientProfilingRequest.newBuilder().setConfig(config).build().toByteArray();
     }
 }
