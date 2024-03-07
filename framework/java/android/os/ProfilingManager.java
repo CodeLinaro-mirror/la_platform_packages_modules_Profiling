@@ -90,6 +90,8 @@ public final class ProfilingManager {
      *                  necessary information about the collection being requested.
      *                  Use of androidx wrappers is recommended over generating this directly.
      * @param tag Caller defined data to help identify the output.
+     *                  The first 20 alphanumeric characters, plus dashes, will be lowercased
+     *                  and included in the output filename.
      * @param cancellationSignal for caller requested cancellation.
      *                  Results will be returned if available.
      *                  If this is null, the requesting app will not be able to stop the collection.
@@ -305,7 +307,7 @@ public final class ProfilingManager {
                         }
 
                         // Create the profiling file for the output to be written to.
-                        final File profilingFile = new File(profilingDir.getPath() + fileName);
+                        final File profilingFile = new File(filePathAbsolute + fileName);
                         profilingFile.createNewFile();
                         if (!profilingFile.exists()) {
                             // Failed to create output file. Result will be lost.
