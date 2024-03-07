@@ -65,6 +65,12 @@ public final class ProfilingFrameworkTests {
     private static final int RATE_LIMITER_WAIT_TIME_INCREMENT_MS = 250;
     private static final int RATE_LIMITER_WAIT_TIME_INCREMENTS_COUNT = 12;
 
+    // Keep in sync with {@link ProfilingService} because we can't access it.
+    private static final String OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX = ".perfetto-java-heap-dump";
+    private static final String OUTPUT_FILE_HEAP_PROFILE_SUFFIX = ".perfetto-heap-profile";
+    private static final String OUTPUT_FILE_STACK_SAMPLING_SUFFIX = ".perfetto-stack-sample";
+    private static final String OUTPUT_FILE_TRACE_SUFFIX = ".perfetto-trace";
+
     private static ProfilingManager mProfilingManager = null;
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
@@ -128,7 +134,7 @@ public final class ProfilingFrameworkTests {
         waitForCallback(callback);
 
         // Assert that result matches assumptions for success.
-        confirmCollectionSuccess(callback.mResult);
+        confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX);
     }
 
     /** Test that profiling request for heap profile succeeds and returns a file. */
@@ -154,7 +160,7 @@ public final class ProfilingFrameworkTests {
         waitForCallback(callback);
 
         // Assert that result matches assumptions for success.
-        confirmCollectionSuccess(callback.mResult);
+        confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_HEAP_PROFILE_SUFFIX);
     }
 
     /** Test that profiling request for stack sampling succeeds and returns a file. */
@@ -180,7 +186,7 @@ public final class ProfilingFrameworkTests {
         waitForCallback(callback);
 
         // Assert that result matches assumptions for success.
-        confirmCollectionSuccess(callback.mResult);
+        confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_STACK_SAMPLING_SUFFIX);
     }
 
     /**
@@ -243,7 +249,7 @@ public final class ProfilingFrameworkTests {
         waitForCallback(callback);
 
         // Assert that result matches assumptions for success.
-        confirmCollectionSuccess(callback.mResult);
+        confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX);
     }
 
     /** Test that unregistering a global listener works and that listener does not get called. */
@@ -323,9 +329,47 @@ public final class ProfilingFrameworkTests {
         waitForCallback(callbackSpecific);
 
         // Assert that result matches assumptions for success in all callbacks.
-        confirmCollectionSuccess(callbackSpecific.mResult);
-        confirmCollectionSuccess(callbackGeneral1.mResult);
-        confirmCollectionSuccess(callbackGeneral2.mResult);
+        confirmCollectionSuccess(callbackSpecific.mResult, OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX);
+        confirmCollectionSuccess(callbackGeneral1.mResult, OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX);
+        confirmCollectionSuccess(callbackGeneral2.mResult, OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX);
+    }
+
+    /** Test that profiling request result file name contains the correct tag. */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
+    public void testRequestTagInFilename() {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // Disable the rate limiter, we're not testing that.
+        disableRateLimiter();
+
+        AppCallback callback = new AppCallback();
+
+        // Setup tag to use with invalid chars and length, and expected cleaned up version.
+        String fullTag = "TestTag-_-_-12345678901234567890\\\"&:|<>";
+        String tagForFilename = "testtag---1234567890";
+
+        // Now kick off the request.
+        mProfilingManager.requestProfiling(
+            ProfilingTestUtils.getJavaHeapDumpProfilingRequest(),
+            fullTag,
+            null,
+            new ProfilingTestUtils.ImmediateExecutor(),
+            callback);
+
+        // Wait until callback#onAccept is triggered so we can confirm the result.
+        waitForCallback(callback);
+
+        // Assert that used tag matches returned tag.
+        assertTrue(fullTag.equals(callback.mResult.getTag()));
+
+        // Split the path to obtain the filename.
+        String[] pathArray = callback.mResult.getResultFilePath().split("/");
+        // Then split the filename to obtain the tag section.
+        String[] nameArray = pathArray[pathArray.length - 1].split("_");
+
+        // Assert that the file name section containing the tag matches the expected filename tag.
+        assertTrue(nameArray[1].equals(tagForFilename));
     }
 
     /** Disable the rate limiter and wait long enough for the update to be picked up. */
@@ -354,10 +398,11 @@ public final class ProfilingFrameworkTests {
     }
 
     /** Assert that result matches a success case, specifically: contains a path and no errors. */
-    private void confirmCollectionSuccess(ProfilingResult result) {
+    private void confirmCollectionSuccess(ProfilingResult result, String suffix) {
         assertNotNull(result);
         assertEquals(ProfilingResult.ERROR_NONE, result.getErrorCode());
         assertNotNull(result.getResultFilePath());
+        assertTrue(result.getResultFilePath().contains(suffix));
         assertNull(result.getErrorMessage());
     }
 
