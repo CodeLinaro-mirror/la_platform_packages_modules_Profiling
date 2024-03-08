@@ -43,6 +43,6 @@ android_test {
         "mts-profiling",
         "mcts-profiling",
     ],
-    min_sdk_version: "34",
+    min_sdk_version: "current",
     sdk_version: "module_current",
 }

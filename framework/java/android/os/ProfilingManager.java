@@ -18,7 +18,6 @@ package android.os;
 import android.annotation.FlaggedApi;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
-import android.annotation.TargetApi;
 import android.content.Context;
 import android.os.Binder;
 import android.os.CancellationSignal;
@@ -219,7 +218,6 @@ public final class ProfilingManager {
         }
     }
 
-    @TargetApi(35)
     @GuardedBy("mLock")
     private @Nullable IProfilingService getIProfilingServiceLocked() {
         if (mProfilingService != null) {
