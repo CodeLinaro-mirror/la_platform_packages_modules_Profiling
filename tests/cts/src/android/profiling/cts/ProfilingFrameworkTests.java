@@ -43,6 +43,7 @@ import org.junit.runner.RunWith;
 import org.junit.runners.model.Statement;
 import org.testng.TestException;
 
+import java.io.File;
 import java.util.function.Consumer;
 
 /**
@@ -111,7 +112,7 @@ public final class ProfilingFrameworkTests {
         assertEquals(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, callback.mResult.getErrorCode());
     }
 
-    /** Test that profiling request for java heap dump succeeds and returns a file. */
+    /** Test that profiling request for java heap dump succeeds and returns a non-empty file. */
     @Test
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
     public void testRequestJavaHeapDumpSuccess() {
@@ -137,7 +138,7 @@ public final class ProfilingFrameworkTests {
         confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX);
     }
 
-    /** Test that profiling request for heap profile succeeds and returns a file. */
+    /** Test that profiling request for heap profile succeeds and returns a non-empty file. */
     @Test
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
     public void testRequestHeapProfileSuccess() {
@@ -163,7 +164,7 @@ public final class ProfilingFrameworkTests {
         confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_HEAP_PROFILE_SUFFIX);
     }
 
-    /** Test that profiling request for stack sampling succeeds and returns a file. */
+    /** Test that profiling request for stack sampling succeeds and returns a non-empty file. */
     @Test
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
     public void testRequestStackSamplingSuccess() {
@@ -404,6 +405,11 @@ public final class ProfilingFrameworkTests {
         assertNotNull(result.getResultFilePath());
         assertTrue(result.getResultFilePath().contains(suffix));
         assertNull(result.getErrorMessage());
+
+        // Confirm output file exists and is not empty.
+        File file = new File(result.getResultFilePath());
+        assertTrue(file.exists());
+        assertFalse(file.length() == 0);
     }
 
     private void sleep(long ms) {

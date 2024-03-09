@@ -89,7 +89,8 @@ public final class Configs {
         + "  }\n"
         + "}\n"
         + "\n"
-        + "flush_timeout_ms: 30000";
+        + "flush_timeout_ms: 30000\n"
+        + "duration_ms: {{duration}}";
     static final String CONFIG_SYSTEM_TRACE = "buffers {\n"
         + "  size_kb: 32768\n"
         + "  fill_policy: RING_BUFFER\n"
@@ -238,7 +239,9 @@ public final class Configs {
             ProfilingRequest.StackSampling stackSampling = config.getStackSampling();
             int frequency = stackSampling.hasFrequency()
                     ? stackSampling.getFrequency() : sDefaultStackSamplingFrequency;
-            result = CONFIG_STACK_SAMPLING.replace("{{frequency}}", String.valueOf(frequency));
+            result = CONFIG_STACK_SAMPLING
+                    .replace("{{frequency}}", String.valueOf(frequency))
+                    .replace("{{duration}}", String.valueOf(DEFAULT_STACK_SAMPLING_DURATION_MS));
         } else if (config.hasSystemTrace()) {
             ProfilingRequest.SystemTrace systemTrace = config.getSystemTrace();
             int durationMs = systemTrace.hasDurationMs() ? systemTrace.getDurationMs()
