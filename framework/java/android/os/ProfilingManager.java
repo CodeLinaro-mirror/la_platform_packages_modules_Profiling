@@ -18,7 +18,6 @@ package android.os;
 import android.annotation.FlaggedApi;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
-import android.annotation.TargetApi;
 import android.content.Context;
 import android.os.Binder;
 import android.os.CancellationSignal;
@@ -52,13 +51,15 @@ public final class ProfilingManager {
     private static final String TAG = ProfilingManager.class.getSimpleName();
     private static final boolean DEBUG = false;
 
-    private static final Object sLock = new Object();
+    private final Object mLock = new Object();
     private final Context mContext;
 
-    @GuardedBy("sLock")
-    private final ArrayList<ProfilingRequestCallbackWrapper> mCallbacks = new ArrayList<>();
+    /** @hide */
+    @VisibleForTesting
+    @GuardedBy("mLock")
+    public final ArrayList<ProfilingRequestCallbackWrapper> mCallbacks = new ArrayList<>();
 
-    @GuardedBy("sLock")
+    @GuardedBy("mLock")
     private IProfilingService mProfilingService;
 
     /**
@@ -71,7 +72,7 @@ public final class ProfilingManager {
     }
 
     /**
-     * Request profiling via perfetto.
+     * Request system profiling.
      *
      * <p class="note"> Note: use of this API directly is not recommended for most use cases.
      * Please use the higher level wrappers provided by androidx that will construct the request
@@ -79,17 +80,30 @@ public final class ProfilingManager {
      *
      * <p class="note"> Note: requests are not guaranteed to be filled.</p>
      *
-     * <p class="note"> Note: a listener must be set for the request to be considered for
-     * fulfillment. Listeners can be set in this method, with {@see #registerForProfilingResult},
-     * or both. If no listener is set the request will be discarded.</p>
+     * <p class="note"> Note: Both a listener and executor must be set for the request to be
+     * considered for fulfillment.
+     * Listeners can be set in this method, with {@link #registerForAllProfilingResults}, or both.
+     * If no listener and executor is set the request will be discarded.</p>
      *
      * @param profilingRequest byte array representation of ProfilingRequest proto containing all
-     *                         necessary information about the collection being requested.
+     *                  necessary information about the collection being requested.
+     *                  Use of androidx wrappers is recommended over generating this directly.
      * @param tag Caller defined data to help identify the output.
+     *                  The first 20 alphanumeric characters, plus dashes, will be lowercased
+     *                  and included in the output filename.
      * @param cancellationSignal for caller requested cancellation.
-     *                         Results will be returned if available.
-     * @param executor The executor to call back with.
-     * @param listener Listener to be triggered with result.
+     *                  Results will be returned if available.
+     *                  If this is null, the requesting app will not be able to stop the collection.
+     *                  The collection will stop after timing out with either the provided
+     *                  configurations or with system defaults
+     * @param executor  The executor to call back with.
+     *                  Will only be used for the listener provided in this method.
+     *                  If this is null, and no global executor and listener combinations are
+     *                  registered at the time of the request, the request will be dropped.
+     * @param listener  Listener to be triggered with result. Any global listeners registered via
+     *                  {@link #registerForAllProfilingResults} will also be triggered. If this is
+     *                  null, and no global listener and executor combinations are registered at
+     *                  the time of the request, the request will be dropped.
      */
     public void requestProfiling(
             @NonNull byte[] profilingRequest,
@@ -97,7 +111,7 @@ public final class ProfilingManager {
             @Nullable CancellationSignal cancellationSignal,
             @Nullable Executor executor,
             @Nullable Consumer<ProfilingResult> listener) {
-        synchronized (sLock) {
+        synchronized (mLock) {
             try {
                 final UUID key = UUID.randomUUID();
 
@@ -119,6 +133,7 @@ public final class ProfilingManager {
                     if (DEBUG) Log.d(TAG, "ProfilingService is not available");
                     return;
                 }
+
                 // For key, use most and least signifcant bits so we can create an identical UUID
                 // after passing over binder.
                 service.requestProfiling(profilingRequest, mContext.getFilesDir().getPath(), tag,
@@ -126,7 +141,7 @@ public final class ProfilingManager {
                 if (cancellationSignal != null) {
                     cancellationSignal.setOnCancelListener(
                         () -> {
-                            synchronized (sLock) {
+                            synchronized (mLock) {
                                 try {
                                     service.requestCancel(key.getMostSignificantBits(),
                                             key.getLeastSignificantBits());
@@ -148,45 +163,62 @@ public final class ProfilingManager {
     }
 
     /**
-     * Register a listener to be called for all profiling results.
+     * Register a listener to be called for all profiling results for this uid. Listeners set here
+     * will be called in addition to any provided with the request.
      *
      * @param executor The executor to call back with.
      * @param listener Listener to be triggered with result.
      */
-    public void registerForProfilingResults(
+    public void registerForAllProfilingResults(
             @NonNull Executor executor,
             @NonNull Consumer<ProfilingResult> listener) {
-        synchronized (sLock) {
+        synchronized (mLock) {
             mCallbacks.add(new ProfilingRequestCallbackWrapper(executor, listener, null));
         }
     }
 
     /**
-     * Unregister a listener to be called for all profiling results. If no listener is provided,
-     * all listeners for this process that were not submitted with a currently running trace will
-     * be removed.
+     * Unregister a listener that was to be called for all profiling results. If no listener is
+     * provided, all listeners for this process that were not submitted with a profiling request
+     * will be removed.
      *
-     * @param listener Listener to unregister and no longer be triggered with the result.
+     * @param listener Listener to unregister and no longer be triggered with the results.
+     *                 Null to remove all global listeners for this uid.
      */
-    public void unregisterForProfilingResults(
-            @NonNull Consumer<ProfilingResult> listener) {
-        synchronized (sLock) {
+    public void unregisterForAllProfilingResults(
+            @Nullable Consumer<ProfilingResult> listener) {
+        synchronized (mLock) {
             if (mCallbacks.isEmpty()) {
                 // No callbacks, nothing to remove.
                 return;
             }
-            for (int i = 0; i < mCallbacks.size(); i++) {
-                ProfilingRequestCallbackWrapper wrapper = mCallbacks.get(i);
-                if (listener.equals(wrapper.mListener)) {
-                    mCallbacks.remove(i);
-                    return;
+
+            if (listener == null) {
+                // Remove all global listeners.
+                ArrayList<ProfilingRequestCallbackWrapper> listenersToRemove = new ArrayList<>();
+                for (int i = 0; i < mCallbacks.size(); i++) {
+                    ProfilingRequestCallbackWrapper wrapper = mCallbacks.get(i);
+                    // Only remove global listeners which are not tied to a specific request. These
+                    // can be identified by checking that they do not have an associated key.
+                    if (wrapper.mKey == null) {
+                        listenersToRemove.add(wrapper);
+                    }
+                }
+                mCallbacks.removeAll(listenersToRemove);
+            } else {
+                // Remove the provided listener only.
+                for (int i = 0; i < mCallbacks.size(); i++) {
+                    ProfilingRequestCallbackWrapper wrapper = mCallbacks.get(i);
+                    if (listener.equals(wrapper.mListener)) {
+                        mCallbacks.remove(i);
+                        return;
+                    }
                 }
             }
         }
     }
 
-    @TargetApi(35)
-    @GuardedBy("sLock")
+    @GuardedBy("mLock")
     private @Nullable IProfilingService getIProfilingServiceLocked() {
         if (mProfilingService != null) {
             return mProfilingService;
@@ -202,14 +234,14 @@ public final class ProfilingManager {
             mProfilingService.registerResultsCallback(new IProfilingResultCallback.Stub() {
 
                 /**
-                 * Called by {@see ProfilingService} when a result is ready,
+                 * Called by {@link ProfilingService} when a result is ready,
                  * both for success and failure.
                  */
                 @Override
                 public void sendResult(@Nullable String resultFile, long keyMostSigBits,
                         long keyLeastSigBits, int status, @Nullable String tag,
                         @Nullable String error) {
-                    synchronized (sLock) {
+                    synchronized (mLock) {
                         if (mCallbacks.isEmpty()) {
                             // This shouldn't happen - no callbacks, nowhere to report this result.
                             if (DEBUG) Log.d(TAG, "No callbacks");
@@ -257,7 +289,7 @@ public final class ProfilingManager {
                 }
 
                 /**
-                 * Called by {@see ProfilingService} when a trace is ready and need to be copied
+                 * Called by {@link ProfilingService} when a trace is ready and need to be copied
                  * to callers internal storage.
                  *
                  * This method will open a new file and pass back the FileDescriptor for
@@ -273,7 +305,7 @@ public final class ProfilingManager {
                         }
 
                         // Create the profiling file for the output to be written to.
-                        final File profilingFile = new File(profilingDir.getPath() + fileName);
+                        final File profilingFile = new File(filePathAbsolute + fileName);
                         profilingFile.createNewFile();
                         if (!profilingFile.exists()) {
                             // Failed to create output file. Result will be lost.
@@ -309,8 +341,8 @@ public final class ProfilingManager {
         final @NonNull Consumer<ProfilingResult> mListener;
 
         /**
-         * Unique key generated with each profiling request {@see #requestProfiling}, but not with
-         * requests to register a listener only {@see #registerForProfilingResult}.
+         * Unique key generated with each profiling request {@link #requestProfiling}, but not with
+         * requests to register a listener only {@link #registerForAllProfilingResults}.
          *
          * Key is used to match the result with the listener added with the request so that it can
          * removed after being triggered while the general registered callbacks remain active.
