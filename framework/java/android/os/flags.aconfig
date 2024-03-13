@@ -2,6 +2,7 @@ package: "android.os.profiling"
 
 flag {
      name: "telemetry_apis"
+     is_exported: true
      namespace: "system_performance"
      description: "Control API portion of telemetry APIs feature."
      is_fixed_read_only: true
