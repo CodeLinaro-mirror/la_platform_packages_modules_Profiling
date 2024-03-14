@@ -23,17 +23,8 @@ android_test {
         "android.test.mock",
         "junit",
     ],
-    proto: {
-        type: "lite",
-        canonical_path_from_root: false,
-        include_dirs: [
-            "external/protobuf/src",
-            "external/protobuf/java",
-        ],
-    },
     srcs: [
         "src/android/profiling/cts/*.java",
-        "src/android/profiling/cts/*.proto",
     ],
     jarjar_rules: "jarjar-rules.txt",
     test_suites: [
