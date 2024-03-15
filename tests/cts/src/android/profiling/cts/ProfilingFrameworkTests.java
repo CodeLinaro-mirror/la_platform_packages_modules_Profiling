@@ -181,7 +181,7 @@ public final class ProfilingFrameworkTests {
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
-                null,
+                ProfilingTestUtils.getOneSecondDurationParamBundle(),
                 null,
                 null,
                 new ProfilingTestUtils.ImmediateExecutor(),
@@ -208,7 +208,7 @@ public final class ProfilingFrameworkTests {
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
-                null,
+                ProfilingTestUtils.getOneSecondDurationParamBundle(),
                 null,
                 null,
                 new ProfilingTestUtils.ImmediateExecutor(),
@@ -238,7 +238,7 @@ public final class ProfilingFrameworkTests {
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
-                null,
+                ProfilingTestUtils.getOneSecondDurationParamBundle(),
                 null,
                 null,
                 new ProfilingTestUtils.ImmediateExecutor(),
