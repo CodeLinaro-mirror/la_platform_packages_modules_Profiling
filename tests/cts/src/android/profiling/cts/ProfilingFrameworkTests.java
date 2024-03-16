@@ -19,6 +19,7 @@ package android.profiling.cts;
 import static org.junit.Assert.*;
 
 import android.content.Context;
+import android.os.Bundle;
 import android.os.CancellationSignal;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
@@ -89,18 +90,45 @@ public final class ProfilingFrameworkTests {
         assertNotNull(mProfilingManager);
     }
 
-    /** Test that request with invalid input fails with correct error output. */
+    /** Test that request with invalid profiling type fails with correct error output. */
     @Test
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
-    public void testInvalidProfilingRequest() {
+    public void testInvalidProfilingType() {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
         AppCallback callback = new AppCallback();
 
-        // This call is passing an invalid profiling request config and should result in a parsing
-        // error and a ERROR_FAILED_INVALID_REQUEST as the error delivered to resultConsumer.
+        // This call is passing an invalid profiling request type and should result in an error.
         mProfilingManager.requestProfiling(
-                new byte[16],
+                -1,
+                null,
+                null,
+                null,
+                new ProfilingTestUtils.ImmediateExecutor(),
+                callback);
+
+        // Wait until callback#onAccept is triggered so we can confirm the result.
+        waitForCallback(callback);
+
+        assertEquals(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, callback.mResult.getErrorCode());
+    }
+
+    /** Test that request with invalid profiling params fails with correct error output. */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
+    public void testInvalidProfilingParams() {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        AppCallback callback = new AppCallback();
+
+        Bundle params = new Bundle();
+        params.putBoolean("bypass_rate_limiter", true);
+
+        // This call is passing a parameters bundle with an invalid parameter and should result in
+        // an error.
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
+                params,
                 null,
                 null,
                 new ProfilingTestUtils.ImmediateExecutor(),
@@ -125,7 +153,8 @@ public final class ProfilingFrameworkTests {
 
         // Now kick off the request.
         mProfilingManager.requestProfiling(
-                ProfilingTestUtils.getJavaHeapDumpProfilingRequest(),
+                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
+                null,
                 null,
                 null,
                 new ProfilingTestUtils.ImmediateExecutor(),
@@ -151,7 +180,8 @@ public final class ProfilingFrameworkTests {
 
         // Now kick off the request.
         mProfilingManager.requestProfiling(
-                ProfilingTestUtils.getHeapProfileProfilingRequest(),
+                ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
+                null,
                 null,
                 null,
                 new ProfilingTestUtils.ImmediateExecutor(),
@@ -177,7 +207,8 @@ public final class ProfilingFrameworkTests {
 
         // Now kick off the request.
         mProfilingManager.requestProfiling(
-                ProfilingTestUtils.getStackSamplingProfilingRequest(),
+                ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
+                null,
                 null,
                 null,
                 new ProfilingTestUtils.ImmediateExecutor(),
@@ -206,7 +237,8 @@ public final class ProfilingFrameworkTests {
 
         // Now kick off the request.
         mProfilingManager.requestProfiling(
-                ProfilingTestUtils.getSystemTraceProfilingRequest(),
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                null,
                 null,
                 null,
                 new ProfilingTestUtils.ImmediateExecutor(),
@@ -234,7 +266,8 @@ public final class ProfilingFrameworkTests {
 
         // Now kick off the request.
         mProfilingManager.requestProfiling(
-                ProfilingTestUtils.getJavaHeapDumpProfilingRequest(), // TODO: b/327423523 use trace
+                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, // TODO: b/327423523 use trace
+                null,
                 null,
                 cancellationSignal,
                 new ProfilingTestUtils.ImmediateExecutor(),
@@ -282,7 +315,8 @@ public final class ProfilingFrameworkTests {
 
         // Now kick off the request.
         mProfilingManager.requestProfiling(
-                ProfilingTestUtils.getJavaHeapDumpProfilingRequest(),
+                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
+                null,
                 null,
                 null,
                 new ProfilingTestUtils.ImmediateExecutor(),
@@ -316,7 +350,8 @@ public final class ProfilingFrameworkTests {
 
         // Now kick off the request.
         mProfilingManager.requestProfiling(
-                ProfilingTestUtils.getJavaHeapDumpProfilingRequest(),
+                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
+                null,
                 null,
                 null,
                 new ProfilingTestUtils.ImmediateExecutor(),
@@ -352,7 +387,8 @@ public final class ProfilingFrameworkTests {
 
         // Now kick off the request.
         mProfilingManager.requestProfiling(
-                ProfilingTestUtils.getJavaHeapDumpProfilingRequest(),
+                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
+                null,
                 fullTag,
                 null,
                 new ProfilingTestUtils.ImmediateExecutor(),
@@ -371,167 +407,6 @@ public final class ProfilingFrameworkTests {
 
         // Assert that the file name section containing the tag matches the expected filename tag.
         assertTrue(nameArray[1].equals(tagForFilename));
-    }
-
-    /** Test that using a proto with missing types still processes correctly. */
-    @Test
-    @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
-    public void testRequestProtoMissingTypesSuccess() {
-        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
-
-        // Disable the rate limiter, we're not testing that.
-        disableRateLimiter();
-
-        AppCallback callback = new AppCallback();
-
-        // Now kick off the request.
-        mProfilingManager.requestProfiling(
-                ProfilingTestUtils.getJavaHeapDumpMissingTypesProfilingRequest(),
-                null,
-                null,
-                new ProfilingTestUtils.ImmediateExecutor(),
-                callback);
-
-        // Wait until callback#onAccept is triggered so we can confirm the result.
-        waitForCallback(callback);
-
-        // Assert that result matches assumptions for success.
-        confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX);
-    }
-
-    /** Test that using a proto with misnamed types still processes correctly. */
-    @Test
-    @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
-    public void testRequestProtoMisnamedTypeSuccess() {
-        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
-
-        // Disable the rate limiter, we're not testing that.
-        disableRateLimiter();
-
-        AppCallback callback = new AppCallback();
-
-        // Now kick off the request.
-        mProfilingManager.requestProfiling(
-                ProfilingTestUtils.getJavaHeapDumpMisnamedProfilingRequest(),
-                null,
-                null,
-                new ProfilingTestUtils.ImmediateExecutor(),
-                callback);
-
-        // Wait until callback#onAccept is triggered so we can confirm the result.
-        waitForCallback(callback);
-
-        // Assert that result matches assumptions for success.
-        confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX);
-    }
-
-    /** Test that using a proto with an additional fake type fails when using that fake type. */
-    @Test
-    @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
-    public void testRequestFakeTypeFailure() {
-        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
-
-        // Disable the rate limiter, we're not testing that.
-        disableRateLimiter();
-
-        AppCallback callback = new AppCallback();
-
-        // Now kick off the request.
-        mProfilingManager.requestProfiling(
-                ProfilingTestUtils.getFakeTypeProfilingRequest(true),
-                null,
-                null,
-                new ProfilingTestUtils.ImmediateExecutor(),
-                callback);
-
-        // Wait until callback#onAccept is triggered so we can confirm the result.
-        waitForCallback(callback);
-
-        // Assert that result matches assumptions for failure.
-        assertNotNull(callback.mResult);
-        assertNotEquals(ProfilingResult.ERROR_NONE, callback.mResult.getErrorCode());
-        assertNull(callback.mResult.getResultFilePath());
-    }
-
-    /**
-     * Test that using a proto that contains a fake type, but using the existing real type, works
-     * correctly.
-     */
-    @Test
-    @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
-    public void testRequestValidTypeFromProtoWithFakeTypeSuccess() {
-        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
-
-        // Disable the rate limiter, we're not testing that.
-        disableRateLimiter();
-
-        AppCallback callback = new AppCallback();
-
-        // Now kick off the request.
-        mProfilingManager.requestProfiling(
-                ProfilingTestUtils.getFakeTypeProfilingRequest(false),
-                null,
-                null,
-                new ProfilingTestUtils.ImmediateExecutor(),
-                callback);
-
-        // Wait until callback#onAccept is triggered so we can confirm the result.
-        waitForCallback(callback);
-
-        // Assert that result matches assumptions for success.
-        confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX);
-    }
-
-    /** Test that using a proto with missing fields still processes correctly. */
-    @Test
-    @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
-    public void testRequestProtoMissingFieldsSuccess() {
-        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
-
-        // Disable the rate limiter, we're not testing that.
-        disableRateLimiter();
-
-        AppCallback callback = new AppCallback();
-
-        // Now kick off the request.
-        mProfilingManager.requestProfiling(
-                ProfilingTestUtils.getHeapProfileMissingFieldsProfilingRequest(),
-                null,
-                null,
-                new ProfilingTestUtils.ImmediateExecutor(),
-                callback);
-
-        // Wait until callback#onAccept is triggered so we can confirm the result.
-        waitForCallback(callback);
-
-        // Assert that result matches assumptions for success.
-        confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_HEAP_PROFILE_SUFFIX);
-    }
-
-    /** Test that using a proto with extra non supported fields still processes correctly. */
-    @Test
-    @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
-    public void testRequestProtoExtraFieldsSuccess() {
-        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
-
-        // Disable the rate limiter, we're not testing that.
-        disableRateLimiter();
-
-        AppCallback callback = new AppCallback();
-
-        // Now kick off the request.
-        mProfilingManager.requestProfiling(
-                ProfilingTestUtils.getJavaHeapDumpExtraFieldsProfilingRequest(),
-                null,
-                null,
-                new ProfilingTestUtils.ImmediateExecutor(),
-                callback);
-
-        // Wait until callback#onAccept is triggered so we can confirm the result.
-        waitForCallback(callback);
-
-        // Assert that result matches assumptions for success.
-        confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX);
     }
 
     /** Disable the rate limiter and wait long enough for the update to be picked up. */
