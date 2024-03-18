@@ -16,13 +16,23 @@
 
 package android.profiling.cts;
 
+import android.os.Bundle;
+
 import java.util.concurrent.Executor;
 
 public final class ProfilingTestUtils {
+
+    private static String KEY_DURATION_MS = "KEY_DURATION_MS";
 
     static class ImmediateExecutor implements Executor {
         public void execute(Runnable r) {
             r.run();
         }
+    }
+
+    static Bundle getOneSecondDurationParamBundle() {
+        Bundle params = new Bundle();
+        params.putInt(KEY_DURATION_MS, 1000);
+        return params;
     }
 }
