@@ -185,6 +185,9 @@ public final class Configs {
         + "}\n"
         + "duration_ms: {{duration}}";
 
+    // Time to wait beyond trace timeout to ensure perfetto has time to finish writing output.
+    private static final int FILE_PROCESSING_DELAY_MS = 1000;
+
     private static final int DEFAULT_TRACE_DURATION_MS = 5 * 60 * 1000;
     private static final long DEFAULT_HEAP_PROFILE_SAMPLING_INTERVAL = 4096;
     private static final int DEFAULT_STACK_SAMPLING_FREQUENCY = 100;
@@ -232,6 +235,8 @@ public final class Configs {
         } else if (config.hasSystemTrace()) {
             result = CONFIG_SYSTEM_TRACE.replace("{{duration}}",
                     String.valueOf(sDefaultTraceDurationMs));
+            // TODO: remove when redaction is hooked up b/327423523
+            throw new IllegalArgumentException("Trace is not supported until redaction lands");
         }
 
         if (result == null) {
@@ -241,5 +246,15 @@ public final class Configs {
 
         // Fill in package name and return config.
         return result.replace("{{package_name}}", packageName);
+    }
+
+    /**
+     * This method returns how long in ms to wait before post processing and cleaning up the result
+     * in the event that it's not stopped manually.
+     */
+    public static int getPostProcessingScheduleDelayMs(ProfilingRequest request) {
+        // TODO select timeout based on type
+        // TODO adjust timeout/logic to ensure perfetto is finished
+        return sDefaultTraceDurationMs + FILE_PROCESSING_DELAY_MS;
     }
 }

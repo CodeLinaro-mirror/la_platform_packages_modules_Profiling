@@ -20,7 +20,6 @@ filegroup {
     name: "service-profiling-sources",
     srcs: [
         "java/**/*.java",
-        ":framework-statsd-aidl-sources",
     ],
 }
 
