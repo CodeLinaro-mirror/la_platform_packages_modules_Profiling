@@ -25,8 +25,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyObject;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.spy;
 
 import android.content.Context;
@@ -229,14 +229,12 @@ public final class ProfilingServiceTests {
                 ProfilingResult.ERROR_FAILED_RATE_LIMIT_PROCESS, REQUEST_TAG, false);
     }
 
-    /**
-     * Test profiling request with no issues makes it to perfetto kick off and fails because we're
-     * using the wrong context in these tests.
-     */
+    /** Test that if we can't contact Perfetto, we'll see an error callback. */
     @Test
     public void testRequestProfiling_Allowed_PerfettoPermissions_Fails() {
-        // Bypass traces running check, we're not testing that here.
-        doReturn(false).when(mProfilingService).areAnyTracesRunning();
+        // Throw a RuntimeException when we try to query Perfetto for running traces.
+        // This implies that we can't contact Perfetto.
+        doThrow(RuntimeException.class).when(mProfilingService).areAnyTracesRunning();
 
         // Register callback.
         ProfilingResultCallback callback = new ProfilingResultCallback();
@@ -249,7 +247,7 @@ public final class ProfilingServiceTests {
         // Perfetto cannot be run from this context, ensure it was attempted and failed permissions.
         confirmResultCallback(callback, null, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
                 ProfilingResult.ERROR_UNKNOWN, REQUEST_TAG, true);
-        assertEquals("Perfetto error", callback.mError);
+        assertEquals("Error communicating with perfetto", callback.mError);
     }
 
     /** Test that checking if any traces are running works when trace is running. */
