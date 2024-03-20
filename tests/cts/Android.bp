@@ -3,7 +3,7 @@ package {
 }
 
 android_test {
-    name: "MtsProfilingModuleTests",
+    name: "CtsProfilingModuleTests",
     defaults: ["cts_defaults"],
     static_libs: [
         "androidx.test.rules",
@@ -30,8 +30,6 @@ android_test {
     test_suites: [
         "cts",
         "general-tests",
-        "mts-profiling",
-        "mcts-profiling",
     ],
     min_sdk_version: "current",
     sdk_version: "module_current",

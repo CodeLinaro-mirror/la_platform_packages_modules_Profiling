@@ -25,7 +25,7 @@
 
     <target_preparer class="com.android.tradefed.targetprep.suite.SuiteApkInstaller">
         <option name="cleanup-apks" value="true" />
-        <option name="test-file-name" value="MtsProfilingModuleTests.apk" />
+        <option name="test-file-name" value="CtsProfilingModuleTests.apk" />
     </target_preparer>
 
     <test class="com.android.tradefed.testtype.AndroidJUnitTest" >
