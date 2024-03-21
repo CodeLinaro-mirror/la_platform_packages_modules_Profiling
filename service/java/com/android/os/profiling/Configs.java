@@ -16,13 +16,16 @@
 
 package android.os.profiling;
 
-import android.os.ProfilingRequest;
+import android.annotation.Nullable;
+
+import android.os.Bundle;
+import android.os.ProfilingManager;
 
 import java.lang.IllegalArgumentException;
 
 public final class Configs {
 
-    static final String HEAP_PROFILE_ART = "heaps: \"com.android.art\"";
+    static final String HEAP_PROFILE_TRACK_JAVA_ALLOCATIONS = "heaps: \"com.android.art\"";
 
     static final String CONFIG_HEAP_PROFILE = "buffers {\n"
         + "  size_kb: 65536\n"
@@ -36,7 +39,7 @@ public final class Configs {
         + "      shmem_size_bytes: 8388608\n"
         + "      sampling_interval_bytes: {{sampling_interval}}\n"
         + "      process_cmdline: \"{{package_name}}\"\n"
-        + "      {{art}}\n"
+        + "      {{track_java_allocations}}\n"
         + "    }\n"
         + "  }\n"
         + "}\n"
@@ -188,6 +191,12 @@ public final class Configs {
         + "}\n"
         + "duration_ms: {{duration}}";
 
+    private static final String STUB_DURATION = "{{duration}}";
+    private static final String STUB_PACKAGE_NAME = "{{package_name}}";
+    private static final String STUB_TRACK_JAVA_ALLOCATIONS = "{{track_java_allocations}}";
+    private static final String STUB_SAMPLING_INTERVAL = "{{sampling_interval}}";
+    private static final String STUB_FREQUENCY = "{{frequency}}";
+
     // Time to wait beyond trace timeout to ensure perfetto has time to finish writing output.
     private static final int FILE_PROCESSING_DELAY_MS = 5000;
 
@@ -198,96 +207,170 @@ public final class Configs {
     private static final int DEFAULT_TRACE_DURATION_MS = 5 * 60 * 1000;
     private static final long DEFAULT_HEAP_PROFILE_SAMPLING_INTERVAL = 4096;
     private static final int DEFAULT_STACK_SAMPLING_FREQUENCY = 100;
-    private static final boolean DEFAULT_HEAP_PROFILE_ART = false;
+    private static final boolean DEFAULT_HEAP_PROFILE_TRACK_JAVA_ALLOCATIONS = false;
 
+    private static final int sDefaultHeapProfileDurationMs;
+    private static final int sDefaultStackSamplingDurationMs;
     private static final int sDefaultTraceDurationMs;
     private static final long sDefaultHeapProfileSamplingInterval;
     private static final int sDefaultStackSamplingFrequency;
-    private static final boolean sDefaultHeapProfileArt;
+    private static final boolean sDefaultHeapProfileTrackJavaAllocations;
 
     static {
         sDefaultTraceDurationMs = DEFAULT_TRACE_DURATION_MS;
+        sDefaultHeapProfileDurationMs = DEFAULT_HEAP_PROFILE_DURATION_MS;
+        sDefaultStackSamplingDurationMs = DEFAULT_STACK_SAMPLING_DURATION_MS;
         sDefaultHeapProfileSamplingInterval = DEFAULT_HEAP_PROFILE_SAMPLING_INTERVAL;
         sDefaultStackSamplingFrequency = DEFAULT_STACK_SAMPLING_FREQUENCY;
-        sDefaultHeapProfileArt = DEFAULT_HEAP_PROFILE_ART;
+        sDefaultHeapProfileTrackJavaAllocations = DEFAULT_HEAP_PROFILE_TRACK_JAVA_ALLOCATIONS;
     }
 
     /** This method transforms a request into a useable config for perfetto. */
-    public static String generateConfigForRequest(ProfilingRequest request, String packageName)
-            throws IllegalArgumentException {
-        if (!request.hasConfig()) {
-            // Proto has no config, not requesting anything.
-            throw new IllegalArgumentException("Proto config is missing");
+    public static String generateConfigForRequest(int profilingType, final @Nullable Bundle params,
+            String packageName) throws IllegalArgumentException {
+        // Create a copy to modify. Entries will be removed from the copy as they're accessed to
+        // ensure that no invalid parameters are present.
+        Bundle paramsCopy = params == null ? null : new Bundle(params);
+
+        switch (profilingType) {
+            // Java heap dump
+            case ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP:
+
+                confirmEmptyOrThrow(paramsCopy);
+
+                return CONFIG_JAVA_HEAP_DUMP
+                        .replace(STUB_PACKAGE_NAME, packageName);
+
+            // Heap profile
+            case ProfilingManager.PROFILING_TYPE_HEAP_PROFILE:
+                boolean trackJavaAllocations = getAndRemove(
+                        ProfilingManager.KEY_TRACK_JAVA_ALLOCATIONS,
+                        sDefaultHeapProfileTrackJavaAllocations, paramsCopy);
+                long samplingIntervalBytes = getAndRemove(
+                        ProfilingManager.KEY_SAMPLING_INTERVAL_BYTES,
+                        sDefaultHeapProfileSamplingInterval, paramsCopy);
+                int heapProfileDuration = getAndRemove(ProfilingManager.KEY_DURATION_MS,
+                        sDefaultHeapProfileDurationMs, paramsCopy);
+
+                confirmEmptyOrThrow(paramsCopy);
+
+                return CONFIG_HEAP_PROFILE
+                        .replace(STUB_PACKAGE_NAME, packageName)
+                        .replace(STUB_TRACK_JAVA_ALLOCATIONS, trackJavaAllocations
+                                ? HEAP_PROFILE_TRACK_JAVA_ALLOCATIONS : "")
+                        .replace(STUB_SAMPLING_INTERVAL, String.valueOf(samplingIntervalBytes))
+                        .replace(STUB_DURATION, String.valueOf(heapProfileDuration));
+
+            // Stack sampling
+            case ProfilingManager.PROFILING_TYPE_STACK_SAMPLING:
+                long frequency = getAndRemove(ProfilingManager.KEY_FREQUENCY_HZ,
+                        sDefaultStackSamplingFrequency, paramsCopy);
+                int stackSamplingDuration = getAndRemove(ProfilingManager.KEY_DURATION_MS,
+                        sDefaultStackSamplingDurationMs, paramsCopy);
+
+                confirmEmptyOrThrow(paramsCopy);
+
+                return CONFIG_STACK_SAMPLING
+                        .replace(STUB_PACKAGE_NAME, packageName)
+                        .replace(STUB_FREQUENCY, String.valueOf(frequency))
+                        .replace(STUB_DURATION, String.valueOf(stackSamplingDuration));
+
+            // System trace
+            case ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE:
+                int systemTraceDuration = getAndRemove(ProfilingManager.KEY_DURATION_MS,
+                        sDefaultTraceDurationMs, paramsCopy);
+
+                confirmEmptyOrThrow(paramsCopy);
+
+                // TODO: remove when redaction is hooked up b/327423523
+                throw new IllegalArgumentException("Trace is not supported until redaction lands");
+                // return CONFIG_SYSTEM_TRACE
+                //         .replace(STUB_PACKAGE_NAME, packageName)
+                //         .replace(STUB_DURATION, String.valueOf(systemTraceDuration));
+
+            // Invalid type
+            default:
+                throw new IllegalArgumentException("Invalid profiling type");
         }
-
-        ProfilingRequest.Config config = request.getConfig();
-        String result = null;
-
-        // Config can have at most one collection type, find out which and then process parameters.
-        if (config.hasJavaHeapDump()) {
-            result = CONFIG_JAVA_HEAP_DUMP;
-        } else if (config.hasHeapProfile()) {
-            ProfilingRequest.HeapProfile heapProfile = config.getHeapProfile();
-            boolean art = heapProfile.hasArt() ? heapProfile.getArt() : sDefaultHeapProfileArt;
-            long samplingIntervalBytes = heapProfile.hasSamplingIntervalBytes()
-                    ? heapProfile.getSamplingIntervalBytes() : sDefaultHeapProfileSamplingInterval;
-            result = CONFIG_HEAP_PROFILE
-                    .replace("{{sampling_interval}}", String.valueOf(samplingIntervalBytes))
-                    .replace("{{art}}", art ? HEAP_PROFILE_ART : "")
-                    .replace("{{duration}}", String.valueOf(DEFAULT_HEAP_PROFILE_DURATION_MS));
-        } else if (config.hasStackSampling()) {
-            ProfilingRequest.StackSampling stackSampling = config.getStackSampling();
-            int frequency = stackSampling.hasFrequency()
-                    ? stackSampling.getFrequency() : sDefaultStackSamplingFrequency;
-            result = CONFIG_STACK_SAMPLING
-                    .replace("{{frequency}}", String.valueOf(frequency))
-                    .replace("{{duration}}", String.valueOf(DEFAULT_STACK_SAMPLING_DURATION_MS));
-        } else if (config.hasSystemTrace()) {
-            ProfilingRequest.SystemTrace systemTrace = config.getSystemTrace();
-            int durationMs = systemTrace.hasDurationMs() ? systemTrace.getDurationMs()
-                    : sDefaultTraceDurationMs;
-            result = CONFIG_SYSTEM_TRACE.replace("{{duration}}",
-                    String.valueOf(durationMs));
-            // TODO: remove when redaction is hooked up b/327423523
-            throw new IllegalArgumentException("Trace is not supported until redaction lands");
-        }
-
-        if (result == null) {
-            // Proto config has no type, we don't know what the app wants.
-            throw new IllegalArgumentException("Proto config type is missing");
-        }
-
-        // Fill in package name and return config.
-        return result.replace("{{package_name}}", packageName);
     }
 
     /**
      * This method returns how long in ms to wait before post processing and cleaning up the result
      * in the event that it's not stopped manually.
      */
-    public static int getPostProcessingScheduleDelayMs(ProfilingRequest request) {
+    public static int getPostProcessingScheduleDelayMs(int profilingType, @Nullable Bundle params) {
         // TODO: b/327660454 adjust timeout/logic to ensure perfetto is finished
-        if (!request.hasConfig()) {
-            // Proto has no config, not requesting anything.
-            throw new IllegalArgumentException("Proto config is missing");
+        int duration;
+        switch (profilingType) {
+            case ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP:
+                duration = DEFAULT_JAVA_HEAP_DUMP_DURATION_MS;
+                break;
+
+            case ProfilingManager.PROFILING_TYPE_HEAP_PROFILE:
+                duration = params != null ? params.getInt(
+                        ProfilingManager.KEY_DURATION_MS, sDefaultHeapProfileDurationMs)
+                        : sDefaultHeapProfileDurationMs;
+                break;
+
+            case ProfilingManager.PROFILING_TYPE_STACK_SAMPLING:
+                duration = params != null ? params.getInt(
+                        ProfilingManager.KEY_DURATION_MS, sDefaultStackSamplingDurationMs)
+                        : sDefaultStackSamplingDurationMs;
+                break;
+
+            case ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE:
+                duration = params != null ? params.getInt(
+                        ProfilingManager.KEY_DURATION_MS, sDefaultTraceDurationMs)
+                        : sDefaultTraceDurationMs;
+                break;
+
+            default:
+                throw new IllegalArgumentException("Invalid profiling type");
         }
+        return duration + FILE_PROCESSING_DELAY_MS;
+    }
 
-        ProfilingRequest.Config config = request.getConfig();
-
-        // Config can have at most one collection type, find out which and then determine time.
-        if (config.hasJavaHeapDump()) {
-            return DEFAULT_JAVA_HEAP_DUMP_DURATION_MS + FILE_PROCESSING_DELAY_MS;
-        } else if (config.hasHeapProfile()) {
-            return DEFAULT_HEAP_PROFILE_DURATION_MS + FILE_PROCESSING_DELAY_MS;
-        } else if (config.hasStackSampling()) {
-            return DEFAULT_STACK_SAMPLING_DURATION_MS + FILE_PROCESSING_DELAY_MS;
-        } else if (config.hasSystemTrace()) {
-            ProfilingRequest.SystemTrace systemTrace = config.getSystemTrace();
-            return (systemTrace.hasDurationMs() ? systemTrace.getDurationMs()
-                    : sDefaultTraceDurationMs) + FILE_PROCESSING_DELAY_MS;
+    private static boolean getAndRemove(String key, boolean defaultValue, @Nullable Bundle bundle) {
+        if (bundle == null) {
+            return defaultValue;
         }
+        if (bundle.containsKey(key)) {
+            boolean value = bundle.getBoolean(key);
+            bundle.remove(key);
+            return value;
+        }
+        return defaultValue;
+    }
 
-        // Proto config has no type, we don't know what the app wants.
-        throw new IllegalArgumentException("Proto config type is missing");
+    private static int getAndRemove(String key, int defaultValue, @Nullable Bundle bundle) {
+        if (bundle == null) {
+            return defaultValue;
+        }
+        if (bundle.containsKey(key)) {
+            int value = bundle.getInt(key);
+            bundle.remove(key);
+            return value;
+        }
+        return defaultValue;
+    }
+
+    private static long getAndRemove(String key, long defaultValue, @Nullable Bundle bundle) {
+        if (bundle == null) {
+            return defaultValue;
+        }
+        if (bundle.containsKey(key)) {
+            long value = bundle.getLong(key);
+            bundle.remove(key);
+            return value;
+        }
+        return defaultValue;
+    }
+
+    private static void confirmEmptyOrThrow(@Nullable Bundle bundle)
+            throws IllegalArgumentException {
+        if (bundle != null && !bundle.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Bundle contains invalid or unsupported parameters");
+        }
     }
 }

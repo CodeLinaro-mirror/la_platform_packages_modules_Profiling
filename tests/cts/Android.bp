@@ -3,7 +3,7 @@ package {
 }
 
 android_test {
-    name: "MtsProfilingModuleTests",
+    name: "CtsProfilingModuleTests",
     defaults: ["cts_defaults"],
     static_libs: [
         "androidx.test.rules",
@@ -20,28 +20,16 @@ android_test {
     libs: [
         "android.test.runner",
         "android.test.base",
-        "framework-profiling-proto",
         "android.test.mock",
         "junit",
     ],
-    proto: {
-        type: "lite",
-        canonical_path_from_root: false,
-        include_dirs: [
-            "external/protobuf/src",
-            "external/protobuf/java",
-        ],
-    },
     srcs: [
         "src/android/profiling/cts/*.java",
-        "src/android/profiling/cts/*.proto",
     ],
     jarjar_rules: "jarjar-rules.txt",
     test_suites: [
         "cts",
         "general-tests",
-        "mts-profiling",
-        "mcts-profiling",
     ],
     min_sdk_version: "current",
     sdk_version: "module_current",
