@@ -13,6 +13,7 @@ flag {
 flag {
      name: "redaction_enabled"
      namespace: "system_performance"
+     is_exported: true
      description: "Enables system traces to be ran through redaction process."
      bug: "327423523"
      metadata {

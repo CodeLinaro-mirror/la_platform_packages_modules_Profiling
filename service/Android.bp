@@ -35,6 +35,7 @@ java_library {
     ],
     static_libs: [
         "modules-utils-build",
+        "android.os.profiling.flags-aconfig-java",
     ],
     lint: {
         strict_updatability_linting: true,
