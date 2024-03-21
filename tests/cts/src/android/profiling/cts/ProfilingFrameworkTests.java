@@ -58,14 +58,17 @@ import java.util.function.Consumer;
 @RunWith(AndroidJUnit4.class)
 public final class ProfilingFrameworkTests {
 
-    // Wait for callback for 30 seconds at a time for up to 20 increments totalling 10 minutes.
-    private static final int CALLBACK_WAIT_TIME_INCREMENT_MS = 30 * 1000;
-    private static final int CALLBACK_WAIT_TIME_INCREMENTS_COUNT = 20;
+    // Wait for callback for 5 seconds at a time for up to 60 increments totalling 5 minutes.
+    private static final int CALLBACK_WAIT_TIME_INCREMENT_MS = 5 * 1000;
+    private static final int CALLBACK_WAIT_TIME_INCREMENTS_COUNT = 60;
 
     // Wait for rate limiter config to update for 250 milliseconds at a time for up to 12 increments
     // totalling 3 seconds.
     private static final int RATE_LIMITER_WAIT_TIME_INCREMENT_MS = 250;
     private static final int RATE_LIMITER_WAIT_TIME_INCREMENTS_COUNT = 12;
+
+    // Wait 2 seconds for profiling to get started before attempting to cancel it.
+    private static final int WAIT_TIME_FOR_PROFILING_START_MS = 2 * 1000;
 
     // Keep in sync with {@link ProfilingService} because we can't access it.
     private static final String OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX = ".perfetto-java-heap-dump";
@@ -127,7 +130,7 @@ public final class ProfilingFrameworkTests {
         // This call is passing a parameters bundle with an invalid parameter and should result in
         // an error.
         mProfilingManager.requestProfiling(
-                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
+                ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
                 params,
                 null,
                 null,
@@ -266,15 +269,15 @@ public final class ProfilingFrameworkTests {
 
         // Now kick off the request.
         mProfilingManager.requestProfiling(
-                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, // TODO: b/327423523 use trace
-                null,
+                ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
+                null,    // Use default parameters since we will cancel quickly
                 null,
                 cancellationSignal,
                 new ProfilingTestUtils.ImmediateExecutor(),
                 callback);
 
         // Wait a bit for collection to get started.
-        sleep(1000);
+        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
 
         // Now request cancellation.
         cancellationSignal.cancel();
@@ -283,7 +286,7 @@ public final class ProfilingFrameworkTests {
         waitForCallback(callback);
 
         // Assert that result matches assumptions for success.
-        confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX);
+        confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_STACK_SAMPLING_SUFFIX);
     }
 
     /** Test that unregistering a global listener works and that listener does not get called. */
@@ -315,8 +318,8 @@ public final class ProfilingFrameworkTests {
 
         // Now kick off the request.
         mProfilingManager.requestProfiling(
-                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
-                null,
+                ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
+                ProfilingTestUtils.getOneSecondDurationParamBundle(),
                 null,
                 null,
                 new ProfilingTestUtils.ImmediateExecutor(),
@@ -350,8 +353,8 @@ public final class ProfilingFrameworkTests {
 
         // Now kick off the request.
         mProfilingManager.requestProfiling(
-                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
-                null,
+                ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
+                ProfilingTestUtils.getOneSecondDurationParamBundle(),
                 null,
                 null,
                 new ProfilingTestUtils.ImmediateExecutor(),
@@ -365,9 +368,9 @@ public final class ProfilingFrameworkTests {
         waitForCallback(callbackSpecific);
 
         // Assert that result matches assumptions for success in all callbacks.
-        confirmCollectionSuccess(callbackSpecific.mResult, OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX);
-        confirmCollectionSuccess(callbackGeneral1.mResult, OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX);
-        confirmCollectionSuccess(callbackGeneral2.mResult, OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX);
+        confirmCollectionSuccess(callbackSpecific.mResult, OUTPUT_FILE_STACK_SAMPLING_SUFFIX);
+        confirmCollectionSuccess(callbackGeneral1.mResult, OUTPUT_FILE_STACK_SAMPLING_SUFFIX);
+        confirmCollectionSuccess(callbackGeneral2.mResult, OUTPUT_FILE_STACK_SAMPLING_SUFFIX);
     }
 
     /** Test that profiling request result file name contains the correct tag. */
@@ -387,8 +390,8 @@ public final class ProfilingFrameworkTests {
 
         // Now kick off the request.
         mProfilingManager.requestProfiling(
-                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
-                null,
+                ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
+                ProfilingTestUtils.getOneSecondDurationParamBundle(),
                 fullTag,
                 null,
                 new ProfilingTestUtils.ImmediateExecutor(),
