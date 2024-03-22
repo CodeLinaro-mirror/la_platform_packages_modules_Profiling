@@ -84,6 +84,9 @@ public final class ProfilingFrameworkTests {
     public void setup() {
         Context context = ApplicationProvider.getApplicationContext();
         mProfilingManager = context.getSystemService(ProfilingManager.class);
+
+        // Disable the rate limiter, we're not testing that in any of these tests.
+        disableRateLimiter();
     }
 
     /** Check and see if we can get a reference to the ProfilingManager service. */
@@ -149,9 +152,6 @@ public final class ProfilingFrameworkTests {
     public void testRequestJavaHeapDumpSuccess() {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
-        // Disable the rate limiter, we're not testing that.
-        disableRateLimiter();
-
         AppCallback callback = new AppCallback();
 
         // Now kick off the request.
@@ -176,9 +176,6 @@ public final class ProfilingFrameworkTests {
     public void testRequestHeapProfileSuccess() {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
-        // Disable the rate limiter, we're not testing that.
-        disableRateLimiter();
-
         AppCallback callback = new AppCallback();
 
         // Now kick off the request.
@@ -202,9 +199,6 @@ public final class ProfilingFrameworkTests {
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
     public void testRequestStackSamplingSuccess() {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
-
-        // Disable the rate limiter, we're not testing that.
-        disableRateLimiter();
 
         AppCallback callback = new AppCallback();
 
@@ -233,9 +227,6 @@ public final class ProfilingFrameworkTests {
     public void testRequestSystemTraceSuccess() {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
-        // Disable the rate limiter, we're not testing that.
-        disableRateLimiter();
-
         AppCallback callback = new AppCallback();
 
         // Now kick off the request.
@@ -260,9 +251,6 @@ public final class ProfilingFrameworkTests {
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
     public void testRequestProfilingCancel() {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
-
-        // Disable the rate limiter, we're not testing that.
-        disableRateLimiter();
 
         AppCallback callback = new AppCallback();
         CancellationSignal cancellationSignal = new CancellationSignal();
@@ -298,9 +286,6 @@ public final class ProfilingFrameworkTests {
 
         // Clear all existing callbacks.
         mProfilingManager.mCallbacks.clear();
-
-        // Disable the rate limiter, we're not testing that.
-        disableRateLimiter();
 
         // Create 2 callbacks.
         AppCallback callbackSpecific = new AppCallback();
@@ -339,9 +324,6 @@ public final class ProfilingFrameworkTests {
     public void testTriggerAllListeners() {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
-        // Disable the rate limiter, we're not testing that.
-        disableRateLimiter();
-
         // Create 3 callbacks.
         AppCallback callbackSpecific = new AppCallback();
         AppCallback callbackGeneral1 = new AppCallback();
@@ -378,9 +360,6 @@ public final class ProfilingFrameworkTests {
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
     public void testRequestTagInFilename() {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
-
-        // Disable the rate limiter, we're not testing that.
-        disableRateLimiter();
 
         AppCallback callback = new AppCallback();
 
