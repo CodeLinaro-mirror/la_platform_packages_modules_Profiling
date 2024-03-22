@@ -29,6 +29,7 @@ import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
 
 import androidx.test.core.app.ApplicationProvider;
+import androidx.test.filters.LargeTest;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
@@ -152,6 +153,7 @@ public final class ProfilingFrameworkTests {
 
     /** Test that profiling request for java heap dump succeeds and returns a non-empty file. */
     @Test
+    @LargeTest
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
     public void testRequestJavaHeapDumpSuccess() {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
