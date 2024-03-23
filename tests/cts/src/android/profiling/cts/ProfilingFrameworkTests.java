@@ -85,6 +85,10 @@ public final class ProfilingFrameworkTests {
         Context context = ApplicationProvider.getApplicationContext();
         mProfilingManager = context.getSystemService(ProfilingManager.class);
 
+        // This permission is required for Headless (HSUM) tests, including Auto.
+        InstrumentationRegistry.getInstrumentation().getUiAutomation().adoptShellPermissionIdentity(
+                android.Manifest.permission.INTERACT_ACROSS_USERS_FULL);
+
         // Disable the rate limiter, we're not testing that in any of these tests.
         disableRateLimiter();
     }
