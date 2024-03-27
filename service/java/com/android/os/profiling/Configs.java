@@ -21,6 +21,9 @@ import android.os.ProfilingRequest;
 import java.lang.IllegalArgumentException;
 
 public final class Configs {
+
+    static final String HEAP_PROFILE_ART = "heaps: \"com.android.art\"";
+
     static final String CONFIG_HEAP_PROFILE = "buffers {\n"
         + "  size_kb: 65536\n"
         + "}\n"
@@ -33,14 +36,13 @@ public final class Configs {
         + "      shmem_size_bytes: 8388608\n"
         + "      sampling_interval_bytes: {{sampling_interval}}\n"
         + "      process_cmdline: \"{{package_name}}\"\n"
-        + "      {% if {{art}} %}\n"
-        + "      heaps: \"com.android.art\"\n"
-        + "      {% endif %}\n"
+        + "      {{art}}\n"
         + "    }\n"
         + "  }\n"
         + "}\n"
         + "\n"
-        + "flush_timeout_ms: 30000";
+        + "flush_timeout_ms: 30000\n"
+        + "duration_ms: {{duration}}";
     static final String CONFIG_JAVA_HEAP_DUMP = "buffers {\n"
         + "  # This is the maximum size of the trace. The buffer will be mmap'd but, only\n"
         + "  # the non empty pages contribute to RSS.\n"
@@ -87,7 +89,8 @@ public final class Configs {
         + "  }\n"
         + "}\n"
         + "\n"
-        + "flush_timeout_ms: 30000";
+        + "flush_timeout_ms: 30000\n"
+        + "duration_ms: {{duration}}";
     static final String CONFIG_SYSTEM_TRACE = "buffers {\n"
         + "  size_kb: 32768\n"
         + "  fill_policy: RING_BUFFER\n"
@@ -186,8 +189,12 @@ public final class Configs {
         + "duration_ms: {{duration}}";
 
     // Time to wait beyond trace timeout to ensure perfetto has time to finish writing output.
-    private static final int FILE_PROCESSING_DELAY_MS = 1000;
+    private static final int FILE_PROCESSING_DELAY_MS = 5000;
 
+    private static final int DEFAULT_HEAP_PROFILE_DURATION_MS = 2 * 60 * 1000;
+    // 1 second duration + 100 seconds max wait for dump to finish.
+    private static final int DEFAULT_JAVA_HEAP_DUMP_DURATION_MS = (1 + 100) * 1000;
+    private static final int DEFAULT_STACK_SAMPLING_DURATION_MS = 60 * 1000;
     private static final int DEFAULT_TRACE_DURATION_MS = 5 * 60 * 1000;
     private static final long DEFAULT_HEAP_PROFILE_SAMPLING_INTERVAL = 4096;
     private static final int DEFAULT_STACK_SAMPLING_FREQUENCY = 100;
@@ -226,15 +233,21 @@ public final class Configs {
                     ? heapProfile.getSamplingIntervalBytes() : sDefaultHeapProfileSamplingInterval;
             result = CONFIG_HEAP_PROFILE
                     .replace("{{sampling_interval}}", String.valueOf(samplingIntervalBytes))
-                    .replace("{{art}}", String.valueOf(art));
+                    .replace("{{art}}", art ? HEAP_PROFILE_ART : "")
+                    .replace("{{duration}}", String.valueOf(DEFAULT_HEAP_PROFILE_DURATION_MS));
         } else if (config.hasStackSampling()) {
             ProfilingRequest.StackSampling stackSampling = config.getStackSampling();
             int frequency = stackSampling.hasFrequency()
                     ? stackSampling.getFrequency() : sDefaultStackSamplingFrequency;
-            result = CONFIG_STACK_SAMPLING.replace("{{frequency}}", String.valueOf(frequency));
+            result = CONFIG_STACK_SAMPLING
+                    .replace("{{frequency}}", String.valueOf(frequency))
+                    .replace("{{duration}}", String.valueOf(DEFAULT_STACK_SAMPLING_DURATION_MS));
         } else if (config.hasSystemTrace()) {
+            ProfilingRequest.SystemTrace systemTrace = config.getSystemTrace();
+            int durationMs = systemTrace.hasDurationMs() ? systemTrace.getDurationMs()
+                    : sDefaultTraceDurationMs;
             result = CONFIG_SYSTEM_TRACE.replace("{{duration}}",
-                    String.valueOf(sDefaultTraceDurationMs));
+                    String.valueOf(durationMs));
             // TODO: remove when redaction is hooked up b/327423523
             throw new IllegalArgumentException("Trace is not supported until redaction lands");
         }
@@ -253,8 +266,28 @@ public final class Configs {
      * in the event that it's not stopped manually.
      */
     public static int getPostProcessingScheduleDelayMs(ProfilingRequest request) {
-        // TODO select timeout based on type
-        // TODO adjust timeout/logic to ensure perfetto is finished
-        return sDefaultTraceDurationMs + FILE_PROCESSING_DELAY_MS;
+        // TODO: b/327660454 adjust timeout/logic to ensure perfetto is finished
+        if (!request.hasConfig()) {
+            // Proto has no config, not requesting anything.
+            throw new IllegalArgumentException("Proto config is missing");
+        }
+
+        ProfilingRequest.Config config = request.getConfig();
+
+        // Config can have at most one collection type, find out which and then determine time.
+        if (config.hasJavaHeapDump()) {
+            return DEFAULT_JAVA_HEAP_DUMP_DURATION_MS + FILE_PROCESSING_DELAY_MS;
+        } else if (config.hasHeapProfile()) {
+            return DEFAULT_HEAP_PROFILE_DURATION_MS + FILE_PROCESSING_DELAY_MS;
+        } else if (config.hasStackSampling()) {
+            return DEFAULT_STACK_SAMPLING_DURATION_MS + FILE_PROCESSING_DELAY_MS;
+        } else if (config.hasSystemTrace()) {
+            ProfilingRequest.SystemTrace systemTrace = config.getSystemTrace();
+            return (systemTrace.hasDurationMs() ? systemTrace.getDurationMs()
+                    : sDefaultTraceDurationMs) + FILE_PROCESSING_DELAY_MS;
+        }
+
+        // Proto config has no type, we don't know what the app wants.
+        throw new IllegalArgumentException("Proto config type is missing");
     }
 }
