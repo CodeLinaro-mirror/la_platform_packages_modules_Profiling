@@ -17,20 +17,26 @@
 package android.os.profiling;
 
 import android.annotation.IntDef;
+import android.annotation.NonNull;
+import android.content.Context;
 import android.os.ProfilingRequest;
 import android.os.ProfilingResult;
+import android.provider.DeviceConfig;
 import android.util.SparseIntArray;
+
+import com.android.internal.annotations.GuardedBy;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayDeque;
 import java.util.Queue;
+import java.util.concurrent.Executors;
 
-public final class RateLimiter {
+public class RateLimiter {
 
     private static final String DEVICE_CONFIG_NAMESPACE = "profiling";
-
-    private static final long PERSIST_TO_DISK_FREQUENCY_MS;
+    private static final String DEVICE_CONFIG_RATE_LIMITER_DISABLE_PROPERTY
+            = "rate_limiter.disabled";
 
     private static final long TIME_1_HOUR_MS = 60 * 60 * 1000;
     private static final long TIME_24_HOUR_MS = 24 * 60 * 60 * 1000;
@@ -40,17 +46,23 @@ public final class RateLimiter {
     public static final int RATE_LIMIT_RESULT_BLOCKED_PROCESS = 1;
     public static final int RATE_LIMIT_RESULT_BLOCKED_SYSTEM = 2;
 
+    private final Object mLock = new Object();
+
+    private final Context mContext;
+    private final long mPersistToDiskFrequency;
+
     /** To be disabled for testing only. */
-    private static boolean sRateLimiterEnabled = true;
+    @GuardedBy("mLock")
+    private boolean mRateLimiterEnabled = true;
 
     /** Collection of run costs and entries from the last hour. */
-    private static final EntryGroupWrapper sPastRuns1Hour;
+    private final EntryGroupWrapper mPastRuns1Hour;
     /** Collection of run costs and entries from the 24 hours. */
-    private static final EntryGroupWrapper sPastRuns24Hour;
+    private final EntryGroupWrapper mPastRuns24Hour;
     /** Collection of run costs and entries from the 7 days. */
-    private static final EntryGroupWrapper sPastRuns7Day;
+    private final EntryGroupWrapper mPastRuns7Day;
 
-    private static long sLastPersistedTimestampMs;
+    private long mLastPersistedTimestampMs;
 
     @IntDef(value={
         RATE_LIMIT_RESULT_ALLOWED,
@@ -60,55 +72,77 @@ public final class RateLimiter {
     @Retention(RetentionPolicy.SOURCE)
     @interface RateLimitResult {}
 
-    static {
+    public RateLimiter(Context context) {
         // TODO: b/324885858 use DeviceConfig for adjustable values.
-        sPastRuns1Hour = new EntryGroupWrapper(10, 10, TIME_1_HOUR_MS);
-        sPastRuns24Hour = new EntryGroupWrapper(100, 100, TIME_24_HOUR_MS);
-        sPastRuns7Day = new EntryGroupWrapper(1000, 1000, TIME_7_DAY_MS);
-        PERSIST_TO_DISK_FREQUENCY_MS = 0;
-        sLastPersistedTimestampMs = System.currentTimeMillis();
+        mContext = context;
+        mPastRuns1Hour = new EntryGroupWrapper(10, 10, TIME_1_HOUR_MS);
+        mPastRuns24Hour = new EntryGroupWrapper(100, 100, TIME_24_HOUR_MS);
+        mPastRuns7Day = new EntryGroupWrapper(1000, 1000, TIME_7_DAY_MS);
+        mPersistToDiskFrequency = 0;
+        mLastPersistedTimestampMs = System.currentTimeMillis();
+        loadFromDisk();
+
+        // Get initial value for whether rate limiter should be enforcing or if it should always
+        // allow profiling requests. This is used for (automated and manual) testing only.
+        synchronized (mLock) {
+            mRateLimiterEnabled = !DeviceConfig.getBoolean(DEVICE_CONFIG_NAMESPACE,
+                DEVICE_CONFIG_RATE_LIMITER_DISABLE_PROPERTY, false);
+        }
+        // Now subscribe to updates on rate limiter enforcing config.
+        DeviceConfig.addOnPropertiesChangedListener(DEVICE_CONFIG_NAMESPACE,
+                mContext.getMainExecutor(), new DeviceConfig.OnPropertiesChangedListener() {
+                    @Override
+                    public void onPropertiesChanged(@NonNull DeviceConfig.Properties properties) {
+                        synchronized (mLock) {
+                            mRateLimiterEnabled = properties.getBoolean(
+                                    DEVICE_CONFIG_RATE_LIMITER_DISABLE_PROPERTY, false);
+                        }
+                    }
+                });
     }
 
-    public static @RateLimitResult int isProfilingRequestAllowed(int uid,
+    public @RateLimitResult int isProfilingRequestAllowed(int uid,
             ProfilingRequest request) {
-        if (!sRateLimiterEnabled) {
-            // Rate limiter is disabled for testing, approve request and don't store cost.
-            return RATE_LIMIT_RESULT_ALLOWED;
+        synchronized (mLock) {
+            if (!mRateLimiterEnabled) {
+                // Rate limiter is disabled for testing, approve request and don't store cost.
+                return RATE_LIMIT_RESULT_ALLOWED;
+            }
+            final int cost = 1; // TODO: compute cost b/293957254
+            final long currentTimeMillis = System.currentTimeMillis();
+            int status = mPastRuns1Hour.isProfilingAllowed(uid, cost, currentTimeMillis);
+            if (status == RATE_LIMIT_RESULT_ALLOWED) {
+                status = mPastRuns24Hour.isProfilingAllowed(uid, cost, currentTimeMillis);
+            }
+            if (status == RATE_LIMIT_RESULT_ALLOWED) {
+                status = mPastRuns7Day.isProfilingAllowed(uid, cost, currentTimeMillis);
+            }
+            if (status == RATE_LIMIT_RESULT_ALLOWED) {
+                mPastRuns1Hour.add(uid, cost, currentTimeMillis);
+                mPastRuns24Hour.add(uid, cost, currentTimeMillis);
+                mPastRuns7Day.add(uid, cost, currentTimeMillis);
+                maybePersistToDisk();
+                return RATE_LIMIT_RESULT_ALLOWED;
+            }
+            return status;
         }
-        final int cost = 1; // TODO: compute cost b/293957254
-        final long currentTimeMillis = System.currentTimeMillis();
-        int status = sPastRuns1Hour.isProfilingAllowed(uid, cost, currentTimeMillis);
-        if (status == RATE_LIMIT_RESULT_ALLOWED) {
-            status = sPastRuns24Hour.isProfilingAllowed(uid, cost, currentTimeMillis);
-        }
-        if (status == RATE_LIMIT_RESULT_ALLOWED) {
-            status = sPastRuns7Day.isProfilingAllowed(uid, cost, currentTimeMillis);
-        }
-        if (status == RATE_LIMIT_RESULT_ALLOWED) {
-            sPastRuns1Hour.add(uid, cost, currentTimeMillis);
-            sPastRuns24Hour.add(uid, cost, currentTimeMillis);
-            sPastRuns7Day.add(uid, cost, currentTimeMillis);
-            maybePersistToDisk();
-            return RATE_LIMIT_RESULT_ALLOWED;
-        }
-        return status;
     }
 
-    static void maybePersistToDisk() {
-        if (PERSIST_TO_DISK_FREQUENCY_MS == 0
-                || System.currentTimeMillis() - sLastPersistedTimestampMs
-                >= PERSIST_TO_DISK_FREQUENCY_MS) {
+    void maybePersistToDisk() {
+        if (mPersistToDiskFrequency == 0
+                || System.currentTimeMillis() - mLastPersistedTimestampMs
+                >= mPersistToDiskFrequency) {
             persistToDisk();
         } else {
             // TODO: queue persist job b/293957254
         }
     }
 
-    static void persistToDisk() {
+    void persistToDisk() {
         // TODO: b/293957254
     }
 
-    static void loadFromDisk() {
+    void loadFromDisk() {
         // TODO: b/293957254
     }
 

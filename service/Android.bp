@@ -31,6 +31,7 @@ java_library {
     libs: [
         "framework-annotations-lib",
         "framework-profiling.impl",
+        "framework-configinfrastructure",
     ],
     static_libs: [
         "modules-utils-build",
@@ -45,6 +46,6 @@ java_library {
         enabled: false,
         shrink: false,
     },
-    min_sdk_version: "34",
+    min_sdk_version: "current",
     installable: true,
 }
