@@ -45,8 +45,8 @@ java_library {
     ],
     jarjar_rules: "jarjar-rules.txt",
     installable: false,
-    min_sdk_version: "34",
-    sdk_version: "system_34",
+    min_sdk_version: "current",
+    sdk_version: "core_current",
     apex_available: [
         "com.android.profiling",
     ],
@@ -96,7 +96,7 @@ java_sdk_library {
     apex_available: [
         "com.android.profiling",
     ],
-    min_sdk_version: "34",
+    min_sdk_version: "current",
 }
 
 aconfig_declarations {
@@ -108,7 +108,7 @@ aconfig_declarations {
 java_aconfig_library {
     name: "android.os.profiling.flags-aconfig-java",
     aconfig_declarations: "android.os.profiling.flags-aconfig",
-    min_sdk_version: "34",
+    min_sdk_version: "current",
     sdk_version: "core_current",
     apex_available: [
         "com.android.profiling",
