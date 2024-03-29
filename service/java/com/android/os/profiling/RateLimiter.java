@@ -18,8 +18,9 @@ package android.os.profiling;
 
 import android.annotation.IntDef;
 import android.annotation.NonNull;
+import android.annotation.Nullable;
 import android.content.Context;
-import android.os.ProfilingRequest;
+import android.os.Bundle;
 import android.os.ProfilingResult;
 import android.provider.DeviceConfig;
 import android.util.SparseIntArray;
@@ -102,7 +103,7 @@ public class RateLimiter {
     }
 
     public @RateLimitResult int isProfilingRequestAllowed(int uid,
-            ProfilingRequest request) {
+            int profilingType, @Nullable Bundle params) {
         synchronized (mLock) {
             if (!mRateLimiterEnabled) {
                 // Rate limiter is disabled for testing, approve request and don't store cost.

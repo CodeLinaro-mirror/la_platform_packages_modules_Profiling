@@ -21,11 +21,12 @@ import static com.google.common.truth.Truth.assertThat;
 import static org.mockito.Mockito.reset;
 
 import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyObject;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.spy;
 
 import android.content.Context;
@@ -36,7 +37,7 @@ import android.content.pm.PackageManager;
 import android.app.UiAutomation;
 import android.os.profiling.RateLimiter;
 import android.os.profiling.TracingSession;
-import android.os.ProfilingRequest;
+import android.os.ProfilingManager;
 import android.os.ProfilingResult;
 import android.os.profiling.ProfilingService;
 import android.platform.test.flag.junit.CheckFlagsRule;
@@ -132,7 +133,7 @@ public final class ProfilingServiceTests {
         assertEquals(mockProcessCallback, mProfilingService.mResultCallbacks.get(mockProcessUid));
 
         // Kick off request.
-        mProfilingService.requestProfiling(ProfilingTestUtils.getJavaHeapDumpProfilingRequest(),
+        mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
                 APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
 
         // Confirm callbacks was triggered for callback registered to this process.
@@ -156,7 +157,7 @@ public final class ProfilingServiceTests {
         mProfilingService.registerResultsCallback(callback);
 
         // Kick off request.
-        mProfilingService.requestProfiling(ProfilingTestUtils.getJavaHeapDumpProfilingRequest(),
+        mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
                 APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
 
         // Confirm result matches failure expectation.
@@ -178,7 +179,7 @@ public final class ProfilingServiceTests {
         mProfilingService.registerResultsCallback(callback);
 
         // Kick off request.
-        mProfilingService.requestProfiling(new byte[4], APP_FILE_PATH, REQUEST_TAG,
+        mProfilingService.requestProfiling(-1, null, APP_FILE_PATH, REQUEST_TAG,
                 KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
 
         // Confirm result matches failure expectation.
@@ -197,7 +198,7 @@ public final class ProfilingServiceTests {
         mProfilingService.registerResultsCallback(callback);
 
         // Kick off request.
-        mProfilingService.requestProfiling(ProfilingTestUtils.getJavaHeapDumpProfilingRequest(),
+        mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
                 APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
 
         // Confirm result matches failure expectation.
@@ -213,14 +214,14 @@ public final class ProfilingServiceTests {
 
         // Mock rate limiter result to simulate failure case.
         doReturn(RateLimiter.RATE_LIMIT_RESULT_BLOCKED_PROCESS).when(mRateLimiter)
-              .isProfilingRequestAllowed(anyInt(), anyObject());
+              .isProfilingRequestAllowed(anyInt(), anyInt(), any());
 
         // Register callback.
         ProfilingResultCallback callback = new ProfilingResultCallback();
         mProfilingService.registerResultsCallback(callback);
 
         // Kick off request.
-        mProfilingService.requestProfiling(ProfilingTestUtils.getJavaHeapDumpProfilingRequest(),
+        mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
                 APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
 
         // Confirm result matches failure expectation.
@@ -228,27 +229,25 @@ public final class ProfilingServiceTests {
                 ProfilingResult.ERROR_FAILED_RATE_LIMIT_PROCESS, REQUEST_TAG, false);
     }
 
-    /**
-     * Test profiling request with no issues makes it to perfetto kick off and fails because we're
-     * using the wrong context in these tests.
-     */
+    /** Test that if we can't contact Perfetto, we'll see an error callback. */
     @Test
     public void testRequestProfiling_Allowed_PerfettoPermissions_Fails() {
-        // Bypass traces running check, we're not testing that here.
-        doReturn(false).when(mProfilingService).areAnyTracesRunning();
+        // Throw a RuntimeException when we try to query Perfetto for running traces.
+        // This implies that we can't contact Perfetto.
+        doThrow(RuntimeException.class).when(mProfilingService).areAnyTracesRunning();
 
         // Register callback.
         ProfilingResultCallback callback = new ProfilingResultCallback();
         mProfilingService.registerResultsCallback(callback);
 
         // Kick off request.
-        mProfilingService.requestProfiling(ProfilingTestUtils.getJavaHeapDumpProfilingRequest(),
+        mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
                 APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
 
         // Perfetto cannot be run from this context, ensure it was attempted and failed permissions.
         confirmResultCallback(callback, null, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
                 ProfilingResult.ERROR_UNKNOWN, REQUEST_TAG, true);
-        assertEquals("Perfetto error", callback.mError);
+        assertEquals("Error communicating with perfetto", callback.mError);
     }
 
     /** Test that checking if any traces are running works when trace is running. */
@@ -259,7 +258,8 @@ public final class ProfilingServiceTests {
         assertFalse(mProfilingService.areAnyTracesRunning());
 
         // Create a tracing session.
-        TracingSession tracingSession = new TracingSession(null, APP_FILE_PATH, 123,
+        TracingSession tracingSession = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null, APP_FILE_PATH, 123,
                 APP_PACKAGE_NAME, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
 
         // Mock tracing session to be running.
@@ -280,7 +280,8 @@ public final class ProfilingServiceTests {
         mProfilingService.mTracingSessions.clear();
         assertFalse(mProfilingService.areAnyTracesRunning());
 
-        TracingSession tracingSession = new TracingSession(null, APP_FILE_PATH, 123,
+        TracingSession tracingSession = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null, APP_FILE_PATH, 123,
                 APP_PACKAGE_NAME, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
         mProfilingService.mTracingSessions.put(
                 (new UUID(KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS)).toString(), tracingSession);

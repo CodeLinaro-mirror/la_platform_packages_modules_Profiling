@@ -5,13 +5,13 @@ on the mts infrastructure. Please use CTS/ATEST in order to run tests.
 
 The example below will run all tests defined in the module.
 atest [ModuleName]
-ex - atest MtsProfilingModuleTests
+ex - atest CtsProfilingModuleTests
 
 This will run all tests in a specific test class.
 atest [ModuleName]:[Package].[Class]
-ex - atest MtsProfilingModuleTests:android.profiling.cts.ProfilingFrameworkTests
+ex - atest CtsProfilingModuleTests:android.profiling.cts.ProfilingFrameworkTests
 
 This will run a specific method from a test class.
 atest [ModuleName]:[Package].[Class]#[Method]
 ex - atest
-    MtsProfilingModuleTests:android.profiling.cts.ProfilingFrameworkTests#createProfilingRequestTest
+    CtsProfilingModuleTests:android.profiling.cts.ProfilingFrameworkTests#createProfilingRequestTest
