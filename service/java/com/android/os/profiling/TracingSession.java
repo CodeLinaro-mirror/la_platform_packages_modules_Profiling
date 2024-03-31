@@ -16,7 +16,7 @@
 
 package android.os.profiling;
 
-import android.os.ProfilingRequest;
+import android.os.Bundle;
 
 import java.lang.Process;
 import java.lang.Runnable;
@@ -29,7 +29,8 @@ import java.util.UUID;
 public final class TracingSession {
     private Process mActiveTrace;
     private Runnable mProcessResultRunnable;
-    private final ProfilingRequest mRequest;
+    private final int mProfilingType;
+    private final Bundle mParams;
     private final String mAppFilePath;
     private final int mUid;
     private final String mPackageName;
@@ -40,9 +41,10 @@ public final class TracingSession {
     private String mFileName;
     private String mDestinationFileName = null;
 
-  public TracingSession(ProfilingRequest request, String appFilePath, int uid, String packageName,
-            String tag, long keyMostSigBits, long keyLeastSigBits) {
-        mRequest = request;
+  public TracingSession(int profilingType, Bundle params, String appFilePath, int uid,
+            String packageName, String tag, long keyMostSigBits, long keyLeastSigBits) {
+        mProfilingType = profilingType;
+        mParams = params;
         mAppFilePath = appFilePath;
         mUid = uid;
         mPackageName = packageName;
@@ -52,12 +54,12 @@ public final class TracingSession {
     }
 
     public byte[] getConfigBytes() throws IllegalArgumentException {
-        return Configs.generateConfigForRequest(mRequest, mPackageName)
+        return Configs.generateConfigForRequest(mProfilingType, mParams, mPackageName)
               .getBytes(Charset.forName("UTF-8"));
     }
 
     public int getPostProcessingScheduleDelayMs() throws IllegalArgumentException {
-        return Configs.getPostProcessingScheduleDelayMs(mRequest);
+        return Configs.getPostProcessingScheduleDelayMs(mProfilingType, mParams);
     }
 
     public String getKey() {
@@ -87,8 +89,8 @@ public final class TracingSession {
         return mProcessResultRunnable;
     }
 
-    public ProfilingRequest getRequest() {
-        return mRequest;
+    public int getProfilingType() {
+        return mProfilingType;
     }
 
     public String getAppFilePath() {

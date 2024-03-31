@@ -16,6 +16,7 @@
 
 package android.os;
 
+import android.os.Bundle;
 import android.os.IProfilingResultCallback;
 
 /**
@@ -23,7 +24,7 @@ import android.os.IProfilingResultCallback;
  */
 interface IProfilingService {
 
-    void requestProfiling(in byte[] profilingRequest, String filePath, String tag, long keyMostSigBits, long keyLeastSigBits);
+    void requestProfiling(int profilingType, in Bundle params, String filePath, String tag, long keyMostSigBits, long keyLeastSigBits);
 
     void registerResultsCallback(IProfilingResultCallback callback);
 

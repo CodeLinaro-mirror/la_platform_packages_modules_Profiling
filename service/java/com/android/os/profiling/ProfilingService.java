@@ -23,6 +23,7 @@ import android.icu.text.SimpleDateFormat;
 import android.icu.util.Calendar;
 import android.icu.util.TimeZone;
 import android.os.Binder;
+import android.os.Bundle;
 import android.os.FileUtils;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -31,7 +32,7 @@ import android.os.IProfilingService;
 import android.os.Looper;
 import android.os.OutcomeReceiver;
 import android.os.ParcelFileDescriptor;
-import android.os.ProfilingRequest;
+import android.os.ProfilingManager;
 import android.os.ProfilingResult;
 import android.os.RemoteException;
 import android.text.TextUtils;
@@ -112,7 +113,7 @@ public class ProfilingService extends IProfilingService.Stub {
      * This method validates the request, arguments, whether the app is allowed to profile now,
      * and if so, starts the profiling.
      */
-    public void requestProfiling(byte[] profilingRequestBytes, String filePath, String tag,
+    public void requestProfiling(int profilingType, Bundle params, String filePath, String tag,
             long keyMostSigBits, long keyLeastSigBits) {
         int uid = Binder.getCallingUid();
 
@@ -130,18 +131,6 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
 
-        // Process the request from the byte array it was provided as.
-        ProfilingRequest request = null;
-        try {
-            request = ProfilingRequest.parseFrom(profilingRequestBytes);
-        } catch (IOException e) {
-            if (DEBUG) Log.d(TAG, "Exception parsing request", e);
-            processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                    ProfilingResult.ERROR_FAILED_INVALID_REQUEST, null, tag,
-                    "Request parsing failed");
-            return;
-        }
-
         // Get package name for requesting process. We can't request the trace without it.
         String packageName = mContext.getPackageManager().getNameForUid(uid);
         if (packageName == null) {
@@ -153,13 +142,13 @@ public class ProfilingService extends IProfilingService.Stub {
 
         // Check with rate limiter if this request is allowed.
         final int status = getRateLimiter().isProfilingRequestAllowed(Binder.getCallingUid(),
-                request);
+                profilingType, params);
         if (DEBUG) Log.d(TAG, "Rate limiter status: " + status);
         if (status == RateLimiter.RATE_LIMIT_RESULT_ALLOWED) {
             // Rate limiter approved, try to start the request.
             try {
-                TracingSession session = new TracingSession(request, filePath, uid, packageName,
-                        tag, keyMostSigBits, keyLeastSigBits);
+                TracingSession session = new TracingSession(profilingType, params, filePath, uid,
+                        packageName, tag, keyMostSigBits, keyLeastSigBits);
                 startProfiling(session);
             } catch (IllegalArgumentException e) {
                 // Issue with the request. Apps fault.
@@ -231,7 +220,7 @@ public class ProfilingService extends IProfilingService.Stub {
         try {
             postProcessingDelayMs = session.getPostProcessingScheduleDelayMs();
             config = session.getConfigBytes();
-            suffix = getFileSuffixForRequest(session.getRequest());
+            suffix = getFileSuffixForRequest(session.getProfilingType());
 
             // Create a version of tag that is non null, containing only valid filename chars,
             // and shortened to class defined max size.
@@ -245,7 +234,7 @@ public class ProfilingService extends IProfilingService.Stub {
             if (DEBUG) Log.d(TAG, "Request couldn't be processed", e);
             processResultCallback(session, ProfilingResult.ERROR_FAILED_INVALID_REQUEST,
                     e.getMessage());
-            throw new RuntimeException(e);
+            return;
 
         }
 
@@ -266,7 +255,7 @@ public class ProfilingService extends IProfilingService.Stub {
             // Catch all exceptions related to starting process as they'll all be handled similarly.
             if (DEBUG) Log.d(TAG, "Trace couldn't be started", e);
             processResultCallback(session, ProfilingResult.ERROR_FAILED_EXECUTING, null);
-            throw new RuntimeException(e);
+            return;
         }
 
         // Create post process runnable, store it, and schedule it.
@@ -475,27 +464,19 @@ public class ProfilingService extends IProfilingService.Stub {
         return mDateFormat.format(mCalendar.getTime());
     }
 
-    private static String getFileSuffixForRequest(ProfilingRequest request) {
-        if (!request.hasConfig()) {
-            // Proto has no config, not requesting anything.
-            throw new IllegalArgumentException("Proto config is missing");
+    private static String getFileSuffixForRequest(int profilingType) {
+        switch (profilingType) {
+            case ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP:
+                return OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX;
+            case ProfilingManager.PROFILING_TYPE_HEAP_PROFILE:
+                return OUTPUT_FILE_HEAP_PROFILE_SUFFIX;
+            case ProfilingManager.PROFILING_TYPE_STACK_SAMPLING:
+                return OUTPUT_FILE_STACK_SAMPLING_SUFFIX;
+            case ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE:
+                return OUTPUT_FILE_TRACE_SUFFIX;
+            default:
+                throw new IllegalArgumentException("Invalid profiling type");
         }
-
-        ProfilingRequest.Config config = request.getConfig();
-
-        // Config can have at most one collection type, find out which and then determine suffix.
-        if (config.hasJavaHeapDump()) {
-            return OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX;
-        } else if (config.hasHeapProfile()) {
-            return OUTPUT_FILE_HEAP_PROFILE_SUFFIX;
-        } else if (config.hasStackSampling()) {
-            return OUTPUT_FILE_STACK_SAMPLING_SUFFIX;
-        } else if (config.hasSystemTrace()) {
-            return OUTPUT_FILE_TRACE_SUFFIX;
-        }
-
-        // Proto config has no type, we don't know what the app wants.
-        throw new IllegalArgumentException("Proto config type is missing");
     }
 
     private static String removeInvalidFilenameChars(String original) {

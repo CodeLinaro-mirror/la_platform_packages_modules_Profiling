@@ -27,31 +27,6 @@ filegroup {
     visibility: ["//packages/modules/Profiling/framework:__subpackages__"],
 }
 
-java_library {
-    name: "framework-profiling-proto",
-    proto: {
-        type: "lite",
-        canonical_path_from_root: false,
-        include_dirs: [
-            "external/protobuf/src",
-            "external/protobuf/java",
-        ],
-    },
-    srcs: [
-        "proto/**/*.proto",
-    ],
-    visibility: [
-        "//packages/modules/Profiling/tests:__subpackages__",
-    ],
-    jarjar_rules: "jarjar-rules.txt",
-    installable: false,
-    min_sdk_version: "current",
-    sdk_version: "core_current",
-    apex_available: [
-        "com.android.profiling",
-    ],
-}
-
 java_sdk_library {
     name: "framework-profiling",
     defaults: ["framework-module-defaults"],
@@ -69,7 +44,6 @@ java_sdk_library {
 
     static_libs: [
         "modules-utils-build",
-        "framework-profiling-proto",
         "android.os.profiling.flags-aconfig-java",
     ],
 

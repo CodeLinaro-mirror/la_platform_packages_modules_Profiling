@@ -1,8 +1,8 @@
 # Bug component: 1495529
+yforta@google.com
 carmenjackson@google.com
 edgararriaga@google.com
 haiping@google.com
 steventerrell@google.com
-yforta@google.com
 
 include platform/packages/modules/common:/MODULES_OWNERS  # see go/mainline-owners-policy

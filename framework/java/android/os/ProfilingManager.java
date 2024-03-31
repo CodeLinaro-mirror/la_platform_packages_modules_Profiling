@@ -16,6 +16,7 @@
 package android.os;
 
 import android.annotation.FlaggedApi;
+import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.Context;
@@ -24,7 +25,6 @@ import android.os.CancellationSignal;
 import android.os.FileUtils;
 import android.os.IProfilingService;
 import android.os.ParcelFileDescriptor;
-import android.os.ProfilingRequest;
 import android.os.profiling.Flags;
 import android.util.Log;
 
@@ -38,6 +38,8 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.lang.Exception;
 import java.lang.IllegalArgumentException;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
 import java.util.UUID;
 import java.util.concurrent.Executor;
@@ -50,6 +52,63 @@ import java.util.function.Consumer;
 public final class ProfilingManager {
     private static final String TAG = ProfilingManager.class.getSimpleName();
     private static final boolean DEBUG = false;
+
+    /** Profiling type for {@link #requestProfiling} to request a java heap dump. */
+    public static final int PROFILING_TYPE_JAVA_HEAP_DUMP = 1;
+
+    /** Profiling type for {@link #requestProfiling} to request a heap profile. */
+    public static final int PROFILING_TYPE_HEAP_PROFILE = 2;
+
+    /** Profiling type for {@link #requestProfiling} to request a stack sample. */
+    public static final int PROFILING_TYPE_STACK_SAMPLING = 3;
+
+    /** Profiling type for {@link #requestProfiling} to request a system trace. */
+    public static final int PROFILING_TYPE_SYSTEM_TRACE = 4;
+
+    /* Begin public API defined keys. */
+    /* End public API defined keys. */
+
+    /* Begin not-public API defined keys. */
+    /**
+     * Can only be used with profiling type heap profile, stack sampling, or system trace.
+     * Value of type int.
+     * @hide */
+    public static final String KEY_DURATION_MS = "KEY_DURATION_MS";
+
+    /**
+     * Can only be used with profiling type heap profile. Value of type long.
+     * @hide */
+    public static final String KEY_SAMPLING_INTERVAL_BYTES = "KEY_SAMPLING_INTERVAL_BYTES";
+
+    /**
+     * Can only be used with profiling type heap profile. Value of type boolean.
+     * @hide */
+    public static final String KEY_TRACK_JAVA_ALLOCATIONS = "KEY_TRACK_JAVA_ALLOCATIONS";
+
+    /**
+     * Can only be used with profiling type stack sampling. Value of type int.
+     * @hide */
+    public static final String KEY_FREQUENCY_HZ = "KEY_FREQUENCY_HZ";
+
+    /**
+     * Can be used with all profiling types. Value of type int.
+     * @hide */
+    public static final String KEY_SIZE_KB = "KEY_SIZE_KB";
+    /* End not-public API defined keys. */
+
+    /**
+     * @hide *
+     */
+    @IntDef(
+        prefix = {"PROFILING_TYPE_"},
+        value = {
+            PROFILING_TYPE_JAVA_HEAP_DUMP,
+            PROFILING_TYPE_HEAP_PROFILE,
+            PROFILING_TYPE_STACK_SAMPLING,
+            PROFILING_TYPE_SYSTEM_TRACE,
+        })
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface ProfilingType {}
 
     private final Object mLock = new Object();
     private final Context mContext;
@@ -85,8 +144,12 @@ public final class ProfilingManager {
      * Listeners can be set in this method, with {@link #registerForAllProfilingResults}, or both.
      * If no listener and executor is set the request will be discarded.</p>
      *
-     * @param profilingRequest byte array representation of ProfilingRequest proto containing all
-     *                  necessary information about the collection being requested.
+     * @param profilingType Type of profiling to collect.
+     * @param parameters Bundle of request related parameters. If the bundle contains any
+     *                  unrecognized parameters, the request will be fail with
+     *                  {@link #ProfilingResult#ERROR_FAILED_INVALID_REQUEST}. If the values for
+     *                  the parameters are out of supported range, the closest possible in range
+     *                  value will be chosen.
      *                  Use of androidx wrappers is recommended over generating this directly.
      * @param tag Caller defined data to help identify the output.
      *                  The first 20 alphanumeric characters, plus dashes, will be lowercased
@@ -106,7 +169,8 @@ public final class ProfilingManager {
      *                  the time of the request, the request will be dropped.
      */
     public void requestProfiling(
-            @NonNull byte[] profilingRequest,
+            @ProfilingType int profilingType,
+            @Nullable Bundle parameters,
             @Nullable String tag,
             @Nullable CancellationSignal cancellationSignal,
             @Nullable Executor executor,
@@ -134,9 +198,10 @@ public final class ProfilingManager {
                     return;
                 }
 
-                // For key, use most and least signifcant bits so we can create an identical UUID
+                // For key, use most and least significant bits so we can create an identical UUID
                 // after passing over binder.
-                service.requestProfiling(profilingRequest, mContext.getFilesDir().getPath(), tag,
+                service.requestProfiling(profilingType, parameters,
+                        mContext.getFilesDir().getPath(), tag,
                         key.getMostSignificantBits(), key.getLeastSignificantBits());
                 if (cancellationSignal != null) {
                     cancellationSignal.setOnCancelListener(
