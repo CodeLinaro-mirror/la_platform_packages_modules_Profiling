@@ -76,6 +76,7 @@ java_sdk_library {
 aconfig_declarations {
     name: "android.os.profiling.flags-aconfig",
     package: "android.os.profiling",
+    container: "com.android.profiling",
     srcs: ["java/android/os/flags.aconfig"],
 }
 
