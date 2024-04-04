@@ -20,12 +20,12 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
 
-import android.os.IBinder;
 import android.os.Flags;
+import android.os.IBinder;
 import android.os.ProfilingFrameworkInitializer;
+import android.os.ProfilingServiceManager;
 import android.os.ProfilingServiceManager.ServiceNotFoundException;
 import android.os.ProfilingServiceManager.ServiceRegisterer;
-import android.os.ProfilingServiceManager;
 import android.platform.test.annotations.RequiresFlagsEnabled;
 
 import androidx.test.runner.AndroidJUnit4;
