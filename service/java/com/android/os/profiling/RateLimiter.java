@@ -31,7 +31,6 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayDeque;
 import java.util.Queue;
-import java.util.concurrent.Executors;
 
 public class RateLimiter {
 
@@ -241,3 +240,4 @@ public class RateLimiter {
         }
     }
 }
+
