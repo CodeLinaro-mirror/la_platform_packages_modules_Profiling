@@ -16,51 +16,41 @@
 
 package android.profiling.cts;
 
-import static com.google.common.truth.Truth.assertThat;
-
-import static org.mockito.Mockito.reset;
-
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyObject;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.spy;
 
 import android.content.Context;
+import android.content.pm.PackageManager;
+import android.os.Binder;
 import android.os.IProfilingResultCallback;
 import android.os.ParcelFileDescriptor;
-import android.os.Binder;
-import android.content.pm.PackageManager;
-import android.app.UiAutomation;
-import android.os.profiling.RateLimiter;
-import android.os.profiling.TracingSession;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
 import android.os.profiling.ProfilingService;
+import android.os.profiling.RateLimiter;
+import android.os.profiling.TracingSession;
 import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
 
 import androidx.test.core.app.ApplicationProvider;
-import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
-import java.lang.Process;
-import java.util.UUID;
-
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
-import org.junit.runner.Description;
 import org.junit.runner.RunWith;
-import org.junit.runners.model.Statement;
-
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+
+import java.util.UUID;
 
 /**
  * Tests in this class are for testing the ProfilingService directly without the need to get a

@@ -20,8 +20,6 @@ import android.annotation.FlaggedApi;
 import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
-import android.os.Parcel;
-import android.os.Parcelable;
 import android.os.profiling.Flags;
 
 import java.lang.annotation.Retention;
