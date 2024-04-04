@@ -18,8 +18,6 @@ package android.os.profiling;
 
 import android.os.Bundle;
 
-import java.lang.Process;
-import java.lang.Runnable;
 import java.nio.charset.Charset;
 import java.util.UUID;
 
