@@ -16,7 +16,6 @@
 
 package android.os.profiling;
 
-import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.Context;
 import android.icu.text.SimpleDateFormat;
@@ -29,15 +28,13 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IProfilingResultCallback;
 import android.os.IProfilingService;
-import android.os.Looper;
-import android.os.OutcomeReceiver;
 import android.os.ParcelFileDescriptor;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
 import android.os.RemoteException;
 import android.text.TextUtils;
-import android.util.Log;
 import android.util.ArrayMap;
+import android.util.Log;
 import android.util.SparseArray;
 
 import com.android.internal.annotations.VisibleForTesting;
@@ -45,24 +42,11 @@ import com.android.server.SystemService;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.io.FileDescriptor;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.lang.Exception;
-import java.lang.IllegalArgumentException;
-import java.lang.Process;
-import java.lang.ProcessBuilder;
-import java.lang.Runnable;
-import java.lang.RuntimeException;
-import java.nio.charset.Charset;
-import java.util.Date;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.Executor;
 
 public class ProfilingService extends IProfilingService.Stub {
     private static final String TAG = ProfilingService.class.getSimpleName();
