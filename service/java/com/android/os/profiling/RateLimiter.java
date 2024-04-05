@@ -34,13 +34,16 @@ import java.util.Queue;
 
 public class RateLimiter {
 
-    private static final String DEVICE_CONFIG_NAMESPACE = "profiling";
-    private static final String DEVICE_CONFIG_RATE_LIMITER_DISABLE_PROPERTY =
-            "rate_limiter.disabled";
-
     private static final long TIME_1_HOUR_MS = 60 * 60 * 1000;
     private static final long TIME_24_HOUR_MS = 24 * 60 * 60 * 1000;
     private static final long TIME_7_DAY_MS = 7 * 24 * 60 * 60 * 1000;
+
+    private static final int DEFAULT_MAX_COST_SYSTEM_HOUR = 2;
+    private static final int DEFAULT_MAX_COST_PROCESS_HOUR = 1;
+    private static final int DEFAULT_MAX_COST_SYSTEM_DAY = 5;
+    private static final int DEFAULT_MAX_COST_PROCESS_DAY = 2;
+    private static final int DEFAULT_MAX_COST_SYSTEM_WEEK = 15;
+    private static final int DEFAULT_MAX_COST_PROCESS_WEEK = 3;
 
     public static final int RATE_LIMIT_RESULT_ALLOWED = 0;
     public static final int RATE_LIMIT_RESULT_BLOCKED_PROCESS = 1;
@@ -53,7 +56,7 @@ public class RateLimiter {
 
     /** To be disabled for testing only. */
     @GuardedBy("mLock")
-    private boolean mRateLimiterEnabled = true;
+    private boolean mRateLimiterDisabled = false;
 
     /** Collection of run costs and entries from the last hour. */
     private final EntryGroupWrapper mPastRuns1Hour;
@@ -73,29 +76,45 @@ public class RateLimiter {
     @interface RateLimitResult {}
 
     public RateLimiter(Context context) {
-        // TODO: b/324885858 use DeviceConfig for adjustable values.
         mContext = context;
-        mPastRuns1Hour = new EntryGroupWrapper(10, 10, TIME_1_HOUR_MS);
-        mPastRuns24Hour = new EntryGroupWrapper(100, 100, TIME_24_HOUR_MS);
-        mPastRuns7Day = new EntryGroupWrapper(1000, 1000, TIME_7_DAY_MS);
-        mPersistToDiskFrequency = 0;
+        mPastRuns1Hour = new EntryGroupWrapper(
+                DeviceConfigHelper.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR,
+                        DEFAULT_MAX_COST_SYSTEM_HOUR),
+                DeviceConfigHelper.getInt(DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR,
+                        DEFAULT_MAX_COST_PROCESS_HOUR),
+                TIME_1_HOUR_MS);
+        mPastRuns24Hour = new EntryGroupWrapper(
+                DeviceConfigHelper.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR,
+                        DEFAULT_MAX_COST_SYSTEM_DAY),
+                DeviceConfigHelper.getInt(DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR,
+                        DEFAULT_MAX_COST_PROCESS_DAY),
+                TIME_24_HOUR_MS);
+        mPastRuns7Day = new EntryGroupWrapper(
+                DeviceConfigHelper.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY,
+                        DEFAULT_MAX_COST_SYSTEM_WEEK),
+                DeviceConfigHelper.getInt(DeviceConfigHelper.MAX_COST_PROCESS_7_DAY,
+                        DEFAULT_MAX_COST_PROCESS_WEEK),
+                TIME_7_DAY_MS);
+        mPersistToDiskFrequency = DeviceConfigHelper.getInt(
+                DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS, 0);
         mLastPersistedTimestampMs = System.currentTimeMillis();
         loadFromDisk();
 
         // Get initial value for whether rate limiter should be enforcing or if it should always
         // allow profiling requests. This is used for (automated and manual) testing only.
         synchronized (mLock) {
-            mRateLimiterEnabled = !DeviceConfig.getBoolean(DEVICE_CONFIG_NAMESPACE,
-                DEVICE_CONFIG_RATE_LIMITER_DISABLE_PROPERTY, false);
+            mRateLimiterDisabled = DeviceConfigHelper.getTestBoolean(
+                    DeviceConfigHelper.RATE_LIMITER_DISABLE_PROPERTY, false);
         }
         // Now subscribe to updates on rate limiter enforcing config.
-        DeviceConfig.addOnPropertiesChangedListener(DEVICE_CONFIG_NAMESPACE,
+        DeviceConfig.addOnPropertiesChangedListener(DeviceConfigHelper.NAMESPACE_TESTING,
                 mContext.getMainExecutor(), new DeviceConfig.OnPropertiesChangedListener() {
                     @Override
                     public void onPropertiesChanged(@NonNull DeviceConfig.Properties properties) {
                         synchronized (mLock) {
-                            mRateLimiterEnabled = properties.getBoolean(
-                                    DEVICE_CONFIG_RATE_LIMITER_DISABLE_PROPERTY, false);
+                            mRateLimiterDisabled = properties.getBoolean(
+                                    DeviceConfigHelper.RATE_LIMITER_DISABLE_PROPERTY,
+                                    mRateLimiterDisabled);
                         }
                     }
                 });
@@ -104,7 +123,7 @@ public class RateLimiter {
     public @RateLimitResult int isProfilingRequestAllowed(int uid,
             int profilingType, @Nullable Bundle params) {
         synchronized (mLock) {
-            if (!mRateLimiterEnabled) {
+            if (mRateLimiterDisabled) {
                 // Rate limiter is disabled for testing, approve request and don't store cost.
                 return RATE_LIMIT_RESULT_ALLOWED;
             }
