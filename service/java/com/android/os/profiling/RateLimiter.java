@@ -21,6 +21,7 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.Context;
 import android.os.Bundle;
+import android.os.ProfilingManager;
 import android.os.ProfilingResult;
 import android.provider.DeviceConfig;
 import android.util.SparseIntArray;
@@ -44,6 +45,7 @@ public class RateLimiter {
     private static final int DEFAULT_MAX_COST_PROCESS_DAY = 2;
     private static final int DEFAULT_MAX_COST_SYSTEM_WEEK = 15;
     private static final int DEFAULT_MAX_COST_PROCESS_WEEK = 3;
+    private static final int DEFAULT_COST_PER_SESSION = 1;
 
     public static final int RATE_LIMIT_RESULT_ALLOWED = 0;
     public static final int RATE_LIMIT_RESULT_BLOCKED_PROCESS = 1;
@@ -65,6 +67,11 @@ public class RateLimiter {
     /** Collection of run costs and entries from the 7 days. */
     private final EntryGroupWrapper mPastRuns7Day;
 
+    private final int mCostJavaHeapDump;
+    private final int mCostHeapProfile;
+    private final int mCostStackSampling;
+    private final int mCostSystemTrace;
+
     private long mLastPersistedTimestampMs;
 
     @IntDef(value = {
@@ -77,6 +84,7 @@ public class RateLimiter {
 
     public RateLimiter(Context context) {
         mContext = context;
+
         mPastRuns1Hour = new EntryGroupWrapper(
                 DeviceConfigHelper.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR,
                         DEFAULT_MAX_COST_SYSTEM_HOUR),
@@ -95,9 +103,20 @@ public class RateLimiter {
                 DeviceConfigHelper.getInt(DeviceConfigHelper.MAX_COST_PROCESS_7_DAY,
                         DEFAULT_MAX_COST_PROCESS_WEEK),
                 TIME_7_DAY_MS);
+
+        mCostJavaHeapDump = DeviceConfigHelper.getInt(DeviceConfigHelper.COST_JAVA_HEAP_DUMP,
+                DEFAULT_COST_PER_SESSION);
+        mCostHeapProfile = DeviceConfigHelper.getInt(DeviceConfigHelper.COST_HEAP_PROFILE,
+                DEFAULT_COST_PER_SESSION);
+        mCostStackSampling = DeviceConfigHelper.getInt(DeviceConfigHelper.COST_STACK_SAMPLING,
+                DEFAULT_COST_PER_SESSION);
+        mCostSystemTrace = DeviceConfigHelper.getInt(DeviceConfigHelper.COST_SYSTEM_TRACE,
+                DEFAULT_COST_PER_SESSION);
+
         mPersistToDiskFrequency = DeviceConfigHelper.getInt(
                 DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS, 0);
         mLastPersistedTimestampMs = System.currentTimeMillis();
+
         loadFromDisk();
 
         // Get initial value for whether rate limiter should be enforcing or if it should always
@@ -127,7 +146,7 @@ public class RateLimiter {
                 // Rate limiter is disabled for testing, approve request and don't store cost.
                 return RATE_LIMIT_RESULT_ALLOWED;
             }
-            final int cost = 1; // TODO: compute cost b/293957254
+            final int cost = getCostForProfiling(profilingType);
             final long currentTimeMillis = System.currentTimeMillis();
             int status = mPastRuns1Hour.isProfilingAllowed(uid, cost, currentTimeMillis);
             if (status == RATE_LIMIT_RESULT_ALLOWED) {
@@ -144,6 +163,21 @@ public class RateLimiter {
                 return RATE_LIMIT_RESULT_ALLOWED;
             }
             return status;
+        }
+    }
+
+    private int getCostForProfiling(int profilingType) {
+        switch (profilingType) {
+            case ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP:
+                return mCostJavaHeapDump;
+            case ProfilingManager.PROFILING_TYPE_HEAP_PROFILE:
+                return mCostHeapProfile;
+            case ProfilingManager.PROFILING_TYPE_STACK_SAMPLING:
+                return mCostStackSampling;
+            case ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE:
+                return mCostSystemTrace;
+            default:
+                return Integer.MAX_VALUE;
         }
     }
 

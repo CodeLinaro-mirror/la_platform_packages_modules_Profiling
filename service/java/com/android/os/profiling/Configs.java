@@ -25,7 +25,7 @@ public final class Configs {
     static final String HEAP_PROFILE_TRACK_JAVA_ALLOCATIONS = "heaps: \"com.android.art\"";
 
     static final String CONFIG_HEAP_PROFILE = "buffers {\n"
-            + "  size_kb: 65536\n"
+            + "  size_kb: {{size_kb}}\n"
             + "}\n"
             + "\n"
             + "data_sources {\n"
@@ -41,12 +41,12 @@ public final class Configs {
             + "  }\n"
             + "}\n"
             + "\n"
-            + "flush_timeout_ms: 30000\n"
+            + "flush_timeout_ms: {{flush_timeout}}\n"
             + "duration_ms: {{duration}}";
     static final String CONFIG_JAVA_HEAP_DUMP = "buffers {\n"
             + "  # This is the maximum size of the trace. The buffer will be mmap'd but, only\n"
             + "  # the non empty pages contribute to RSS.\n"
-            + "  size_kb: 256000\n"
+            + "  size_kb: {{size_kb}}\n"
             + "  fill_policy: DISCARD\n"
             + "}\n"
             + "\n"
@@ -61,11 +61,11 @@ public final class Configs {
             + "}\n"
             + "\n"
             + "# Wait 1s for the dump to start\n"
-            + "duration_ms: 1000\n"
+            + "duration_ms: {{duration}}\n"
             + "# Wait up to 100s for the dump to finish\n"
-            + "data_source_stop_timeout_ms: 100000";
+            + "data_source_stop_timeout_ms: {{data_source_stop_timeout}}";
     static final String CONFIG_STACK_SAMPLING = "buffers {\n"
-            + "  size_kb: 65536\n"
+            + "  size_kb: {{size_kb}}\n"
             + "  fill_policy: DISCARD\n"
             + "}\n"
             + "\n"
@@ -89,10 +89,10 @@ public final class Configs {
             + "  }\n"
             + "}\n"
             + "\n"
-            + "flush_timeout_ms: 30000\n"
+            + "flush_timeout_ms: {{flush_timeout}}\n"
             + "duration_ms: {{duration}}";
     static final String CONFIG_SYSTEM_TRACE = "buffers {\n"
-            + "  size_kb: 32768\n"
+            + "  size_kb: {{size_kb}}\n"
             + "  fill_policy: RING_BUFFER\n"
             + "}\n"
             + "\n"
@@ -200,6 +200,9 @@ public final class Configs {
     private static final String STUB_TRACK_JAVA_ALLOCATIONS = "{{track_java_allocations}}";
     private static final String STUB_SAMPLING_INTERVAL = "{{sampling_interval}}";
     private static final String STUB_FREQUENCY = "{{frequency}}";
+    private static final String STUB_SIZE = "{{size_kb}}";
+    private static final String FLUSH_TIMEOUT = "{{flush_timeout}}";
+    private static final String DATA_SOURCE_STOP_TIMEOUT = "{{{{data_source_stop_timeout}}}}";
 
     // Time to wait beyond trace timeout to ensure perfetto has time to finish writing output.
     private static final int FILE_PROCESSING_DELAY_MS = 5000;
@@ -334,22 +337,49 @@ public final class Configs {
         switch (profilingType) {
             // Java heap dump
             case ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP:
+                if (sKillswitchJavaHeapDump) {
+                    throw new IllegalArgumentException("Java heap dump is disabled");
+                }
+
+                int javaHeapDumpSizeKb = getAndRemoveWithinBounds(ProfilingManager.KEY_SIZE_KB,
+                        sJavaHeapDumpSizeKbDefault,
+                        sJavaHeapDumpSizeKbMin,
+                        sJavaHeapDumpSizeKbMax,
+                        paramsCopy);
 
                 confirmEmptyOrThrow(paramsCopy);
 
                 return CONFIG_JAVA_HEAP_DUMP
-                        .replace(STUB_PACKAGE_NAME, packageName);
+                        .replace(STUB_PACKAGE_NAME, packageName)
+                        .replace(STUB_SIZE, String.valueOf(javaHeapDumpSizeKb))
+                        .replace(DATA_SOURCE_STOP_TIMEOUT,
+                                    String.valueOf(sJavaHeapDumpDataSourceStopTimeoutMsDefault));
 
             // Heap profile
             case ProfilingManager.PROFILING_TYPE_HEAP_PROFILE:
+                if (sKillswitchHeapProfile) {
+                    throw new IllegalArgumentException("Heap profile is disabled");
+                }
+
                 boolean trackJavaAllocations = getAndRemove(
                         ProfilingManager.KEY_TRACK_JAVA_ALLOCATIONS,
                         sHeapProfileTrackJavaAllocationsDefault, paramsCopy);
-                long samplingIntervalBytes = getAndRemove(
+                long samplingIntervalBytes = getAndRemoveWithinBounds(
                         ProfilingManager.KEY_SAMPLING_INTERVAL_BYTES,
-                        sHeapProfileSamplingIntervalBytesDefault, paramsCopy);
-                int heapProfileDuration = getAndRemove(ProfilingManager.KEY_DURATION_MS,
-                        sHeapProfileDurationMsDefault, paramsCopy);
+                        sHeapProfileSamplingIntervalBytesDefault,
+                        sHeapProfileSamplingIntervalBytesMin,
+                        sHeapProfileSamplingIntervalBytesMax,
+                        paramsCopy);
+                int heapProfileDuration = getAndRemoveWithinBounds(ProfilingManager.KEY_DURATION_MS,
+                        sHeapProfileDurationMsDefault,
+                        sHeapProfileDurationMsMin,
+                        sHeapProfileDurationMsMax,
+                        paramsCopy);
+                int heapProfileSizeKb = getAndRemoveWithinBounds(ProfilingManager.KEY_SIZE_KB,
+                        sHeapProfileSizeKbDefault,
+                        sHeapProfileSizeKbMin,
+                        sHeapProfileSizeKbMax,
+                        paramsCopy);
 
                 confirmEmptyOrThrow(paramsCopy);
 
@@ -358,21 +388,42 @@ public final class Configs {
                         .replace(STUB_TRACK_JAVA_ALLOCATIONS, trackJavaAllocations
                                 ? HEAP_PROFILE_TRACK_JAVA_ALLOCATIONS : "")
                         .replace(STUB_SAMPLING_INTERVAL, String.valueOf(samplingIntervalBytes))
-                        .replace(STUB_DURATION, String.valueOf(heapProfileDuration));
+                        .replace(STUB_DURATION, String.valueOf(heapProfileDuration))
+                        .replace(STUB_SIZE, String.valueOf(heapProfileSizeKb))
+                        .replace(FLUSH_TIMEOUT, String.valueOf(sHeapProfileFlushTimeoutMsDefault));
 
             // Stack sampling
             case ProfilingManager.PROFILING_TYPE_STACK_SAMPLING:
-                long frequency = getAndRemove(ProfilingManager.KEY_FREQUENCY_HZ,
-                        sStackSamplingSamplingFrequencyDefault, paramsCopy);
-                int stackSamplingDuration = getAndRemove(ProfilingManager.KEY_DURATION_MS,
-                        sStackSamplingDurationMsDefault, paramsCopy);
+                if (sKillswitchStackSampling) {
+                    throw new IllegalArgumentException("Stack sampling is disabled");
+                }
+
+                long frequency = getAndRemoveWithinBounds(ProfilingManager.KEY_FREQUENCY_HZ,
+                        sStackSamplingSamplingFrequencyDefault,
+                        sStackSamplingSamplingFrequencyMin,
+                        sStackSamplingSamplingFrequencyMax,
+                        paramsCopy);
+                int stackSamplingDuration = getAndRemoveWithinBounds(
+                        ProfilingManager.KEY_DURATION_MS,
+                        sStackSamplingDurationMsDefault,
+                        sStackSamplingDurationMsMin,
+                        sStackSamplingDurationMsMax,
+                        paramsCopy);
+                int stackSamplingSizeKb = getAndRemoveWithinBounds(ProfilingManager.KEY_SIZE_KB,
+                        sStackSamplingSizeKbDefault,
+                        sStackSamplingSizeKbMin,
+                        sStackSamplingSizeKbMax,
+                        paramsCopy);
 
                 confirmEmptyOrThrow(paramsCopy);
 
                 return CONFIG_STACK_SAMPLING
                         .replace(STUB_PACKAGE_NAME, packageName)
                         .replace(STUB_FREQUENCY, String.valueOf(frequency))
-                        .replace(STUB_DURATION, String.valueOf(stackSamplingDuration));
+                        .replace(STUB_DURATION, String.valueOf(stackSamplingDuration))
+                        .replace(STUB_SIZE, String.valueOf(stackSamplingSizeKb))
+                        .replace(FLUSH_TIMEOUT,
+                                    String.valueOf(sStackSamplingFlushTimeoutMsDefault));
 
             // System trace
             case ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE:
@@ -380,15 +431,28 @@ public final class Configs {
                     throw new IllegalArgumentException("Trace is not currently supported");
                 }
 
-                int systemTraceDuration = getAndRemove(
+                if (sKillswitchSystemTrace) {
+                    throw new IllegalArgumentException("System trace is disabled");
+                }
+
+                int systemTraceDuration = getAndRemoveWithinBounds(
                         ProfilingManager.KEY_DURATION_MS,
-                        sSystemTraceDurationMsDefault, paramsCopy);
+                        sSystemTraceDurationMsDefault,
+                        sSystemTraceDurationMsMin,
+                        sSystemTraceDurationMsMax,
+                        paramsCopy);
+                int systemTraceSizeKb = getAndRemoveWithinBounds(ProfilingManager.KEY_SIZE_KB,
+                        sSystemTraceSizeKbDefault,
+                        sSystemTraceSizeKbMin,
+                        sSystemTraceSizeKbMax,
+                        paramsCopy);
 
                 confirmEmptyOrThrow(paramsCopy);
 
                 return CONFIG_SYSTEM_TRACE
                         .replace(STUB_PACKAGE_NAME, packageName)
-                        .replace(STUB_DURATION, String.valueOf(systemTraceDuration));
+                        .replace(STUB_DURATION, String.valueOf(systemTraceDuration))
+                        .replace(STUB_SIZE, String.valueOf(systemTraceSizeKb));
 
             // Invalid type
             default:
@@ -409,27 +473,42 @@ public final class Configs {
                 break;
 
             case ProfilingManager.PROFILING_TYPE_HEAP_PROFILE:
-                duration = params != null ? params.getInt(
-                        ProfilingManager.KEY_DURATION_MS, sHeapProfileDurationMsDefault)
-                        : sHeapProfileDurationMsDefault;
+                duration = getWithinBounds(ProfilingManager.KEY_DURATION_MS,
+                        sHeapProfileDurationMsDefault, sHeapProfileDurationMsMin,
+                        sHeapProfileDurationMsMax, params);
                 break;
 
             case ProfilingManager.PROFILING_TYPE_STACK_SAMPLING:
-                duration = params != null ? params.getInt(
-                        ProfilingManager.KEY_DURATION_MS, sStackSamplingDurationMsDefault)
-                        : sStackSamplingDurationMsDefault;
+                duration = getWithinBounds(ProfilingManager.KEY_DURATION_MS,
+                        sStackSamplingDurationMsDefault, sStackSamplingDurationMsMin,
+                        sStackSamplingDurationMsMax, params);
                 break;
 
             case ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE:
-                duration = params != null ? params.getInt(
-                        ProfilingManager.KEY_DURATION_MS, sSystemTraceDurationMsDefault)
-                        : sSystemTraceDurationMsDefault;
+                duration = getWithinBounds(ProfilingManager.KEY_DURATION_MS,
+                        sSystemTraceDurationMsDefault, sSystemTraceDurationMsMin,
+                        sSystemTraceDurationMsMax, params);
                 break;
 
             default:
                 throw new IllegalArgumentException("Invalid profiling type");
         }
         return duration + FILE_PROCESSING_DELAY_MS;
+    }
+
+    private static int getWithinBounds(String key, int defaultValue, int minValue,
+            int maxValue, @Nullable Bundle params) {
+        if (params == null) {
+            return defaultValue;
+        }
+        int value = params.getInt(key, defaultValue);
+        if (value < minValue) {
+            return minValue;
+        } else if (value > maxValue) {
+            return maxValue;
+        } else {
+            return value;
+        }
     }
 
     private static boolean getAndRemove(String key, boolean defaultValue, @Nullable Bundle bundle) {
@@ -444,25 +523,19 @@ public final class Configs {
         return defaultValue;
     }
 
-    private static int getAndRemove(String key, int defaultValue, @Nullable Bundle bundle) {
+    private static int getAndRemoveWithinBounds(String key, int defaultValue, int minValue,
+            int maxValue, @Nullable Bundle bundle) {
         if (bundle == null) {
             return defaultValue;
         }
         if (bundle.containsKey(key)) {
             int value = bundle.getInt(key);
             bundle.remove(key);
-            return value;
-        }
-        return defaultValue;
-    }
-
-    private static long getAndRemove(String key, long defaultValue, @Nullable Bundle bundle) {
-        if (bundle == null) {
-            return defaultValue;
-        }
-        if (bundle.containsKey(key)) {
-            long value = bundle.getLong(key);
-            bundle.remove(key);
+            if (value < minValue) {
+                value = minValue;
+            } else if (value > maxValue) {
+                value = maxValue;
+            }
             return value;
         }
         return defaultValue;
