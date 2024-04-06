@@ -44,34 +44,34 @@ public final class ProfilingResult implements Parcelable {
     @Nullable final String mErrorMessage;
 
     /** The request was executed and succeeded. */
-    public final static int ERROR_NONE = 0;
+    public static final int ERROR_NONE = 0;
 
     /** The request was denied due to system level rate limiting. */
-    public final static int ERROR_FAILED_RATE_LIMIT_SYSTEM = 1;
+    public static final int ERROR_FAILED_RATE_LIMIT_SYSTEM = 1;
 
     /** The request was denied due to process level rate limiting. */
-    public final static int ERROR_FAILED_RATE_LIMIT_PROCESS = 2;
+    public static final int ERROR_FAILED_RATE_LIMIT_PROCESS = 2;
 
     /** The request was denied due to profiling already in progress. */
-    public final static int ERROR_FAILED_PROFILING_IN_PROGRESS = 3;
+    public static final int ERROR_FAILED_PROFILING_IN_PROGRESS = 3;
 
     /** The request was executed and failed for a reason not specified below. */
-    public final static int ERROR_FAILED_EXECUTING = 4;
+    public static final int ERROR_FAILED_EXECUTING = 4;
 
     /** The request was executed but post processing failed and the result was discarded. */
-    public final static int ERROR_FAILED_POST_PROCESSING = 5;
+    public static final int ERROR_FAILED_POST_PROCESSING = 5;
 
     /** The request was executed and failed due to a lack of disk space. */
-    public final static int ERROR_FAILED_NO_DISK_SPACE = 6;
+    public static final int ERROR_FAILED_NO_DISK_SPACE = 6;
 
     /** The request failed due to invalid ProfilingRequest. */
-    public final static int ERROR_FAILED_INVALID_REQUEST = 7;
+    public static final int ERROR_FAILED_INVALID_REQUEST = 7;
 
     /** The request was denied or failed for an unspecified reason. */
-    public final static int ERROR_UNKNOWN = 8;
+    public static final int ERROR_UNKNOWN = 8;
 
     /** @hide */
-    @IntDef(value={
+    @IntDef(value = {
             ERROR_NONE,
             ERROR_FAILED_RATE_LIMIT_SYSTEM,
             ERROR_FAILED_RATE_LIMIT_PROCESS,
@@ -148,10 +148,10 @@ public final class ProfilingResult implements Parcelable {
         return mTag;
     }
 
-  /**
-   * Additional details about failures that occurred, if applicable.
-   */
-  public @Nullable String getErrorMessage() {
-      return mErrorMessage;
-  }
+    /**
+     * Additional details about failures that occurred, if applicable.
+     */
+    public @Nullable String getErrorMessage() {
+        return mErrorMessage;
+    }
 }
