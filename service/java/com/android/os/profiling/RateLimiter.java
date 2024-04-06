@@ -35,8 +35,8 @@ import java.util.Queue;
 public class RateLimiter {
 
     private static final String DEVICE_CONFIG_NAMESPACE = "profiling";
-    private static final String DEVICE_CONFIG_RATE_LIMITER_DISABLE_PROPERTY
-            = "rate_limiter.disabled";
+    private static final String DEVICE_CONFIG_RATE_LIMITER_DISABLE_PROPERTY =
+            "rate_limiter.disabled";
 
     private static final long TIME_1_HOUR_MS = 60 * 60 * 1000;
     private static final long TIME_24_HOUR_MS = 24 * 60 * 60 * 1000;
@@ -64,7 +64,7 @@ public class RateLimiter {
 
     private long mLastPersistedTimestampMs;
 
-    @IntDef(value={
+    @IntDef(value = {
         RATE_LIMIT_RESULT_ALLOWED,
         RATE_LIMIT_RESULT_BLOCKED_PROCESS,
         RATE_LIMIT_RESULT_BLOCKED_SYSTEM,
@@ -157,7 +157,7 @@ public class RateLimiter {
         }
     }
 
-    final static class EntryGroupWrapper {
+    static final class EntryGroupWrapper {
         final Queue<CollectionEntry> mEntries;
         int mTotalCost;
         // uid indexed
@@ -228,7 +228,8 @@ public class RateLimiter {
                     ? RATE_LIMIT_RESULT_ALLOWED : RATE_LIMIT_RESULT_BLOCKED_PROCESS;
         }
     }
-    final static class CollectionEntry {
+
+    static final class CollectionEntry {
         final int mUid;
         final int mCost;
         final Long mTimestamp;

@@ -39,8 +39,8 @@ public final class TracingSession {
     private String mFileName;
     private String mDestinationFileName = null;
 
-  public TracingSession(int profilingType, Bundle params, String appFilePath, int uid,
-            String packageName, String tag, long keyMostSigBits, long keyLeastSigBits) {
+    public TracingSession(int profilingType, Bundle params, String appFilePath, int uid,
+                String packageName, String tag, long keyMostSigBits, long keyLeastSigBits) {
         mProfilingType = profilingType;
         mParams = params;
         mAppFilePath = appFilePath;
@@ -119,13 +119,14 @@ public final class TracingSession {
         return mFileName;
     }
 
-  public String getDestinationFileName(String appRelativePath) {
-      if (mFileName == null) {
-          return null;
-      }
-      if (mDestinationFileName == null) {
-          mDestinationFileName = mAppFilePath + appRelativePath + mFileName;
-      }
-      return mDestinationFileName;
-  }
+    /** Builds the final destination of the file, caches it, and returns it. */
+    public String getDestinationFileName(String appRelativePath) {
+        if (mFileName == null) {
+            return null;
+        }
+        if (mDestinationFileName == null) {
+            mDestinationFileName = mAppFilePath + appRelativePath + mFileName;
+        }
+        return mDestinationFileName;
+    }
 }

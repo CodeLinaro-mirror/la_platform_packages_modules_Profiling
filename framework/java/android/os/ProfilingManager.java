@@ -194,16 +194,16 @@ public final class ProfilingManager {
                         key.getMostSignificantBits(), key.getLeastSignificantBits());
                 if (cancellationSignal != null) {
                     cancellationSignal.setOnCancelListener(
-                        () -> {
-                            synchronized (mLock) {
-                                try {
-                                    service.requestCancel(key.getMostSignificantBits(),
-                                            key.getLeastSignificantBits());
-                                } catch (RemoteException e) {
-                                    // Ignore, request in flight already and we can't stop it.
+                            () -> {
+                                synchronized (mLock) {
+                                    try {
+                                        service.requestCancel(key.getMostSignificantBits(),
+                                                key.getLeastSignificantBits());
+                                    } catch (RemoteException e) {
+                                        // Ignore, request in flight already and we can't stop it.
+                                    }
                                 }
                             }
-                        }
                     );
                 }
             } catch (RemoteException e) {
