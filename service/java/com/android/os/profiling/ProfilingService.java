@@ -105,7 +105,7 @@ public class ProfilingService extends IProfilingService.Stub {
         try {
             if (areAnyTracesRunning()) {
                 processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                    ProfilingResult.ERROR_FAILED_PROFILING_IN_PROGRESS, null, tag, null);
+                        ProfilingResult.ERROR_FAILED_PROFILING_IN_PROGRESS, null, tag, null);
                 return;
             }
         } catch (RuntimeException e) {
@@ -163,8 +163,10 @@ public class ProfilingService extends IProfilingService.Stub {
         String key = (new UUID(keyMostSigBits, keyLeastSigBits)).toString();
         if (!isTraceRunning(key)) {
             // No trace running, nothing to cancel.
-            if (DEBUG) Log.d(TAG, "Exited requestCancel without stopping trace key:" + key
-                    + " due to no trace running.");
+            if (DEBUG) {
+                Log.d(TAG, "Exited requestCancel without stopping trace key:" + key
+                        + " due to no trace running.");
+            }
             return;
         }
         stopProfiling(key);
@@ -262,8 +264,10 @@ public class ProfilingService extends IProfilingService.Stub {
         }
 
         if (session.getProcessResultRunnable() == null) {
-            if (DEBUG) Log.d(TAG,
-                    "No runnable, it either stopped already or is in the process of stopping.");
+            if (DEBUG) {
+                Log.d(TAG,
+                        "No runnable, it either stopped already or is in the process of stopping.");
+            }
             return;
         }
 
@@ -354,8 +358,7 @@ public class ProfilingService extends IProfilingService.Stub {
                 appFileOutStream = new FileOutputStream(pfd.getFileDescriptor());
             } catch (RemoteException e) {
                 // Binder exception getting file.
-                if (DEBUG)
-                    Log.d(TAG, "Binder exception getting file.", e);
+                if (DEBUG) Log.d(TAG, "Binder exception getting file.", e);
                 // TODO: queue this and try next time the uid registers a receiver.
                 failed = true;
             }

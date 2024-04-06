@@ -65,7 +65,7 @@ public class ProfilingServiceManagerTest {
             assertNotNull(serviceBinder);
         } catch (ServiceNotFoundException exception) {
             fail("ServiceNotFoundException should not be thrown "
-                + "since the service should exist in this test");
+                    + "since the service should exist in this test");
         }
     }
 
@@ -81,7 +81,7 @@ public class ProfilingServiceManagerTest {
             throw testException;
         } catch (ServiceNotFoundException exception) {
             assertEquals("No service published for: " + name,
-                exception.getMessage());
+                    exception.getMessage());
         }
     }
 }
