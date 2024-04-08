@@ -2,9 +2,13 @@
 package android.os {
 
   @FlaggedApi("android.os.profiling.telemetry_apis") public final class ProfilingManager {
-    method public void registerForProfilingResults(@NonNull java.util.concurrent.Executor, @NonNull java.util.function.Consumer<android.os.ProfilingResult>);
-    method public void requestProfiling(@NonNull byte[], @Nullable String, @Nullable android.os.CancellationSignal, @Nullable java.util.concurrent.Executor, @Nullable java.util.function.Consumer<android.os.ProfilingResult>);
-    method public void unregisterForProfilingResults(@NonNull java.util.function.Consumer<android.os.ProfilingResult>);
+    method public void registerForAllProfilingResults(@NonNull java.util.concurrent.Executor, @NonNull java.util.function.Consumer<android.os.ProfilingResult>);
+    method public void requestProfiling(int, @Nullable android.os.Bundle, @Nullable String, @Nullable android.os.CancellationSignal, @Nullable java.util.concurrent.Executor, @Nullable java.util.function.Consumer<android.os.ProfilingResult>);
+    method public void unregisterForAllProfilingResults(@Nullable java.util.function.Consumer<android.os.ProfilingResult>);
+    field public static final int PROFILING_TYPE_HEAP_PROFILE = 2; // 0x2
+    field public static final int PROFILING_TYPE_JAVA_HEAP_DUMP = 1; // 0x1
+    field public static final int PROFILING_TYPE_STACK_SAMPLING = 3; // 0x3
+    field public static final int PROFILING_TYPE_SYSTEM_TRACE = 4; // 0x4
   }
 
   @FlaggedApi("android.os.profiling.telemetry_apis") public final class ProfilingResult implements android.os.Parcelable {

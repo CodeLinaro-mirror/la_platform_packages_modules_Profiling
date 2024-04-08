@@ -19,27 +19,47 @@ package android.os.profiling;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.Context;
+import android.icu.text.SimpleDateFormat;
+import android.icu.util.Calendar;
+import android.icu.util.TimeZone;
 import android.os.Binder;
-import android.os.IProfilingService;
-import android.os.OutcomeReceiver;
-import android.os.ProfilingRequest;
-import android.os.ProfilingResult;
+import android.os.Bundle;
+import android.os.FileUtils;
+import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.IProfilingResultCallback;
+import android.os.IProfilingService;
+import android.os.Looper;
+import android.os.OutcomeReceiver;
+import android.os.ParcelFileDescriptor;
+import android.os.ProfilingManager;
+import android.os.ProfilingResult;
 import android.os.RemoteException;
+import android.text.TextUtils;
 import android.util.Log;
+import android.util.ArrayMap;
 import android.util.SparseArray;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.server.SystemService;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.FileDescriptor;
 import java.io.IOException;
-import java.lang.Process;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.lang.Exception;
 import java.lang.IllegalArgumentException;
+import java.lang.Process;
 import java.lang.ProcessBuilder;
+import java.lang.Runnable;
 import java.lang.RuntimeException;
 import java.nio.charset.Charset;
-import java.util.Map;
+import java.util.Date;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Executor;
@@ -48,59 +68,66 @@ public class ProfilingService extends IProfilingService.Stub {
     private static final String TAG = ProfilingService.class.getSimpleName();
     private static final boolean DEBUG = false;
 
-    private static final String TEMP_TRACE_PATH = "/data/misc/perfetto-traces/trace_";
-    private static final String TRACE_SUFFIX = ".perfetto-trace";
+    private static final String TEMP_TRACE_PATH = "/data/misc/perfetto-traces/profiling/";
+    private static final String OUTPUT_FILE_RELATIVE_PATH = "/profiling/";
+    private static final String OUTPUT_FILE_SECTION_SEPARATOR = "_";
+    private static final String OUTPUT_FILE_PREFIX = "profile";
+    // Keep in sync with {@link ProfilingFrameworkTests}.
+    private static final String OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX = ".perfetto-java-heap-dump";
+    private static final String OUTPUT_FILE_HEAP_PROFILE_SUFFIX = ".perfetto-heap-profile";
+    private static final String OUTPUT_FILE_STACK_SAMPLING_SUFFIX = ".perfetto-stack-sample";
+    private static final String OUTPUT_FILE_TRACE_SUFFIX = ".perfetto-trace";
+
+    private static final int TAG_MAX_CHARS_FOR_FILENAME = 20;
 
     private static final int PERFETTO_DESTROY_DEFAULT_TIMEOUT_MS = 10 * 1000;
 
     private final int PERFETTO_DESTROY_TIMEOUT_MS;
 
     private final Context mContext;
+    @VisibleForTesting public RateLimiter mRateLimiter = null;
+
+    private final HandlerThread mHandlerThread = new HandlerThread("ProfilingService");
+    private Handler mHandler;
+
+    private Calendar mCalendar = null;
+    private SimpleDateFormat mDateFormat = null;
 
     // uid indexed collecion of JNI callbacks for results.
-    private @Nullable SparseArray<IProfilingResultCallback> mResultCallbacks = new SparseArray<>();
+    @VisibleForTesting
+    public SparseArray<IProfilingResultCallback> mResultCallbacks = new SparseArray<>();
 
-    private @Nullable Process mActiveTrace = null;
+    // Request UUID key indexed storage of active tracing sessions. Currently only 1 active session
+    // is supported at a time, but this will be used in future to support multiple.
+    @VisibleForTesting
+    public ArrayMap<String, TracingSession> mTracingSessions = new ArrayMap<>();
 
     @VisibleForTesting
     public ProfilingService(Context context) {
         mContext = context;
-        RateLimiter.loadFromDisk();
         PERFETTO_DESTROY_TIMEOUT_MS = PERFETTO_DESTROY_DEFAULT_TIMEOUT_MS;
+        mHandlerThread.start();
     }
 
     /**
      * This method validates the request, arguments, whether the app is allowed to profile now,
      * and if so, starts the profiling.
      */
-    public void requestProfiling(byte[] profilingRequestBytes, String tag,
+    public void requestProfiling(int profilingType, Bundle params, String filePath, String tag,
             long keyMostSigBits, long keyLeastSigBits) {
         int uid = Binder.getCallingUid();
 
         // Check if we're running another trace so we don't run multiple at once.
         try {
-            if (isTraceRunning()) {
+            if (areAnyTracesRunning()) {
                 processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                    ProfilingResult.ERROR_FAILED_PROFILING_IN_PROGRESS, null, tag,
-                    null);
+                    ProfilingResult.ERROR_FAILED_PROFILING_IN_PROGRESS, null, tag, null);
                 return;
             }
-        } catch (Exception e) {
-            if (DEBUG) Log.d(TAG, "Perfetto error", e);
+        } catch (RuntimeException e) {
+            if (DEBUG) Log.d(TAG, "Error communicating with perfetto", e);
             processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                    ProfilingResult.ERROR_UNKNOWN, null, tag, "Perfetto error");
-            return;
-        }
-
-        // Process the request from the byte array it was provided as.
-        ProfilingRequest request;
-        try {
-            request = ProfilingRequest.parseFrom(profilingRequestBytes);
-        } catch (Exception e) {
-            if (DEBUG) Log.d(TAG, "Exception parsing request", e);
-            processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                    ProfilingResult.ERROR_FAILED_INVALID_REQUEST, null, tag,
-                    "Request parsing failed");
+                    ProfilingResult.ERROR_UNKNOWN, null, tag, "Error communicating with perfetto");
             return;
         }
 
@@ -114,12 +141,15 @@ public class ProfilingService extends IProfilingService.Stub {
         }
 
         // Check with rate limiter if this request is allowed.
-        final int status = RateLimiter.isProfilingRequestAllowed(Binder.getCallingUid(), request);
+        final int status = getRateLimiter().isProfilingRequestAllowed(Binder.getCallingUid(),
+                profilingType, params);
+        if (DEBUG) Log.d(TAG, "Rate limiter status: " + status);
         if (status == RateLimiter.RATE_LIMIT_RESULT_ALLOWED) {
             // Rate limiter approved, try to start the request.
             try {
-                startProfiling(Configs.generateConfigForRequest(request, packageName), uid,
-                        packageName, keyMostSigBits, keyLeastSigBits, tag);
+                TracingSession session = new TracingSession(profilingType, params, filePath, uid,
+                        packageName, tag, keyMostSigBits, keyLeastSigBits);
+                startProfiling(session);
             } catch (IllegalArgumentException e) {
                 // Issue with the request. Apps fault.
                 if (DEBUG) Log.d(TAG, "Invalid request", e);
@@ -146,12 +176,21 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     public void requestCancel(long keyMostSigBits, long keyLeastSigBits) {
-        if (!isTraceRunning()) {
+        String key = (new UUID(keyMostSigBits, keyLeastSigBits)).toString();
+        if (!isTraceRunning(key)) {
             // No trace running, nothing to cancel.
-            if (DEBUG) Log.d(TAG, "Exited requestCancel without stopping due to no trace running.");
+            if (DEBUG) Log.d(TAG, "Exited requestCancel without stopping trace key:" + key
+                    + " due to no trace running.");
             return;
         }
-        stopProfiling();
+        stopProfiling(key);
+    }
+
+    private void processResultCallback(TracingSession session, int status, @Nullable String error) {
+        processResultCallback(session.getUid(), session.getKeyMostSigBits(),
+                session.getKeyLeastSigBits(), status,
+                session.getDestinationFileName(OUTPUT_FILE_RELATIVE_PATH),
+                session.getTag(), error);
     }
 
     private void processResultCallback(int uid, long keyMostSigBits, long keyLeastSigBits,
@@ -162,7 +201,7 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
         try {
-            mResultCallbacks.get(uid).sendResult(keyMostSigBits, keyLeastSigBits, status, filePath,
+            mResultCallbacks.get(uid).sendResult(filePath, keyMostSigBits, keyLeastSigBits, status,
                     tag, error);
         } catch (RemoteException e) {
             // Failed to send result. Ignore.
@@ -170,67 +209,301 @@ public class ProfilingService extends IProfilingService.Stub {
         }
     }
 
-    private void startProfiling(String config, int uid, String packageName, long keyMostSigBits,
-            long keyLeastSigBits, @Nullable String tag) throws RuntimeException {
-        String key = (new UUID(keyMostSigBits, keyLeastSigBits)).toString();
-        String filePath = TEMP_TRACE_PATH + key + TRACE_SUFFIX;
+    private void startProfiling(final TracingSession session)
+            throws RuntimeException {
+        // Parse config and post processing delay out of request first, if we can't get these
+        // we can't start the trace.
+        int postProcessingDelayMs;
+        byte[] config;
+        String suffix;
+        String tag;
         try {
-            ProcessBuilder pb = new ProcessBuilder("/system/bin/perfetto", "-o", filePath,
-                    "-c", "-", "--txt");
-            mActiveTrace = pb.start();
-            mActiveTrace.getOutputStream().write(config.getBytes(Charset.forName("UTF-8")));
-            mActiveTrace.getOutputStream().close();
-        } catch (Exception e) {
-            processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                    ProfilingResult.ERROR_FAILED_EXECUTING, null, tag, null);
-            throw new RuntimeException(e);
+            postProcessingDelayMs = session.getPostProcessingScheduleDelayMs();
+            config = session.getConfigBytes();
+            suffix = getFileSuffixForRequest(session.getProfilingType());
+
+            // Create a version of tag that is non null, containing only valid filename chars,
+            // and shortened to class defined max size.
+            tag = session.getTag() == null
+                    ? "" : removeInvalidFilenameChars(session.getTag());
+            if (tag.length() > TAG_MAX_CHARS_FOR_FILENAME) {
+                tag = tag.substring(0, TAG_MAX_CHARS_FOR_FILENAME);
+            }
+        } catch (IllegalArgumentException e) {
+            // Request couldn't be processed. This shouldn't happen.
+            if (DEBUG) Log.d(TAG, "Request couldn't be processed", e);
+            processResultCallback(session, ProfilingResult.ERROR_FAILED_INVALID_REQUEST,
+                    e.getMessage());
+            return;
+
         }
-        // If we got here then the trace has been started successfully.
-        spawnRedactionProcess(filePath, uid, packageName, keyMostSigBits, keyLeastSigBits, tag);
+
+        // Now start the trace.
+        session.setFileName(OUTPUT_FILE_PREFIX
+                + (tag.isEmpty() ? "" : OUTPUT_FILE_SECTION_SEPARATOR + tag)
+                + OUTPUT_FILE_SECTION_SEPARATOR + getFormattedDate() + suffix);
+        try {
+            ProcessBuilder pb = new ProcessBuilder("/system/bin/perfetto", "-o",
+                    TEMP_TRACE_PATH + session.getFileName(), "-c", "-", "--txt");
+            Process activeTrace = pb.start();
+            activeTrace.getOutputStream().write(config);
+            activeTrace.getOutputStream().close();
+            // If we made it this far the trace is running, save the session.
+            session.setActiveTrace(activeTrace);
+            mTracingSessions.put(session.getKey(), session);
+        } catch (Exception e) {
+            // Catch all exceptions related to starting process as they'll all be handled similarly.
+            if (DEBUG) Log.d(TAG, "Trace couldn't be started", e);
+            processResultCallback(session, ProfilingResult.ERROR_FAILED_EXECUTING, null);
+            return;
+        }
+
+        // Create post process runnable, store it, and schedule it.
+        session.setProcessResultRunnable(new Runnable() {
+            @Override
+            public void run() {
+                // TODO: confirm perfetto is done and reschedule if not
+                session.setProcessResultRunnable(null);
+                processResult(session);
+            }
+        });
+        getHandler().postDelayed(session.getProcessResultRunnable(), postProcessingDelayMs);
     }
 
-    public void stopProfiling() throws RuntimeException {
-        if (mActiveTrace == null) {
+    private void stopProfiling(String key) throws RuntimeException {
+        TracingSession session = mTracingSessions.get(key);
+        if (session == null || session.getActiveTrace() == null) {
             if (DEBUG) Log.d(TAG, "No active trace, nothing to stop.");
             return;
         }
 
-        mActiveTrace.destroyForcibly();
+        if (session.getProcessResultRunnable() == null) {
+            if (DEBUG) Log.d(TAG,
+                    "No runnable, it either stopped already or is in the process of stopping.");
+            return;
+        }
+
+        // Remove the post processing runnable set with the default timeout. After stopping use the
+        // same runnable to process immediately.
+        getHandler().removeCallbacks(session.getProcessResultRunnable());
+
+        // End the tracing session.
+        session.getActiveTrace().destroyForcibly();
         try {
-            if (!mActiveTrace.waitFor(PERFETTO_DESTROY_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+            if (!session.getActiveTrace().waitFor(PERFETTO_DESTROY_TIMEOUT_MS,
+                    TimeUnit.MILLISECONDS)) {
                 if (DEBUG) Log.d(TAG, "Stopping of running trace process timed out.");
                 throw new RuntimeException("topping of running trace process timed out.");
             }
-        } catch (Exception e) {
+        } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-        // TODO: b/293957254 spawn redaction if results available
-        mActiveTrace = null;
+
+        // If we made it here the result is ready, now run the post processing runnable.
+        getHandler().post(session.getProcessResultRunnable());
     }
 
-    public boolean isTraceRunning() throws RuntimeException {
-        if (mActiveTrace == null) {
+    public boolean areAnyTracesRunning() throws RuntimeException {
+        for (int i = 0; i < mTracingSessions.size(); i++) {
+            if (isTraceRunning(mTracingSessions.keyAt(i))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean isTraceRunning(String key) throws RuntimeException {
+        TracingSession session = mTracingSessions.get(key);
+        if (session == null || session.getActiveTrace() == null) {
             // No subprocess, nothing running.
             if (DEBUG) Log.d(TAG, "No subprocess, nothing running.");
             return false;
-        } else if (mActiveTrace.isAlive()) {
+        } else if (session.getActiveTrace().isAlive()) {
             // Subprocess exists and is alive.
             if (DEBUG) Log.d(TAG, "Subprocess exists and is alive, trace is running.");
             return true;
         } else {
             // Subprocess exists but is not alive, nothing running. Clean up before returning.
             if (DEBUG) Log.d(TAG, "Subprocess exists but is not alive, nothing running.");
-            stopProfiling();
+            stopProfiling(key);
             if (DEBUG) Log.d(TAG, "Non running process cleaned up.");
             return false;
         }
     }
 
-    private void spawnRedactionProcess(String filePath, int uid, String packageName,
-            long keyMostSigBits, long keyLeastSigBits, String tag) {
+    /**
+     * Move the result file from temporary storage to the apps internal storage.
+     *
+     * This is done by requesting {@link ProfilingManager} create a file from within app context
+     * and return a {@link ParcelFileDescriptor} to copy the temporary file contents to.
+     * Finally, delete the temporary file.
+     *
+     * @return true if file was successfully copied and cleaned up, false if not.
+     */
+    private boolean moveFileToAppStorage(TracingSession session) {
+        if (!mResultCallbacks.contains(session.getUid())) {
+            // No callback, nowhere to notify with result.
+            if (DEBUG) Log.d(TAG, "No callback to ProfilingManager, callback dropped.");
+            // TODO: queue this and try next time the uid registers a receiver.
+            // TODO: run a cleanup of old results based on a max size and time.
+            return false;
+        }
+
+        // Setup file streams.
+        File tempPerfettoFile = new File(TEMP_TRACE_PATH + session.getFileName());
+        FileInputStream tempPerfettoFileInStream = null;
+        FileOutputStream appFileOutStream = null;
+        ParcelFileDescriptor pfd = null;
+        boolean failed = false;
+        try {
+            tempPerfettoFileInStream = new FileInputStream(tempPerfettoFile);
+        } catch (IOException e) {
+            // IO Exception opening temp perfetto file. No result.
+            if (DEBUG) Log.d(TAG, "Exception opening temp perfetto file.", e);
+            failed = true;
+        }
+        if (!failed) {
+            try {
+                pfd = mResultCallbacks.get(session.getUid())
+                        .generateFile(session.getAppFilePath() + OUTPUT_FILE_RELATIVE_PATH,
+                            session.getFileName());
+                appFileOutStream = new FileOutputStream(pfd.getFileDescriptor());
+            } catch (RemoteException e) {
+                // Binder exception getting file.
+                if (DEBUG)
+                    Log.d(TAG, "Binder exception getting file.", e);
+                // TODO: queue this and try next time the uid registers a receiver.
+                failed = true;
+            }
+        }
+
+        // Now copy the file over.
+        if (!failed) {
+            try {
+                FileUtils.copy(tempPerfettoFileInStream, appFileOutStream);
+            } catch (IOException e) {
+                // Exception writing to local app file.
+                if (DEBUG)  Log.d(TAG, "Exception writing to local app file.", e);
+                // TODO: queue this and try again later.
+                failed = true;
+            }
+        }
+
+        // Finally delete the temp file.
+        if (!failed) {
+            try {
+                tempPerfettoFile.delete();
+            } catch (SecurityException e) {
+                // Exception deleting temp file.
+                if (DEBUG) Log.d(TAG, "Permissions exception deleting temp file.", e);
+            }
+        }
+
+        // Now cleanup.
+        if (tempPerfettoFileInStream != null) {
+            try {
+                tempPerfettoFileInStream.close();
+            } catch (IOException e) {
+                if (DEBUG) Log.d(TAG, "Failed to close temp perfetto input stream.", e);
+            }
+        }
+        if (pfd != null) {
+            try {
+                pfd.close();
+            } catch (IOException e) {
+                if (DEBUG) Log.d(TAG, "Failed to close app file output file FileDescriptor.", e);
+            }
+        }
+        if (appFileOutStream != null) {
+            try {
+                appFileOutStream.close();
+            } catch (IOException e) {
+                if (DEBUG) Log.d(TAG, "Failed to close app file output file stream.", e);
+            }
+        }
+
+        return !failed;
+    }
+
+    private void processResult(TracingSession session) {
         // todo: start redaction in its own process.
-        processResultCallback(uid, keyMostSigBits, keyLeastSigBits, ProfilingResult.ERROR_NONE,
-                filePath, tag, null);
+        boolean success = moveFileToAppStorage(session);
+        if (success) {
+            processResultCallback(session, ProfilingResult.ERROR_NONE, null);
+            mTracingSessions.remove(session.getKey());
+        } else {
+            // Couldn't move file. File is still in temp directory and can be tried later.
+            // TODO queue and try later when another listener is registered to this uid.
+            if (DEBUG) Log.d(TAG, "Couldn't move file to app storage.");
+            processResultCallback(session, ProfilingResult.ERROR_FAILED_POST_PROCESSING, null);
+        }
+    }
+
+    private Handler getHandler() {
+        if (mHandler == null) {
+            mHandler = new Handler(mHandlerThread.getLooper());
+        }
+        return mHandler;
+    }
+
+    private RateLimiter getRateLimiter() {
+        if (mRateLimiter == null) {
+            mRateLimiter = new RateLimiter(mContext);
+        }
+        return mRateLimiter;
+    }
+
+    private String getFormattedDate() {
+        if (mCalendar == null) {
+            mCalendar = Calendar.getInstance(TimeZone.getTimeZone("GMT"));
+        }
+        if (mDateFormat == null) {
+            mDateFormat = new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.US);
+        }
+        mCalendar.setTimeInMillis(System.currentTimeMillis());
+        return mDateFormat.format(mCalendar.getTime());
+    }
+
+    private static String getFileSuffixForRequest(int profilingType) {
+        switch (profilingType) {
+            case ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP:
+                return OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX;
+            case ProfilingManager.PROFILING_TYPE_HEAP_PROFILE:
+                return OUTPUT_FILE_HEAP_PROFILE_SUFFIX;
+            case ProfilingManager.PROFILING_TYPE_STACK_SAMPLING:
+                return OUTPUT_FILE_STACK_SAMPLING_SUFFIX;
+            case ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE:
+                return OUTPUT_FILE_TRACE_SUFFIX;
+            default:
+                throw new IllegalArgumentException("Invalid profiling type");
+        }
+    }
+
+    private static String removeInvalidFilenameChars(String original) {
+        if (TextUtils.isEmpty(original)) {
+            return "";
+        }
+        final StringBuilder sb = new StringBuilder(original.length());
+        for (int i = 0; i < original.length(); i++) {
+            final char c = Character.toLowerCase(original.charAt(i));
+            if (isValidFilenameChar(c)) {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
+    }
+
+    private static boolean isValidFilenameChar(char c) {
+        if (c >= 'a' && c <= 'z') {
+            return true;
+        }
+        if (c >= '0' && c <= '9') {
+            return true;
+        }
+        if (c == '-') {
+            return true;
+        }
+        return false;
     }
 
     public static final class Lifecycle extends SystemService {

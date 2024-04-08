@@ -16,20 +16,13 @@
 
 package android.profiling.cts;
 
-import android.os.IBinder;
-import android.os.IProfilingResultCallback;
-import android.os.OutcomeReceiver;
-import android.os.ParcelUuid;
-import android.os.ProfilingRequest;
-import android.os.ProfilingRequest.SystemTrace;
-import android.os.ProfilingResult;
-import android.os.RemoteException;
-import android.util.Log;
+import android.os.Bundle;
 
 import java.util.concurrent.Executor;
-import java.util.function.Consumer;
 
 public final class ProfilingTestUtils {
+
+    private static String KEY_DURATION_MS = "KEY_DURATION_MS";
 
     static class ImmediateExecutor implements Executor {
         public void execute(Runnable r) {
@@ -37,12 +30,9 @@ public final class ProfilingTestUtils {
         }
     }
 
-    public static byte[] getSystemTraceProfilingRequest() {
-        SystemTrace systemTrace = ProfilingRequest.SystemTrace.newBuilder().build();
-        ProfilingRequest.Config profilingRequestConfig =
-                ProfilingRequest.Config.newBuilder().setSystemTrace(systemTrace).build();
-        ProfilingRequest profilingRequest =
-                ProfilingRequest.newBuilder().setConfig(profilingRequestConfig).build();
-        return profilingRequest.toByteArray();
+    static Bundle getOneSecondDurationParamBundle() {
+        Bundle params = new Bundle();
+        params.putInt(KEY_DURATION_MS, 1000);
+        return params;
     }
 }
