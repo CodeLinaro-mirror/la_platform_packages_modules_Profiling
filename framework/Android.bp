@@ -42,6 +42,10 @@ java_sdk_library {
         "androidx.annotation_annotation",
     ],
 
+    aconfig_declarations: [
+        "android.os.profiling.flags-aconfig",
+    ],
+
     static_libs: [
         "modules-utils-build",
         "android.os.profiling.flags-aconfig-java",
