@@ -108,6 +108,13 @@ public final class Configs {
             + "\n"
             + "data_sources {\n"
             + "  config {\n"
+            + "    name: \"android.packages_list\"\n"
+            + "    target_buffer: 0\n"
+            + "  }\n"
+            + "}\n"
+            + "\n"
+            + "data_sources {\n"
+            + "  config {\n"
             + "    name: \"linux.ftrace\"\n"
             + "    target_buffer: 0\n"
             + "    ftrace_config {\n"
@@ -274,16 +281,17 @@ public final class Configs {
 
             // System trace
             case ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE:
+                if (!Flags.redactionEnabled()) {
+                    throw new IllegalArgumentException("Trace is not currently supported");
+                }
                 int systemTraceDuration = getAndRemove(ProfilingManager.KEY_DURATION_MS,
                         sDefaultTraceDurationMs, paramsCopy);
 
                 confirmEmptyOrThrow(paramsCopy);
 
-                // TODO: remove when redaction is hooked up b/327423523
-                throw new IllegalArgumentException("Trace is not supported until redaction lands");
-                // return CONFIG_SYSTEM_TRACE
-                //         .replace(STUB_PACKAGE_NAME, packageName)
-                //         .replace(STUB_DURATION, String.valueOf(systemTraceDuration));
+                return CONFIG_SYSTEM_TRACE
+                        .replace(STUB_PACKAGE_NAME, packageName)
+                        .replace(STUB_DURATION, String.valueOf(systemTraceDuration));
 
             // Invalid type
             default:

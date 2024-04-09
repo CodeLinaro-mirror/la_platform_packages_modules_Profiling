@@ -230,7 +230,7 @@ public final class ProfilingFrameworkTests {
      * is in place.
      */
     @Test
-    @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
+    @RequiresFlagsEnabled({Flags.FLAG_TELEMETRY_APIS, Flags.FLAG_REDACTION_ENABLED})
     public void testRequestSystemTraceSuccess() {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
@@ -248,9 +248,8 @@ public final class ProfilingFrameworkTests {
         // Wait until callback#onAccept is triggered so we can confirm the result.
         waitForCallback(callback);
 
-        // Assert trace failed as it's not yet supported.
-        // TODO: b/327423523 update when redaction is in place.
-        assertEquals(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, callback.mResult.getErrorCode());
+        // Assert trace has succeeded.
+        confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_TRACE_SUFFIX);
     }
 
     /** Test that cancelling stops collection and still receives correct result. */
