@@ -1,0 +1,18 @@
+syntax = "proto2";
+
+package android.os;
+
+option java_outer_classname = "RateLimiterProto";
+option java_multiple_files = true;
+
+message RateLimiterRecordsWrapper {
+  message EntryGroupWrapper {
+    message Entry {
+      required int32 uid = 1;
+      required int32 cost = 2;
+      required int64 timestamp = 3;
+    }
+    repeated Entry entries = 1;
+  }
+  required EntryGroupWrapper records = 1;
+}

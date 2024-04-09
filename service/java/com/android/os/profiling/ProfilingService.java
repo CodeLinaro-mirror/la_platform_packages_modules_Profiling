@@ -611,7 +611,12 @@ public class ProfilingService extends IProfilingService.Stub {
 
     private RateLimiter getRateLimiter() {
         if (mRateLimiter == null) {
-            mRateLimiter = new RateLimiter(mContext);
+            mRateLimiter = new RateLimiter(new RateLimiter.HandlerCallback() {
+                @Override
+                public Handler obtainHandler() {
+                    return getHandler();
+                }
+            });
         }
         return mRateLimiter;
     }
