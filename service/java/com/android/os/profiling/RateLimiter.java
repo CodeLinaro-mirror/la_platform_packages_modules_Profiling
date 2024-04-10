@@ -17,13 +17,11 @@
 package android.os.profiling;
 
 import android.annotation.IntDef;
-import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.Context;
 import android.os.Bundle;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
-import android.provider.DeviceConfig;
 import android.util.SparseIntArray;
 
 import com.android.internal.annotations.GuardedBy;
@@ -125,18 +123,6 @@ public class RateLimiter {
             mRateLimiterDisabled = DeviceConfigHelper.getTestBoolean(
                     DeviceConfigHelper.RATE_LIMITER_DISABLE_PROPERTY, false);
         }
-        // Now subscribe to updates on rate limiter enforcing config.
-        DeviceConfig.addOnPropertiesChangedListener(DeviceConfigHelper.NAMESPACE_TESTING,
-                mContext.getMainExecutor(), new DeviceConfig.OnPropertiesChangedListener() {
-                    @Override
-                    public void onPropertiesChanged(@NonNull DeviceConfig.Properties properties) {
-                        synchronized (mLock) {
-                            mRateLimiterDisabled = properties.getBoolean(
-                                    DeviceConfigHelper.RATE_LIMITER_DISABLE_PROPERTY,
-                                    mRateLimiterDisabled);
-                        }
-                    }
-                });
     }
 
     public @RateLimitResult int isProfilingRequestAllowed(int uid,
@@ -197,6 +183,13 @@ public class RateLimiter {
 
     void loadFromDisk() {
         // TODO: b/293957254
+    }
+
+    /** Update the disable rate limiter flag. */
+    public void setRateLimiterDisabled(boolean rateLimiterDisabled) {
+        synchronized (mLock) {
+            mRateLimiterDisabled = rateLimiterDisabled;
+        }
     }
 
     static int statusToResult(@RateLimitResult int resultStatus) {
