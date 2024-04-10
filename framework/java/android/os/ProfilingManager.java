@@ -227,6 +227,14 @@ public final class ProfilingManager {
             @NonNull Executor executor,
             @NonNull Consumer<ProfilingResult> listener) {
         synchronized (mLock) {
+            if (getIProfilingServiceLocked() == null) {
+                // If the binder object was not successfully registered then this listener will
+                // not ever be triggered.
+                executor.execute(() -> listener.accept(new ProfilingResult(
+                        ProfilingResult.ERROR_UNKNOWN, null, null,
+                        "Binder exception processing request")));
+                return;
+            }
             mCallbacks.add(new ProfilingRequestCallbackWrapper(executor, listener, null));
         }
     }
@@ -290,16 +298,19 @@ public final class ProfilingManager {
                 /**
                  * Called by {@link ProfilingService} when a result is ready,
                  * both for success and failure.
+                 *
+                 * @return whether there are additional callbacks backed by this binder object.
                  */
                 @Override
-                public void sendResult(@Nullable String resultFile, long keyMostSigBits,
+                public boolean sendResult(@Nullable String resultFile, long keyMostSigBits,
                         long keyLeastSigBits, int status, @Nullable String tag,
                         @Nullable String error) {
                     synchronized (mLock) {
                         if (mCallbacks.isEmpty()) {
                             // This shouldn't happen - no callbacks, nowhere to report this result.
                             if (DEBUG) Log.d(TAG, "No callbacks");
-                            return;
+                            mProfilingService = null;
+                            return false;
                         }
 
                         // This shouldn't be true, but if the file is null ensure the status
@@ -326,7 +337,7 @@ public final class ProfilingManager {
                                 continue;
                             }
 
-                            // TODO: check resultFile is valid before returning
+                            // TODO: b/337017299 - check resultFile is valid before returning
                             // Now trigger the callback for any listener that doesn't belong to
                             // another request.
                             wrapper.mExecutor.execute(() -> wrapper.mListener.accept(
@@ -339,6 +350,12 @@ public final class ProfilingManager {
                         if (removeListenerPos != -1) {
                             mCallbacks.remove(removeListenerPos);
                         }
+
+                        if (mCallbacks.isEmpty()) {
+                            mProfilingService = null;
+                            return false;
+                        }
+                        return true;
                     }
                 }
 
