@@ -73,7 +73,8 @@ public class ProfilingService extends IProfilingService.Stub {
 
     private static final int REDACTION_CHECK_FREQUENCY_MS = 2 * 1000;
 
-    private final int PERFETTO_DESTROY_TIMEOUT_MS;
+    // Timeout for Perfetto process to successfully stop after we try to stop it.
+    private int mPerfettoDestroyTimeoutMs;
 
     private final Context mContext;
     @VisibleForTesting public RateLimiter mRateLimiter = null;
@@ -96,7 +97,11 @@ public class ProfilingService extends IProfilingService.Stub {
     @VisibleForTesting
     public ProfilingService(Context context) {
         mContext = context;
-        PERFETTO_DESTROY_TIMEOUT_MS = PERFETTO_DESTROY_DEFAULT_TIMEOUT_MS;
+
+        mPerfettoDestroyTimeoutMs = DeviceConfigHelper.getInt(
+                DeviceConfigHelper.PERFETTO_DESTROY_TIMEOUT_MS,
+                PERFETTO_DESTROY_DEFAULT_TIMEOUT_MS);
+
         mHandlerThread.start();
     }
 
@@ -142,8 +147,13 @@ public class ProfilingService extends IProfilingService.Stub {
                         packageName, tag, keyMostSigBits, keyLeastSigBits);
                 startProfiling(session);
             } catch (IllegalArgumentException e) {
+                // This should not happen, it should have been caught when checking rate limiter.
                 // Issue with the request. Apps fault.
-                if (DEBUG) Log.d(TAG, "Invalid request", e);
+                if (DEBUG) {
+                    Log.d(TAG,
+                            "Invalid request at config generation. This should not have happened.",
+                            e);
+                }
                 processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
                         ProfilingResult.ERROR_FAILED_INVALID_REQUEST, null, tag, e.getMessage());
                 return;
@@ -293,7 +303,7 @@ public class ProfilingService extends IProfilingService.Stub {
         // End the tracing session.
         session.getActiveTrace().destroyForcibly();
         try {
-            if (!session.getActiveTrace().waitFor(PERFETTO_DESTROY_TIMEOUT_MS,
+            if (!session.getActiveTrace().waitFor(mPerfettoDestroyTimeoutMs,
                     TimeUnit.MILLISECONDS)) {
                 if (DEBUG) Log.d(TAG, "Stopping of running trace process timed out.");
                 throw new RuntimeException("topping of running trace process timed out.");
