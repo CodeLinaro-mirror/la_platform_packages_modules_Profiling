@@ -16,7 +16,12 @@
 
 package android.profiling.cts;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import android.content.Context;
 import android.os.Bundle;
@@ -29,19 +34,16 @@ import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
 
 import androidx.test.core.app.ApplicationProvider;
+import androidx.test.filters.LargeTest;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.compatibility.common.util.SystemUtil;
 
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
-import org.junit.runner.Description;
 import org.junit.runner.RunWith;
-import org.junit.runners.model.Statement;
 import org.testng.TestException;
 
 import java.io.File;
@@ -84,6 +86,10 @@ public final class ProfilingFrameworkTests {
     public void setup() {
         Context context = ApplicationProvider.getApplicationContext();
         mProfilingManager = context.getSystemService(ProfilingManager.class);
+
+        // This permission is required for Headless (HSUM) tests, including Auto.
+        InstrumentationRegistry.getInstrumentation().getUiAutomation().adoptShellPermissionIdentity(
+                android.Manifest.permission.INTERACT_ACROSS_USERS_FULL);
 
         // Disable the rate limiter, we're not testing that in any of these tests.
         disableRateLimiter();
@@ -148,6 +154,7 @@ public final class ProfilingFrameworkTests {
 
     /** Test that profiling request for java heap dump succeeds and returns a non-empty file. */
     @Test
+    @LargeTest
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
     public void testRequestJavaHeapDumpSuccess() {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
@@ -223,7 +230,7 @@ public final class ProfilingFrameworkTests {
      * is in place.
      */
     @Test
-    @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
+    @RequiresFlagsEnabled({Flags.FLAG_TELEMETRY_APIS, Flags.FLAG_REDACTION_ENABLED})
     public void testRequestSystemTraceSuccess() {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
@@ -241,9 +248,8 @@ public final class ProfilingFrameworkTests {
         // Wait until callback#onAccept is triggered so we can confirm the result.
         waitForCallback(callback);
 
-        // Assert trace failed as it's not yet supported.
-        // TODO: b/327423523 update when redaction is in place.
-        assertEquals(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, callback.mResult.getErrorCode());
+        // Assert trace has succeeded.
+        confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_TRACE_SUFFIX);
     }
 
     /** Test that cancelling stops collection and still receives correct result. */

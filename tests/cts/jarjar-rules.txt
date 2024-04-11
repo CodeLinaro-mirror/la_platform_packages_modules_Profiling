@@ -1,2 +1,3 @@
 rule com.android.modules.utils.** com.android.internal.profiling.@0
 rule com.google.protobuf.** android.os.protobuf.@1
+

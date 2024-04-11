@@ -21,7 +21,6 @@ import android.annotation.SystemApi;
 import android.annotation.SystemApi.Client;
 import android.app.SystemServiceRegistry;
 import android.content.Context;
-import android.os.ProfilingManager;
 import android.os.profiling.Flags;
 
 /**
