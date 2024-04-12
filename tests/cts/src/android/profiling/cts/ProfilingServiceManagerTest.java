@@ -20,12 +20,12 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
 
-import android.os.IBinder;
 import android.os.Flags;
+import android.os.IBinder;
 import android.os.ProfilingFrameworkInitializer;
+import android.os.ProfilingServiceManager;
 import android.os.ProfilingServiceManager.ServiceNotFoundException;
 import android.os.ProfilingServiceManager.ServiceRegisterer;
-import android.os.ProfilingServiceManager;
 import android.platform.test.annotations.RequiresFlagsEnabled;
 
 import androidx.test.runner.AndroidJUnit4;
@@ -65,7 +65,7 @@ public class ProfilingServiceManagerTest {
             assertNotNull(serviceBinder);
         } catch (ServiceNotFoundException exception) {
             fail("ServiceNotFoundException should not be thrown "
-                + "since the service should exist in this test");
+                    + "since the service should exist in this test");
         }
     }
 
@@ -81,7 +81,7 @@ public class ProfilingServiceManagerTest {
             throw testException;
         } catch (ServiceNotFoundException exception) {
             assertEquals("No service published for: " + name,
-                exception.getMessage());
+                    exception.getMessage());
         }
     }
 }
