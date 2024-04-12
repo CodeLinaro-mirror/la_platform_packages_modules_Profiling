@@ -399,11 +399,12 @@ public final class ProfilingFrameworkTests {
 
     /** Disable the rate limiter and wait long enough for the update to be picked up. */
     private void disableRateLimiter() {
-        SystemUtil.runShellCommand("device_config put profiling rate_limiter.disabled true");
+        SystemUtil.runShellCommand(
+                "device_config put profiling_testing rate_limiter.disabled true");
         for (int i = 0; i < RATE_LIMITER_WAIT_TIME_INCREMENTS_COUNT; i++) {
             sleep(RATE_LIMITER_WAIT_TIME_INCREMENT_MS);
             String output = SystemUtil.runShellCommand(
-                    "device_config get profiling rate_limiter.disabled");
+                    "device_config get profiling_testing rate_limiter.disabled");
             if (Boolean.parseBoolean(output.trim())) {
                 return;
             }
