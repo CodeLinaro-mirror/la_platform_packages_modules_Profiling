@@ -42,6 +42,10 @@ java_sdk_library {
         "androidx.annotation_annotation",
     ],
 
+    aconfig_declarations: [
+        "android.os.profiling.flags-aconfig",
+    ],
+
     static_libs: [
         "modules-utils-build",
         "android.os.profiling.flags-aconfig-java",
@@ -76,17 +80,19 @@ java_sdk_library {
 aconfig_declarations {
     name: "android.os.profiling.flags-aconfig",
     package: "android.os.profiling",
+    container: "com.android.profiling",
+    exportable: true,
     srcs: ["java/android/os/flags.aconfig"],
 }
 
 java_aconfig_library {
     name: "android.os.profiling.flags-aconfig-java",
     aconfig_declarations: "android.os.profiling.flags-aconfig",
-    min_sdk_version: "current",
-    sdk_version: "core_current",
     apex_available: [
         "com.android.profiling",
     ],
+    mode: "exported",
+    defaults: ["framework-minus-apex-aconfig-java-defaults"],
     visibility: [
         "//packages/modules/Profiling:__subpackages__",
     ],

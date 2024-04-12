@@ -18,8 +18,6 @@ package android.os.profiling;
 
 import android.os.Bundle;
 
-import java.lang.Process;
-import java.lang.Runnable;
 import java.nio.charset.Charset;
 import java.util.UUID;
 
@@ -28,6 +26,7 @@ import java.util.UUID;
  */
 public final class TracingSession {
     private Process mActiveTrace;
+    private Process mActiveRedaction;
     private Runnable mProcessResultRunnable;
     private final int mProfilingType;
     private final Bundle mParams;
@@ -40,9 +39,11 @@ public final class TracingSession {
     private String mKey = null;
     private String mFileName;
     private String mDestinationFileName = null;
+    private String mRedactedFileName = null;
+    private long mRedactionStartTimeMs;
 
-  public TracingSession(int profilingType, Bundle params, String appFilePath, int uid,
-            String packageName, String tag, long keyMostSigBits, long keyLeastSigBits) {
+    public TracingSession(int profilingType, Bundle params, String appFilePath, int uid,
+                String packageName, String tag, long keyMostSigBits, long keyLeastSigBits) {
         mProfilingType = profilingType;
         mParams = params;
         mAppFilePath = appFilePath;
@@ -73,16 +74,34 @@ public final class TracingSession {
         mActiveTrace = activeTrace;
     }
 
+    public void setActiveRedaction(Process activeRedaction) {
+        mActiveRedaction = activeRedaction;
+    }
+
     public void setProcessResultRunnable(Runnable processResultRunnable) {
         mProcessResultRunnable = processResultRunnable;
     }
 
+    // The file set here will be the name of the file that perfetto creates regardless of the
+    // type of profiling that is being done.
     public void setFileName(String fileName) {
         mFileName = fileName;
     }
 
+    public void setRedactedFileName(String fileName) {
+        mRedactedFileName = fileName;
+    }
+
+    public void setRedactionStartTimeMs(long startTime) {
+        mRedactionStartTimeMs = startTime;
+    }
+
     public Process getActiveTrace() {
         return mActiveTrace;
+    }
+
+    public Process getActiveRedaction() {
+        return mActiveRedaction;
     }
 
     public Runnable getProcessResultRunnable() {
@@ -117,17 +136,33 @@ public final class TracingSession {
         return mKeyLeastSigBits;
     }
 
+    // This returns the name of the file that perfetto created during profiling.  If the profling
+    // type was a trace collection it will return the unredacted trace file name.
     public String getFileName() {
         return mFileName;
     }
 
-  public String getDestinationFileName(String appRelativePath) {
-      if (mFileName == null) {
-          return null;
-      }
-      if (mDestinationFileName == null) {
-          mDestinationFileName = mAppFilePath + appRelativePath + mFileName;
-      }
-      return mDestinationFileName;
-  }
+    public String getRedactedFileName() {
+        return mRedactedFileName;
+    }
+
+    public long getRedactionStartTimeMs() {
+        return mRedactionStartTimeMs;
+    }
+
+    /**
+     * Returns the full path including name of the file being returned to the client.
+     * @param appRelativePath relative path to app storage.
+     * @return full file path and name of file.
+     */
+    public String getDestinationFileName(String appRelativePath) {
+        if (mFileName == null) {
+            return null;
+        }
+        if (mDestinationFileName == null) {
+            mDestinationFileName = mAppFilePath + appRelativePath
+                    + ((this.getRedactedFileName() == null) ? mFileName : mRedactedFileName);
+        }
+        return mDestinationFileName;
+    }
 }
