@@ -43,10 +43,6 @@ java_library {
     apex_available: [
         "com.android.profiling",
     ],
-    optimize: {
-        enabled: false,
-        shrink: false,
-    },
     min_sdk_version: "current",
     installable: true,
 }
