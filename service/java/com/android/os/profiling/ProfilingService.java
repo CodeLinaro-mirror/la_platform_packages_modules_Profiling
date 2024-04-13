@@ -16,6 +16,7 @@
 
 package android.os.profiling;
 
+import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.Context;
 import android.icu.text.SimpleDateFormat;
@@ -32,11 +33,13 @@ import android.os.ParcelFileDescriptor;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
 import android.os.RemoteException;
+import android.provider.DeviceConfig;
 import android.text.TextUtils;
 import android.util.ArrayMap;
 import android.util.Log;
 import android.util.SparseArray;
 
+import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.server.SystemService;
 
@@ -47,6 +50,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -73,13 +77,15 @@ public class ProfilingService extends IProfilingService.Stub {
 
     private static final int REDACTION_CHECK_FREQUENCY_MS = 2 * 1000;
 
+    private final Context mContext;
+    private final Object mLock = new Object();
+    private final HandlerThread mHandlerThread = new HandlerThread("ProfilingService");
+
+    @VisibleForTesting public RateLimiter mRateLimiter = null;
+
     // Timeout for Perfetto process to successfully stop after we try to stop it.
     private int mPerfettoDestroyTimeoutMs;
 
-    private final Context mContext;
-    @VisibleForTesting public RateLimiter mRateLimiter = null;
-
-    private final HandlerThread mHandlerThread = new HandlerThread("ProfilingService");
     private Handler mHandler;
 
     private Calendar mCalendar = null;
@@ -94,6 +100,10 @@ public class ProfilingService extends IProfilingService.Stub {
     @VisibleForTesting
     public ArrayMap<String, TracingSession> mTracingSessions = new ArrayMap<>();
 
+    /** To be disabled for testing only. */
+    @GuardedBy("mLock")
+    private boolean mKeepUnredactedTrace = false;
+
     @VisibleForTesting
     public ProfilingService(Context context) {
         mContext = context;
@@ -103,6 +113,31 @@ public class ProfilingService extends IProfilingService.Stub {
                 PERFETTO_DESTROY_DEFAULT_TIMEOUT_MS);
 
         mHandlerThread.start();
+
+        // Get initial value for whether unredacted trace should be retained.
+        // This is used for (automated and manual) testing only.
+        synchronized (mLock) {
+            mKeepUnredactedTrace = DeviceConfigHelper.getTestBoolean(
+                    DeviceConfigHelper.DISABLE_DELETE_UNREDACTED_TRACE, false);
+        }
+        // Now subscribe to updates on test config.
+        DeviceConfig.addOnPropertiesChangedListener(DeviceConfigHelper.NAMESPACE_TESTING,
+                mContext.getMainExecutor(), new DeviceConfig.OnPropertiesChangedListener() {
+                    @Override
+                    public void onPropertiesChanged(@NonNull DeviceConfig.Properties properties) {
+                        synchronized (mLock) {
+                            Set<String> keys = properties.getKeyset();
+                            if (keys.contains(DeviceConfigHelper.DISABLE_DELETE_UNREDACTED_TRACE)) {
+                                mKeepUnredactedTrace = properties.getBoolean(
+                                        DeviceConfigHelper.DISABLE_DELETE_UNREDACTED_TRACE, false);
+                            }
+                            if (keys.contains(DeviceConfigHelper.RATE_LIMITER_DISABLE_PROPERTY)) {
+                                getRateLimiter().setRateLimiterDisabled(properties.getBoolean(
+                                        DeviceConfigHelper.RATE_LIMITER_DISABLE_PROPERTY, false));
+                            }
+                        }
+                    }
+                });
     }
 
     /**
@@ -537,13 +572,20 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
 
-        // At this point redaction has completed successfully it is safe to delete the unredacted
-        // trace file.
-        // TODO b/331988161 Delete after file is delivered to app.
-        try {
-            Files.delete(Path.of(TEMP_TRACE_PATH + session.getFileName()));
-        } catch (Exception exception) {
-            if (DEBUG) Log.e(TAG, "Failed to delete unredacted file.", exception);
+        // At this point redaction has completed successfully it is safe to delete the
+        // unredacted trace file unless {@link mKeepUnredactedTrace} has been enabled.
+        synchronized (mLock) {
+            if (mKeepUnredactedTrace) {
+                Log.i(TAG, "Unredacted trace file retained at: "
+                        + TEMP_TRACE_PATH + session.getFileName());
+            } else {
+                // TODO b/331988161 Delete after file is delivered to app.
+                try {
+                    Files.delete(Path.of(TEMP_TRACE_PATH + session.getFileName()));
+                } catch (Exception exception) {
+                    if (DEBUG) Log.e(TAG, "Failed to delete unredacted file.", exception);
+                }
+            }
         }
 
         moveFileToAppStorage(session);
