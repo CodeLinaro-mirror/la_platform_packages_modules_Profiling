@@ -82,8 +82,6 @@ public final class Configs {
             + "        scope {\n"
             + "          target_cmdline: \"{{package_name}}\"\n"
             + "        }\n"
-            + "        # TODO: Do kernel frame disclose sensitive info?\n"
-            + "        kernel_frames: true\n"
             + "      }\n"
             + "    }\n"
             + "  }\n"
