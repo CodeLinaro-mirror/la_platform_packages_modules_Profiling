@@ -1,4 +1,4 @@
-// Copyright (C) 2023 The Android Open Source Project
+// Copyright (C) 2024 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,6 +35,8 @@ java_library {
     ],
     static_libs: [
         "modules-utils-build",
+        "android.os.profiling.flags-aconfig-java",
+        "service-profiling-proto",
     ],
     lint: {
         strict_updatability_linting: true,
@@ -42,10 +44,30 @@ java_library {
     apex_available: [
         "com.android.profiling",
     ],
-    optimize: {
-        enabled: false,
-        shrink: false,
-    },
     min_sdk_version: "current",
     installable: true,
+}
+
+java_library {
+    name: "service-profiling-proto",
+    proto: {
+        type: "lite",
+        canonical_path_from_root: false,
+        include_dirs: [
+            "external/protobuf/src",
+            "external/protobuf/java",
+        ],
+    },
+    srcs: [
+        "proto/**/*.proto",
+    ],
+    visibility: [
+        "//packages/modules/Profiling/tests:__subpackages__",
+    ],
+    installable: false,
+    min_sdk_version: "current",
+    sdk_version: "system_server_current",
+    apex_available: [
+        "com.android.profiling",
+    ],
 }
