@@ -78,14 +78,16 @@ public final class ProfilingFrameworkTests {
     private static final String OUTPUT_FILE_STACK_SAMPLING_SUFFIX = ".perfetto-stack-sample";
     private static final String OUTPUT_FILE_TRACE_SUFFIX = ".perfetto-trace";
 
-    private static ProfilingManager mProfilingManager = null;
+    private ProfilingManager mProfilingManager = null;
+    private Context mContext = null;
+
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
 
     @Before
     public void setup() {
-        Context context = ApplicationProvider.getApplicationContext();
-        mProfilingManager = context.getSystemService(ProfilingManager.class);
+        mContext = ApplicationProvider.getApplicationContext();
+        mProfilingManager = mContext.getSystemService(ProfilingManager.class);
 
         // This permission is required for Headless (HSUM) tests, including Auto.
         InstrumentationRegistry.getInstrumentation().getUiAutomation().adoptShellPermissionIdentity(
@@ -351,6 +353,49 @@ public final class ProfilingFrameworkTests {
         // Register the 2nd general callback after kicking off request, but before result is ready.
         mProfilingManager.registerForAllProfilingResults(
                 new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral2);
+
+        // Wait until callback#onAccept is triggered so we can confirm the result.
+        waitForCallback(callbackSpecific);
+
+        // Assert that result matches assumptions for success in all callbacks.
+        confirmCollectionSuccess(callbackSpecific.mResult, OUTPUT_FILE_STACK_SAMPLING_SUFFIX);
+        confirmCollectionSuccess(callbackGeneral1.mResult, OUTPUT_FILE_STACK_SAMPLING_SUFFIX);
+        confirmCollectionSuccess(callbackGeneral2.mResult, OUTPUT_FILE_STACK_SAMPLING_SUFFIX);
+    }
+
+    /** Test that listeners registered to the same UID from different contexts are all triggered. */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
+    public void testTriggerAllListenersDifferentContexts() {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // Obtain another ProfilingManager instance from a different context.
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        // Confirm the 2 contexts are of a different class. This check is broader than is a strictly
+        // required, but guarantees these contexts cannot be the same.
+        assertFalse(mContext.getClass().equals(context.getClass()));
+        ProfilingManager profilingManager = context.getSystemService(ProfilingManager.class);
+
+        // Create 3 callbacks.
+        AppCallback callbackSpecific = new AppCallback();
+        AppCallback callbackGeneral1 = new AppCallback();
+        AppCallback callbackGeneral2 = new AppCallback();
+
+        // Register the general callbacks, one to each context.
+        profilingManager.registerForAllProfilingResults(
+                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral1);
+        mProfilingManager.registerForAllProfilingResults(
+                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral2);
+
+        // Now kick off the request.
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
+                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                null,
+                null,
+                new ProfilingTestUtils.ImmediateExecutor(),
+                callbackSpecific);
+
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
         waitForCallback(callbackSpecific);

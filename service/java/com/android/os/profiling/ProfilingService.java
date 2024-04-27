@@ -49,6 +49,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
@@ -91,9 +93,9 @@ public class ProfilingService extends IProfilingService.Stub {
     private Calendar mCalendar = null;
     private SimpleDateFormat mDateFormat = null;
 
-    // uid indexed collecion of JNI callbacks for results.
+    // uid indexed collecion of lists of JNI callbacks for results.
     @VisibleForTesting
-    public SparseArray<IProfilingResultCallback> mResultCallbacks = new SparseArray<>();
+    public SparseArray<List<IProfilingResultCallback>> mResultCallbacks = new SparseArray<>();
 
     // Request UUID key indexed storage of active tracing sessions. Currently only 1 active session
     // is supported at a time, but this will be used in future to support multiple.
@@ -219,7 +221,13 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     public void registerResultsCallback(IProfilingResultCallback callback) {
-        mResultCallbacks.put(Binder.getCallingUid(), callback);
+        int callingUid = Binder.getCallingUid();
+        List<IProfilingResultCallback> perUidCallbacks = mResultCallbacks.get(callingUid);
+        if (perUidCallbacks == null) {
+            perUidCallbacks = new ArrayList<IProfilingResultCallback>();
+            mResultCallbacks.put(callingUid, perUidCallbacks);
+        }
+        perUidCallbacks.add(callback);
     }
 
     public void requestCancel(long keyMostSigBits, long keyLeastSigBits) {
@@ -242,19 +250,38 @@ public class ProfilingService extends IProfilingService.Stub {
                 session.getTag(), error);
     }
 
+    /**
+     * An app can register multiple callbacks between this service and {@link ProfilingManager}, one
+     * per context that the app created a manager instance with. As we do not know on this service
+     * side which callbacks need to be triggered with this result, trigger all of them and let them
+     * decide whether to finish delivering it.
+     */
     private void processResultCallback(int uid, long keyMostSigBits, long keyLeastSigBits,
             int status, @Nullable String filePath, @Nullable String tag, @Nullable String error) {
-        if (!mResultCallbacks.contains(uid)) {
-            // No callback, nowhere to notify with result or this failure.
+        List<IProfilingResultCallback> perUidCallbacks = mResultCallbacks.get(uid);
+        if (perUidCallbacks == null || perUidCallbacks.isEmpty()) {
+            // No callbacks, nowhere to notify with result or failure.
             if (DEBUG) Log.d(TAG, "No callback to ProfilingManager, callback dropped.");
             return;
         }
-        try {
-            mResultCallbacks.get(uid).sendResult(filePath, keyMostSigBits, keyLeastSigBits, status,
-                    tag, error);
-        } catch (RemoteException e) {
-            // Failed to send result. Ignore.
-            if (DEBUG) Log.d(TAG, "Exception processing result callback", e);
+
+        List<IProfilingResultCallback> remove = new ArrayList<IProfilingResultCallback>();
+        for (int i = 0; i < perUidCallbacks.size(); i++) {
+            try {
+                if (!perUidCallbacks.get(i).sendResult(filePath, keyMostSigBits,
+                        keyLeastSigBits, status, tag, error)) {
+                    // sendResult will return false if there are no more listeners using this
+                    // connection. Global listeners use the connection continuously and will thus
+                    // not return false.
+                    remove.add(perUidCallbacks.get(i));
+                }
+            } catch (RemoteException e) {
+                // Failed to send result. Ignore.
+                if (DEBUG) Log.d(TAG, "Exception processing result callback", e);
+            }
+        }
+        if (!remove.isEmpty()) {
+            mResultCallbacks.get(uid).removeAll(remove);
         }
     }
 
@@ -399,8 +426,9 @@ public class ProfilingService extends IProfilingService.Stub {
      *
      */
     private void moveFileToAppStorage(TracingSession session) {
-        if (!mResultCallbacks.contains(session.getUid())) {
-            // No callback, nowhere to notify with result.
+        List<IProfilingResultCallback> perUidCallbacks = mResultCallbacks.get(session.getUid());
+        if (perUidCallbacks == null || perUidCallbacks.isEmpty()) {
+            // No callback so no way to obtain a file to populate with result.
             if (DEBUG) Log.d(TAG, "No callback to ProfilingManager, callback dropped.");
             // TODO: b/333456430 queue this and try next time the uid registers a receiver.
             // TODO: b/333456916 run a cleanup of old results based on a max size and time.
@@ -413,7 +441,7 @@ public class ProfilingService extends IProfilingService.Stub {
                 ? session.getRedactedFileName() : session.getFileName()));
         FileInputStream tempPerfettoFileInStream = null;
         FileOutputStream appFileOutStream = null;
-        ParcelFileDescriptor pfd = null;
+        ParcelFileDescriptor fileDescriptor = null;
         boolean failed = false;
         try {
             tempPerfettoFileInStream = new FileInputStream(tempResultFile);
@@ -422,17 +450,18 @@ public class ProfilingService extends IProfilingService.Stub {
             if (DEBUG) Log.d(TAG, "Exception opening temp perfetto file.", e);
             failed = true;
         }
+
+        // Obtain a file descriptor for the result file in app storage from {@link ProfilingManager}
         if (!failed) {
-            try {
-                pfd = mResultCallbacks.get(session.getUid())
-                        .generateFile(session.getAppFilePath() + OUTPUT_FILE_RELATIVE_PATH,
-                            tempResultFile.getName());
-                appFileOutStream = new FileOutputStream(pfd.getFileDescriptor());
-            } catch (RemoteException e) {
-                // Binder exception getting file.
-                if (DEBUG) Log.d(TAG, "Binder exception getting file.", e);
-                // TODO: b/333456430 queue this and try next time the uid registers a receiver.
+            fileDescriptor = obtainFileForResult(perUidCallbacks,
+                    session.getAppFilePath() + OUTPUT_FILE_RELATIVE_PATH, tempResultFile.getName());
+            if (fileDescriptor != null) {
+                appFileOutStream = new FileOutputStream(fileDescriptor.getFileDescriptor());
+            }
+
+            if (appFileOutStream == null) {
                 failed = true;
+                // TODO: b/333456430 queue this and try next time the uid registers a receiver.
             }
         }
 
@@ -466,9 +495,9 @@ public class ProfilingService extends IProfilingService.Stub {
                 if (DEBUG) Log.d(TAG, "Failed to close temp perfetto input stream.", e);
             }
         }
-        if (pfd != null) {
+        if (fileDescriptor != null) {
             try {
-                pfd.close();
+                fileDescriptor.close();
             } catch (IOException e) {
                 if (DEBUG) Log.d(TAG, "Failed to close app file output file FileDescriptor.", e);
             }
@@ -490,6 +519,35 @@ public class ProfilingService extends IProfilingService.Stub {
             if (DEBUG) Log.d(TAG, "Couldn't move file to app storage.");
             processResultCallback(session, ProfilingResult.ERROR_FAILED_POST_PROCESSING, null);
         }
+    }
+
+    /**
+     * Try each callback for the current process until we successfully obtain a
+     * {@link ParcelFileDescriptor} to a new file in app storage. Returns null if all callbacks
+     * fail.
+     *
+     * Result file is created by {@link ProfilingManager} from within app context. We only need a
+     * single file which can be created from any of the requesting apps contexts so it does not
+     * matter which callback we use.
+     */
+    @Nullable
+    private ParcelFileDescriptor obtainFileForResult(
+            @NonNull List<IProfilingResultCallback> perUidCallbacks, String filePath,
+            String fileName) {
+        for (int i = 0; i < perUidCallbacks.size(); i++) {
+            try {
+                ParcelFileDescriptor fileDescriptor = perUidCallbacks.get(i).generateFile(filePath,
+                        fileName);
+                if (fileDescriptor != null) {
+                    return fileDescriptor;
+                }
+            } catch (RemoteException e) {
+                // Binder exception getting file. Continue trying other callbacks for this process.
+                if (DEBUG) Log.d(TAG, "Binder exception getting file. Trying next callback", e);
+            }
+        }
+        if (DEBUG) Log.d(TAG, "Failed to obtain file descriptor from callbacks.");
+        return null;
     }
 
 

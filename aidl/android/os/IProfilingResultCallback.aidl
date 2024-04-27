@@ -22,7 +22,7 @@ import android.os.ParcelFileDescriptor;
  */
 interface IProfilingResultCallback {
 
-    oneway void sendResult(String resultFile, long keyMostSigBits, long keyLeastSigBits, int status, String tag, String error);
+    boolean sendResult(String resultFile, long keyMostSigBits, long keyLeastSigBits, int status, String tag, String error);
 
     ParcelFileDescriptor generateFile(String filePathAbsolute, String fileName);
 }
