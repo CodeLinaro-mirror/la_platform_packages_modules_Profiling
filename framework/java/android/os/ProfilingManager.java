@@ -20,11 +20,6 @@ import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.Context;
-import android.os.Binder;
-import android.os.CancellationSignal;
-import android.os.FileUtils;
-import android.os.IProfilingService;
-import android.os.ParcelFileDescriptor;
 import android.os.profiling.Flags;
 import android.util.Log;
 
@@ -32,12 +27,6 @@ import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 
 import java.io.File;
-import java.io.FileDescriptor;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.lang.Exception;
-import java.lang.IllegalArgumentException;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
@@ -205,16 +194,16 @@ public final class ProfilingManager {
                         key.getMostSignificantBits(), key.getLeastSignificantBits());
                 if (cancellationSignal != null) {
                     cancellationSignal.setOnCancelListener(
-                        () -> {
-                            synchronized (mLock) {
-                                try {
-                                    service.requestCancel(key.getMostSignificantBits(),
-                                            key.getLeastSignificantBits());
-                                } catch (RemoteException e) {
-                                    // Ignore, request in flight already and we can't stop it.
+                            () -> {
+                                synchronized (mLock) {
+                                    try {
+                                        service.requestCancel(key.getMostSignificantBits(),
+                                                key.getLeastSignificantBits());
+                                    } catch (RemoteException e) {
+                                        // Ignore, request in flight already and we can't stop it.
+                                    }
                                 }
                             }
-                        }
                     );
                 }
             } catch (RemoteException e) {
