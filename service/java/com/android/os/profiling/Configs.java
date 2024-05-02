@@ -200,6 +200,9 @@ public final class Configs {
             + "    target_buffer: 0\n"
             + "  }\n"
             + "}\n"
+            + "incremental_state_config {\n"
+            + "  clear_period_ms: 10000\n"
+            + "}\n"
             + "duration_ms: " + STUB_DURATION;
 
     // Time to wait beyond trace timeout to ensure perfetto has time to finish writing output.
