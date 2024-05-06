@@ -498,6 +498,111 @@ public final class ProfilingFrameworkTests {
         assertTrue(nameArray[1].equals(tagForFilename));
     }
 
+    /** Test that java heap dump killswitch disables collection. */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
+    public void testJavaHeapDumpKillswitchEnabled() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideJavaHeapDumpDeviceConfigValues(true, ONE_SECOND_MS, TEN_SECONDS_MS);
+
+        AppCallback callback = new AppCallback();
+
+        // Now kick off the request.
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
+                null,
+                null,
+                null,
+                new ProfilingTestUtils.ImmediateExecutor(),
+                callback);
+
+        // Wait until callback#onAccept is triggered so we can confirm the result.
+        waitForCallback(callback);
+
+        // Assert that request failed with correct error code.
+        assertEquals(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, callback.mResult.getErrorCode());
+    }
+
+    /** Test that heap profile killswitch disables collection. */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
+    public void testHeapProfileKillswitchEnabled() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideHeapProfileDeviceConfigValues(true, ONE_SECOND_MS, FIVE_SECONDS_MS, TEN_SECONDS_MS);
+
+        AppCallback callback = new AppCallback();
+
+        // Now kick off the request.
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
+                null,
+                null,
+                null,
+                new ProfilingTestUtils.ImmediateExecutor(),
+                callback);
+
+        // Wait until callback#onAccept is triggered so we can confirm the result.
+        waitForCallback(callback);
+
+        // Assert that request failed with correct error code.
+        assertEquals(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, callback.mResult.getErrorCode());
+    }
+
+    /** Test that stack sampling killswitch disables collection. */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
+    public void testStackSamplingKillswitchEnabled() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideStackSamplingDeviceConfigValues(true, ONE_SECOND_MS, FIVE_SECONDS_MS,
+                TEN_SECONDS_MS);
+
+        AppCallback callback = new AppCallback();
+
+        // Now kick off the request.
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
+                null,
+                null,
+                null,
+                new ProfilingTestUtils.ImmediateExecutor(),
+                callback);
+
+        // Wait until callback#onAccept is triggered so we can confirm the result.
+        waitForCallback(callback);
+
+        // Assert that request failed with correct error code.
+        assertEquals(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, callback.mResult.getErrorCode());
+    }
+
+    /** Test that system trace killswitch disables collection. */
+    @Test
+    @RequiresFlagsEnabled({Flags.FLAG_TELEMETRY_APIS, Flags.FLAG_REDACTION_ENABLED})
+    public void testSystemTraceKillswitchEnabled() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideSystemTraceDeviceConfigValues(true, ONE_SECOND_MS, FIVE_SECONDS_MS, TEN_SECONDS_MS);
+
+        AppCallback callback = new AppCallback();
+
+        // Now kick off the request.
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                null,
+                null,
+                null,
+                new ProfilingTestUtils.ImmediateExecutor(),
+                callback);
+
+        // Wait until callback#onAccept is triggered so we can confirm the result.
+        waitForCallback(callback);
+
+        // Assert that request failed with correct error code.
+        assertEquals(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, callback.mResult.getErrorCode());
+    }
+
     /** Disable the rate limiter and wait long enough for the update to be picked up. */
     private void disableRateLimiter() {
         SystemUtil.runShellCommand(
