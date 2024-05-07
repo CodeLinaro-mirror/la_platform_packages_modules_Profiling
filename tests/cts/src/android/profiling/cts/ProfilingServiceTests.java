@@ -27,13 +27,16 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.spy;
 
+import android.app.Instrumentation;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.os.Binder;
+import android.os.Handler;
 import android.os.IProfilingResultCallback;
 import android.os.ParcelFileDescriptor;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
+import android.os.profiling.DeviceConfigHelper;
 import android.os.profiling.ProfilingService;
 import android.os.profiling.RateLimiter;
 import android.os.profiling.TracingSession;
@@ -41,7 +44,12 @@ import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
 
 import androidx.test.core.app.ApplicationProvider;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
+
+import com.android.compatibility.common.util.SystemUtil;
+
+import com.google.errorprone.annotations.FormatMethod;
 
 import org.junit.Before;
 import org.junit.Rule;
@@ -50,6 +58,7 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
+import java.io.File;
 import java.util.UUID;
 
 /**
@@ -64,6 +73,8 @@ public final class ProfilingServiceTests {
     private static final String APP_PACKAGE_NAME = "com.profiling.test";
     private static final String REQUEST_TAG = "some unique string";
 
+    private static final String OVERRIDE_DEVICE_CONFIG_INT = "device_config put %s %s %d";
+
     // Key most and least significant bits are used to generate a unique key specific to each
     // request. Key is used to pair request back to caller and callbacks so test to keep consistent.
     private static final long KEY_MOST_SIG_BITS = 456l;
@@ -76,15 +87,22 @@ public final class ProfilingServiceTests {
     @Mock private Process mActiveTrace;
 
     private Context mContext = ApplicationProvider.getApplicationContext();
+    private Instrumentation mInstrumentation;
     private ProfilingService mProfilingService;
     private RateLimiter mRateLimiter;
 
     @Before
     public void setUp() {
         MockitoAnnotations.initMocks(this);
+        mInstrumentation = InstrumentationRegistry.getInstrumentation();
         mContext = spy(ApplicationProvider.getApplicationContext());
         mProfilingService = spy(new ProfilingService(mContext));
-        mRateLimiter = spy(new RateLimiter(mContext));
+        mRateLimiter = spy(new RateLimiter(new RateLimiter.HandlerCallback() {
+            @Override
+            public Handler obtainHandler() {
+                return null;
+            }
+        }));
         doReturn(mPackageManager).when(mContext).getPackageManager();
         mProfilingService.mRateLimiter = mRateLimiter;
         doReturn(APP_PACKAGE_NAME).when(mPackageManager).getNameForUid(anyInt());
@@ -294,6 +312,117 @@ public final class ProfilingServiceTests {
 
         // Confirm callback was not triggerd with a result because there was no trace to stop.
         assertFalse(callback.mResultSent);
+    }
+
+    /** Test that rate limiter correctly persists and restores data. */
+    @Test
+    public void testRateLimiter_PersistAndRestore() throws Exception {
+        // Update DeviceConfig defaults to high enough limits, cost of 1, and persist frequency 0.
+        overrideRateLimiterDefaults(5, 10, 20, 50, 50, 100, 1, 1, 1, 1, 0);
+
+        // Override file path because test app context that can't access /data/system/
+        mRateLimiter.mPersistStoreDir = new File(mContext.getFilesDir(), "testdir");
+        mRateLimiter.mPersistStoreDir.mkdir();
+        mRateLimiter.mPersistFile = new File(mRateLimiter.mPersistStoreDir, "testfile");
+
+        // Remove all records
+        long currentTimeMillis = System.currentTimeMillis();
+        mRateLimiter.mPastRunsHour.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsDay.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsWeek.removeOlderThan(currentTimeMillis);
+
+        // Add some records. Since records are being added directly rather than through normal
+        // request flow, this will not trigger a persist regardless of persist frequency.
+        mRateLimiter.mPastRunsHour.add(1, 1, currentTimeMillis - 1000);
+        mRateLimiter.mPastRunsDay.add(1, 1, currentTimeMillis - 1000);
+        mRateLimiter.mPastRunsWeek.add(1, 1, currentTimeMillis - 1000);
+        mRateLimiter.mPastRunsDay.add(2, 1, currentTimeMillis - (60 * 60 * 1000) - 1000);
+        mRateLimiter.mPastRunsWeek.add(2, 1, currentTimeMillis - (60 * 60 * 1000) - 1000);
+        mRateLimiter.mPastRunsWeek.add(2, 1, currentTimeMillis - (24 * 60 * 60 * 1000) - 1000);
+
+        // Store a copy of the backing data for each type
+        RateLimiter.CollectionEntry[] hourEntriesOriginal =
+                mRateLimiter.mPastRunsHour.getEntriesCopy();
+        RateLimiter.CollectionEntry[] dayEntriesOriginal =
+                mRateLimiter.mPastRunsDay.getEntriesCopy();
+        RateLimiter.CollectionEntry[] weekEntriesOriginal =
+                mRateLimiter.mPastRunsWeek.getEntriesCopy();
+
+        // Confirm collections are correct size.
+        assertEquals(1, hourEntriesOriginal.length);
+        assertEquals(2, dayEntriesOriginal.length);
+        assertEquals(3, weekEntriesOriginal.length);
+
+        // Now persist the records to disk
+        mRateLimiter.persistToDisk();
+
+        // Remove all records again
+        currentTimeMillis = System.currentTimeMillis();
+        mRateLimiter.mPastRunsHour.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsDay.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsWeek.removeOlderThan(currentTimeMillis);
+
+        // Confirm records have been removed
+        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+
+        // Now load the persisted records from disk
+        mRateLimiter.loadFromDisk();
+
+        // Finally, verify the records.
+        confirmRateLimiterEntriesEqual(hourEntriesOriginal,
+                mRateLimiter.mPastRunsHour.getEntriesCopy());
+        confirmRateLimiterEntriesEqual(dayEntriesOriginal,
+                mRateLimiter.mPastRunsDay.getEntriesCopy());
+        confirmRateLimiterEntriesEqual(weekEntriesOriginal,
+                mRateLimiter.mPastRunsWeek.getEntriesCopy());
+    }
+
+    // TODO: b/333579817 - Add more rate limiter tests
+
+    private void overrideRateLimiterDefaults(int systemHour, int processHour, int systemDay,
+            int processDay, int systemWeek, int processWeek, int costHeapDump, int costHeapProfile,
+            int costStackSampling, int costSystemTrace, int persistToDiskFrequency)
+            throws Exception {
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, systemHour);
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, processHour);
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, systemDay);
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR, processDay);
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, systemWeek);
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_7_DAY, processWeek);
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.COST_JAVA_HEAP_DUMP, costHeapDump);
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.COST_HEAP_PROFILE, costHeapProfile);
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.COST_STACK_SAMPLING, costStackSampling);
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.COST_SYSTEM_TRACE, costSystemTrace);
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS, persistToDiskFrequency);
+    }
+
+    @FormatMethod
+    private String executeShellCmd(String cmdFormat, Object... args) throws Exception {
+        String cmd = String.format(cmdFormat, args);
+        return SystemUtil.runShellCommand(mInstrumentation, cmd);
+    }
+
+    private void confirmRateLimiterEntriesEqual(RateLimiter.CollectionEntry[] collectionOne,
+            RateLimiter.CollectionEntry[] collectionTwo) {
+        assertEquals(collectionOne.length, collectionTwo.length);
+        for (int i = 0; i < collectionOne.length; i++) {
+            assertEquals(collectionOne[i].mUid, collectionTwo[i].mUid);
+            assertEquals(collectionOne[i].mCost, collectionTwo[i].mCost);
+            assertEquals(collectionOne[i].mTimestamp, collectionTwo[i].mTimestamp);
+        }
     }
 
     /** Confirm that all fields returned by callback match expectation. */
