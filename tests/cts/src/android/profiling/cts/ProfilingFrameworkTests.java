@@ -843,7 +843,7 @@ public final class ProfilingFrameworkTests {
         return SystemUtil.runShellCommand(mInstrumentation, cmd);
     }
 
-    private void sleep(long ms) {
+    private static void sleep(long ms) {
         try {
             Thread.sleep(ms);
         } catch (InterruptedException e) {
