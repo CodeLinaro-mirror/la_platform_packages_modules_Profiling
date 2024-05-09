@@ -19,8 +19,7 @@
           package="com.android.profiling.tests"
           android:targetSandboxVersion="2">
 
-    <application
-      android:debuggable="true">
+    <application>
       <uses-library android:name="android.test.runner"/>
       <activity android:name=".EmptyActivity"
                 android:label="EmptyActivity"
