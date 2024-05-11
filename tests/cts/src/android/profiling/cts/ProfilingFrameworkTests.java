@@ -43,10 +43,17 @@ import com.android.compatibility.common.util.SystemUtil;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TestName;
 import org.junit.runner.RunWith;
 import org.testng.TestException;
 
 import java.io.File;
+import java.io.IOException;
+import java.lang.AssertionError;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.Path;
+import java.nio.file.FileSystems;
 import java.util.function.Consumer;
 
 /**
@@ -78,11 +85,17 @@ public final class ProfilingFrameworkTests {
     private static final String OUTPUT_FILE_STACK_SAMPLING_SUFFIX = ".perfetto-stack-sample";
     private static final String OUTPUT_FILE_TRACE_SUFFIX = ".perfetto-trace";
 
+    public static final Path DUMP_PATH = FileSystems.getDefault()
+            .getPath("/sdcard/ProfilesCollected/");
+
     private ProfilingManager mProfilingManager = null;
     private Context mContext = null;
 
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
+
+    @Rule
+    public final TestName mTestName = new TestName();
 
     @Before
     public void setup() {
@@ -177,6 +190,7 @@ public final class ProfilingFrameworkTests {
 
         // Assert that result matches assumptions for success.
         confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX);
+        dumpTrace(callback.mResult);
     }
 
     /** Test that profiling request for heap profile succeeds and returns a non-empty file. */
@@ -201,6 +215,7 @@ public final class ProfilingFrameworkTests {
 
         // Assert that result matches assumptions for success.
         confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_HEAP_PROFILE_SUFFIX);
+        dumpTrace(callback.mResult);
     }
 
     /** Test that profiling request for stack sampling succeeds and returns a non-empty file. */
@@ -225,6 +240,7 @@ public final class ProfilingFrameworkTests {
 
         // Assert that result matches assumptions for success.
         confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_STACK_SAMPLING_SUFFIX);
+        dumpTrace(callback.mResult);
     }
 
     /**
@@ -252,6 +268,7 @@ public final class ProfilingFrameworkTests {
 
         // Assert trace has succeeded.
         confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_TRACE_SUFFIX);
+        dumpTrace(callback.mResult);
     }
 
     /** Test that cancelling stops collection and still receives correct result. */
@@ -480,6 +497,25 @@ public final class ProfilingFrameworkTests {
         File file = new File(result.getResultFilePath());
         assertTrue(file.exists());
         assertFalse(file.length() == 0);
+    }
+
+    /** Copies the trace to an /sdcard directory that will be collected by the test runner. */
+    private void dumpTrace(ProfilingResult result) {
+        assertNotNull(result);
+        assertEquals(ProfilingResult.ERROR_NONE, result.getErrorCode());
+        assertNotNull(result.getResultFilePath());
+        assertNull(result.getErrorMessage());
+
+        // Copy to dump directory
+        Path path = Paths.get(result.getResultFilePath());
+        try {
+            Files.createDirectories(DUMP_PATH);
+            String filename = mTestName.getMethodName() + "_" + path.getFileName()
+                              + ".perfetto-trace";
+            Files.copy(path, Paths.get(DUMP_PATH.toString(), filename));
+        } catch (IOException e) {
+            throw new AssertionError("Failed to copy to DUMP_PATH", e);
+        }
     }
 
     private void sleep(long ms) {

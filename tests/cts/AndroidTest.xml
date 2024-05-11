@@ -28,6 +28,12 @@
         <option name="test-file-name" value="CtsProfilingModuleTests.apk" />
     </target_preparer>
 
+    <metrics_collector class="com.android.tradefed.device.metric.FilePullerLogCollector">
+        <!-- Pull files created by tests, like the traces collected -->
+        <option name="directory-keys" value="/sdcard/ProfilesCollected/" />
+        <option name="collect-on-run-ended-only" value="false" />
+    </metrics_collector>
+
     <test class="com.android.tradefed.testtype.AndroidJUnitTest" >
         <option name="package" value="com.android.profiling.tests" />
     </test>
