@@ -59,6 +59,8 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import java.io.File;
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -117,7 +119,8 @@ public final class ProfilingServiceTests {
         mProfilingService.registerResultsCallback(callback);
 
         // Confirm callback is registered.
-        assertEquals(callback, mProfilingService.mResultCallbacks.get(Binder.getCallingUid()));
+        assertEquals(callback,
+                mProfilingService.mResultCallbacks.get(Binder.getCallingUid()).get(0));
     }
 
     /** Test that only the callback belonging to the requesting uid is triggered. */
@@ -134,11 +137,14 @@ public final class ProfilingServiceTests {
         mProfilingService.registerResultsCallback(callback);
 
         // Add other process callback manually to mock uid.
-        mProfilingService.mResultCallbacks.put(mockProcessUid, mockProcessCallback);
+        List<IProfilingResultCallback> callbacks = Arrays.asList(mockProcessCallback);
+        mProfilingService.mResultCallbacks.put(mockProcessUid, callbacks);
 
         // Confirm both callbacks are registered.
-        assertEquals(callback, mProfilingService.mResultCallbacks.get(Binder.getCallingUid()));
-        assertEquals(mockProcessCallback, mProfilingService.mResultCallbacks.get(mockProcessUid));
+        assertEquals(callback,
+                mProfilingService.mResultCallbacks.get(Binder.getCallingUid()).get(0));
+        assertEquals(mockProcessCallback,
+                mProfilingService.mResultCallbacks.get(mockProcessUid).get(0));
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
@@ -149,6 +155,34 @@ public final class ProfilingServiceTests {
 
         // Confirm callbacks was not triggered for callback registered to other process.
         assertFalse(mockProcessCallback.mResultSent);
+    }
+
+    /** Test that multiple callbacks belonging to the requesting uid are all triggered. */
+    @Test
+    public void testRequestProfiling_MultipleCallbackTriggered() {
+        // Mock traces running check to simulate collection running so it fails early.
+        doReturn(true).when(mProfilingService).areAnyTracesRunning();
+
+        ProfilingResultCallback callbackOne = new ProfilingResultCallback();
+        ProfilingResultCallback callbackTwo = new ProfilingResultCallback();
+
+        // Register callbacks.
+        mProfilingService.registerResultsCallback(callbackOne);
+        mProfilingService.registerResultsCallback(callbackTwo);
+
+        // Confirm both callbacks are registered.
+        assertEquals(callbackOne,
+                mProfilingService.mResultCallbacks.get(Binder.getCallingUid()).get(0));
+        assertEquals(callbackTwo,
+                mProfilingService.mResultCallbacks.get(Binder.getCallingUid()).get(1));
+
+        // Kick off request.
+        mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
+                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+
+        // Confirm callbacks was triggered for callback registered to this process.
+        assertTrue(callbackOne.mResultSent);
+        assertTrue(callbackTwo.mResultSent);
     }
 
     /**
@@ -451,7 +485,7 @@ public final class ProfilingServiceTests {
         public String mTag;
         public String mError;
         @Override
-        public void sendResult(String resultFile, long keyMostSigBits,
+        public boolean sendResult(String resultFile, long keyMostSigBits,
                 long keyLeastSigBits, int status, String tag, String error) {
             mResultSent = true;
             mResultFile = resultFile;
@@ -460,6 +494,9 @@ public final class ProfilingServiceTests {
             mStatus = status;
             mTag = tag;
             mError = error;
+
+            // Return true so the callback remains registered.
+            return true;
         }
         @Override
         public ParcelFileDescriptor generateFile(String filePathAbsolute, String fileName) {
