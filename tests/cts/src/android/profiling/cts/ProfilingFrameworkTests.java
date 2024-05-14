@@ -23,11 +23,13 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import android.app.Instrumentation;
 import android.content.Context;
 import android.os.Bundle;
 import android.os.CancellationSignal;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
+import android.os.profiling.DeviceConfigHelper;
 import android.os.profiling.Flags;
 import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
@@ -40,6 +42,8 @@ import androidx.test.runner.AndroidJUnit4;
 
 import com.android.compatibility.common.util.SystemUtil;
 
+import com.google.errorprone.annotations.FormatMethod;
+
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -49,11 +53,10 @@ import org.testng.TestException;
 
 import java.io.File;
 import java.io.IOException;
-import java.lang.AssertionError;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.nio.file.Path;
 import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.function.Consumer;
 
 /**
@@ -70,6 +73,10 @@ public final class ProfilingFrameworkTests {
     // Wait for callback for 5 seconds at a time for up to 60 increments totalling 5 minutes.
     private static final int CALLBACK_WAIT_TIME_INCREMENT_MS = 5 * 1000;
     private static final int CALLBACK_WAIT_TIME_INCREMENTS_COUNT = 60;
+
+    // Smaller number of increments for cancel case - wait for callback for 5 seconds at a time for
+    // up to 4 increments totalling 20 seconds.
+    private static final int CALLBACK_CANCEL_WAIT_TIME_INCREMENTS_COUNT = 4;
 
     // Wait for rate limiter config to update for 250 milliseconds at a time for up to 12 increments
     // totalling 3 seconds.
@@ -88,8 +95,19 @@ public final class ProfilingFrameworkTests {
     public static final Path DUMP_PATH = FileSystems.getDefault()
             .getPath("/sdcard/ProfilesCollected/");
 
+    private static final String COMMAND_OVERRIDE_DEVICE_CONFIG_INT = "device_config put %s %s %d";
+    private static final String COMMAND_OVERRIDE_DEVICE_CONFIG_BOOL = "device_config put %s %s %b";
+
+    private static final int ONE_SECOND_MS = 1 * 1000;
+    private static final int FIVE_SECONDS_MS = 5 * 1000;
+    private static final int TEN_SECONDS_MS = 10 * 1000;
+    private static final int ONE_MINUTE_MS = 60 * 1000;
+    private static final int FIVE_MINUTES_MS = 5 * 60 * 1000;
+    private static final int TEN_MINUTES_MS = 10 * 60 * 1000;
+
     private ProfilingManager mProfilingManager = null;
     private Context mContext = null;
+    private Instrumentation mInstrumentation;
 
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
@@ -101,9 +119,10 @@ public final class ProfilingFrameworkTests {
     public void setup() {
         mContext = ApplicationProvider.getApplicationContext();
         mProfilingManager = mContext.getSystemService(ProfilingManager.class);
+        mInstrumentation = InstrumentationRegistry.getInstrumentation();
 
         // This permission is required for Headless (HSUM) tests, including Auto.
-        InstrumentationRegistry.getInstrumentation().getUiAutomation().adoptShellPermissionIdentity(
+        mInstrumentation.getUiAutomation().adoptShellPermissionIdentity(
                 android.Manifest.permission.INTERACT_ACROSS_USERS_FULL);
 
         // Disable the rate limiter, we're not testing that in any of these tests.
@@ -171,8 +190,10 @@ public final class ProfilingFrameworkTests {
     @Test
     @LargeTest
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
-    public void testRequestJavaHeapDumpSuccess() {
+    public void testRequestJavaHeapDumpSuccess() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideJavaHeapDumpDeviceConfigValues(false, ONE_SECOND_MS, TEN_SECONDS_MS);
 
         AppCallback callback = new AppCallback();
 
@@ -196,8 +217,10 @@ public final class ProfilingFrameworkTests {
     /** Test that profiling request for heap profile succeeds and returns a non-empty file. */
     @Test
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
-    public void testRequestHeapProfileSuccess() {
+    public void testRequestHeapProfileSuccess() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideHeapProfileDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
 
         AppCallback callback = new AppCallback();
 
@@ -221,8 +244,11 @@ public final class ProfilingFrameworkTests {
     /** Test that profiling request for stack sampling succeeds and returns a non-empty file. */
     @Test
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
-    public void testRequestStackSamplingSuccess() {
+    public void testRequestStackSamplingSuccess() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
+                FIVE_SECONDS_MS);
 
         AppCallback callback = new AppCallback();
 
@@ -249,8 +275,10 @@ public final class ProfilingFrameworkTests {
      */
     @Test
     @RequiresFlagsEnabled({Flags.FLAG_TELEMETRY_APIS, Flags.FLAG_REDACTION_ENABLED})
-    public void testRequestSystemTraceSuccess() {
+    public void testRequestSystemTraceSuccess() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideSystemTraceDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
 
         AppCallback callback = new AppCallback();
 
@@ -271,11 +299,85 @@ public final class ProfilingFrameworkTests {
         dumpTrace(callback.mResult);
     }
 
-    /** Test that cancelling stops collection and still receives correct result. */
+    /** Test that cancelling java heap dump stops collection and still receives correct result. */
     @Test
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
-    public void testRequestProfilingCancel() {
+    public void testRequestJavaHeapDumpCancel() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // Set override duration and timeout to 10 minutes so we can ensure it finishes early when
+        // canceled.
+        overrideJavaHeapDumpDeviceConfigValues(false, TEN_MINUTES_MS, TEN_MINUTES_MS);
+
+        AppCallback callback = new AppCallback();
+        CancellationSignal cancellationSignal = new CancellationSignal();
+
+        // Now kick off the request.
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
+                null,    // Use default parameters since we will cancel quickly
+                null,
+                cancellationSignal,
+                new ProfilingTestUtils.ImmediateExecutor(),
+                callback);
+
+        // Wait a bit for collection to get started.
+        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+
+        // Now request cancellation.
+        cancellationSignal.cancel();
+
+        // Wait until callback#onAccept is triggered so we can confirm the result.
+        waitForCancelCallback(callback);
+
+        // Assert that result matches assumptions for success.
+        confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX);
+    }
+
+    /** Test that cancelling heap profile stops collection and still receives correct result. */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
+    public void testRequestHeapProfileCancel() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // Set override durations to 10 minutes so we can ensure it finishes early when canceled.
+        overrideHeapProfileDeviceConfigValues(false, TEN_MINUTES_MS, TEN_MINUTES_MS,
+                TEN_MINUTES_MS);
+
+        AppCallback callback = new AppCallback();
+        CancellationSignal cancellationSignal = new CancellationSignal();
+
+        // Now kick off the request.
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
+                null,    // Use default parameters since we will cancel quickly
+                null,
+                cancellationSignal,
+                new ProfilingTestUtils.ImmediateExecutor(),
+                callback);
+
+        // Wait a bit for collection to get started.
+        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+
+        // Now request cancellation.
+        cancellationSignal.cancel();
+
+        // Wait until callback#onAccept is triggered so we can confirm the result.
+        waitForCancelCallback(callback);
+
+        // Assert that result matches assumptions for success.
+        confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_HEAP_PROFILE_SUFFIX);
+    }
+
+    /** Test that cancelling stack sampling stops collection and still receives correct result. */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
+    public void testRequestStackSamplingCancel() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // Set override durations to 10 minutes so we can ensure it finishes early when canceled.
+        overrideStackSamplingDeviceConfigValues(false, TEN_MINUTES_MS, TEN_MINUTES_MS,
+                TEN_MINUTES_MS);
 
         AppCallback callback = new AppCallback();
         CancellationSignal cancellationSignal = new CancellationSignal();
@@ -296,18 +398,56 @@ public final class ProfilingFrameworkTests {
         cancellationSignal.cancel();
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
-        waitForCallback(callback);
+        waitForCancelCallback(callback);
 
         // Assert that result matches assumptions for success.
         confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_STACK_SAMPLING_SUFFIX);
+    }
+
+    /** Test that cancelling stack sampling stops collection and still receives correct result. */
+    @Test
+    @RequiresFlagsEnabled({Flags.FLAG_TELEMETRY_APIS, Flags.FLAG_REDACTION_ENABLED})
+    public void testRequestSystemTraceCancel() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // Set override durations to 10 minutes so we can ensure it finishes early when canceled.
+        overrideSystemTraceDeviceConfigValues(false, TEN_MINUTES_MS, TEN_MINUTES_MS,
+                TEN_MINUTES_MS);
+
+        AppCallback callback = new AppCallback();
+        CancellationSignal cancellationSignal = new CancellationSignal();
+
+        // Now kick off the request.
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                null,    // Use default parameters since we will cancel quickly
+                null,
+                cancellationSignal,
+                new ProfilingTestUtils.ImmediateExecutor(),
+                callback);
+
+        // Wait a bit for collection to get started.
+        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+
+        // Now request cancellation.
+        cancellationSignal.cancel();
+
+        // Wait until callback#onAccept is triggered so we can confirm the result.
+        waitForCancelCallback(callback);
+
+        // Assert that result matches assumptions for success.
+        confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_TRACE_SUFFIX);
     }
 
     /** Test that unregistering a global listener works and that listener does not get called. */
     @Test
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager.mCallbacks lock.
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
-    public void testUnregisterGeneralListener() {
+    public void testUnregisterGeneralListener() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
+                FIVE_SECONDS_MS);
 
         // Clear all existing callbacks.
         mProfilingManager.mCallbacks.clear();
@@ -346,8 +486,11 @@ public final class ProfilingFrameworkTests {
     /** Test that a globally registered listener is triggered along with the specific one. */
     @Test
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
-    public void testTriggerAllListeners() {
+    public void testTriggerAllListeners() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
+                FIVE_SECONDS_MS);
 
         // Create 3 callbacks.
         AppCallback callbackSpecific = new AppCallback();
@@ -383,8 +526,11 @@ public final class ProfilingFrameworkTests {
     /** Test that listeners registered to the same UID from different contexts are all triggered. */
     @Test
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
-    public void testTriggerAllListenersDifferentContexts() {
+    public void testTriggerAllListenersDifferentContexts() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
+                FIVE_SECONDS_MS);
 
         // Obtain another ProfilingManager instance from a different context.
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
@@ -426,8 +572,11 @@ public final class ProfilingFrameworkTests {
     /** Test that profiling request result file name contains the correct tag. */
     @Test
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
-    public void testRequestTagInFilename() {
+    public void testRequestTagInFilename() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
+                FIVE_SECONDS_MS);
 
         AppCallback callback = new AppCallback();
 
@@ -459,6 +608,111 @@ public final class ProfilingFrameworkTests {
         assertTrue(nameArray[1].equals(tagForFilename));
     }
 
+    /** Test that java heap dump killswitch disables collection. */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
+    public void testJavaHeapDumpKillswitchEnabled() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideJavaHeapDumpDeviceConfigValues(true, ONE_SECOND_MS, TEN_SECONDS_MS);
+
+        AppCallback callback = new AppCallback();
+
+        // Now kick off the request.
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
+                null,
+                null,
+                null,
+                new ProfilingTestUtils.ImmediateExecutor(),
+                callback);
+
+        // Wait until callback#onAccept is triggered so we can confirm the result.
+        waitForCallback(callback);
+
+        // Assert that request failed with correct error code.
+        assertEquals(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, callback.mResult.getErrorCode());
+    }
+
+    /** Test that heap profile killswitch disables collection. */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
+    public void testHeapProfileKillswitchEnabled() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideHeapProfileDeviceConfigValues(true, ONE_SECOND_MS, FIVE_SECONDS_MS, TEN_SECONDS_MS);
+
+        AppCallback callback = new AppCallback();
+
+        // Now kick off the request.
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
+                null,
+                null,
+                null,
+                new ProfilingTestUtils.ImmediateExecutor(),
+                callback);
+
+        // Wait until callback#onAccept is triggered so we can confirm the result.
+        waitForCallback(callback);
+
+        // Assert that request failed with correct error code.
+        assertEquals(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, callback.mResult.getErrorCode());
+    }
+
+    /** Test that stack sampling killswitch disables collection. */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
+    public void testStackSamplingKillswitchEnabled() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideStackSamplingDeviceConfigValues(true, ONE_SECOND_MS, FIVE_SECONDS_MS,
+                TEN_SECONDS_MS);
+
+        AppCallback callback = new AppCallback();
+
+        // Now kick off the request.
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
+                null,
+                null,
+                null,
+                new ProfilingTestUtils.ImmediateExecutor(),
+                callback);
+
+        // Wait until callback#onAccept is triggered so we can confirm the result.
+        waitForCallback(callback);
+
+        // Assert that request failed with correct error code.
+        assertEquals(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, callback.mResult.getErrorCode());
+    }
+
+    /** Test that system trace killswitch disables collection. */
+    @Test
+    @RequiresFlagsEnabled({Flags.FLAG_TELEMETRY_APIS, Flags.FLAG_REDACTION_ENABLED})
+    public void testSystemTraceKillswitchEnabled() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideSystemTraceDeviceConfigValues(true, ONE_SECOND_MS, FIVE_SECONDS_MS, TEN_SECONDS_MS);
+
+        AppCallback callback = new AppCallback();
+
+        // Now kick off the request.
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                null,
+                null,
+                null,
+                new ProfilingTestUtils.ImmediateExecutor(),
+                callback);
+
+        // Wait until callback#onAccept is triggered so we can confirm the result.
+        waitForCallback(callback);
+
+        // Assert that request failed with correct error code.
+        assertEquals(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, callback.mResult.getErrorCode());
+    }
+
     /** Disable the rate limiter and wait long enough for the update to be picked up. */
     private void disableRateLimiter() {
         SystemUtil.runShellCommand(
@@ -474,10 +728,28 @@ public final class ProfilingFrameworkTests {
         }
     }
 
-    /** Wait for callback to be triggered. Waits for up to 10 minutes, checking every 30 seconds. */
+    /** Wait for callback to be triggered. Waits for up to 5 minutes, checking every 5 seconds. */
     private void waitForCallback(AppCallback callback) {
-        for (int i = 0; i < CALLBACK_WAIT_TIME_INCREMENTS_COUNT; i++) {
-            sleep(CALLBACK_WAIT_TIME_INCREMENT_MS);
+        waitForCallback(callback, CALLBACK_WAIT_TIME_INCREMENT_MS,
+                CALLBACK_WAIT_TIME_INCREMENTS_COUNT);
+    }
+
+    /**
+     * Wait for callback to be triggered after cancellation. Waits for up to 20 seconds, checking
+     * every 5 seconds.
+     */
+    private void waitForCancelCallback(AppCallback callback) {
+        waitForCallback(callback, CALLBACK_WAIT_TIME_INCREMENT_MS,
+                CALLBACK_CANCEL_WAIT_TIME_INCREMENTS_COUNT);
+    }
+
+    /**
+     * Wait for callback to be triggered. Waits up to incrementMs * count, checking every
+     * incrementMs milliseconds.
+     */
+    private void waitForCallback(AppCallback callback, int incrementMs, int count) {
+        for (int i = 0; i < count; i++) {
+            sleep(incrementMs);
             if (callback.mResult != null) {
                 return;
             }
@@ -511,11 +783,64 @@ public final class ProfilingFrameworkTests {
         try {
             Files.createDirectories(DUMP_PATH);
             String filename = mTestName.getMethodName() + "_" + path.getFileName()
-                              + ".perfetto-trace";
+                    + ".perfetto-trace";
             Files.copy(path, Paths.get(DUMP_PATH.toString(), filename));
         } catch (IOException e) {
             throw new AssertionError("Failed to copy to DUMP_PATH", e);
         }
+    }
+
+    private void overrideJavaHeapDumpDeviceConfigValues(boolean killswitchEnabled, int durationMs,
+            int dataSourceTimeoutMs) throws Exception {
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_BOOL, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.KILLSWITCH_JAVA_HEAP_DUMP, killswitchEnabled);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.JAVA_HEAP_DUMP_DURATION_MS_DEFAULT, durationMs);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.JAVA_HEAP_DUMP_DATA_SOURCE_STOP_TIMEOUT_MS_DEFAULT,
+                dataSourceTimeoutMs);
+    }
+
+    private void overrideHeapProfileDeviceConfigValues(boolean killswitchEnabled,
+            int durationDefaultMs, int durationMinMs, int durationMaxMs) throws Exception {
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_BOOL, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.KILLSWITCH_HEAP_PROFILE, killswitchEnabled);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_DEFAULT, durationDefaultMs);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_MIN, durationMinMs);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_MAX, durationMaxMs);
+    }
+
+    private void overrideStackSamplingDeviceConfigValues(boolean killswitchEnabled,
+            int durationDefaultMs, int durationMinMs, int durationMaxMs) throws Exception {
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_BOOL, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.KILLSWITCH_STACK_SAMPLING, killswitchEnabled);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_DEFAULT, durationDefaultMs);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_MIN, durationMinMs);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_MAX, durationMaxMs);
+    }
+
+    private void overrideSystemTraceDeviceConfigValues(boolean killswitchEnabled,
+            int durationDefaultMs, int durationMinMs, int durationMaxMs) throws Exception {
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_BOOL, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.KILLSWITCH_SYSTEM_TRACE, killswitchEnabled);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_DEFAULT, durationDefaultMs);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_MIN, durationMinMs);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_MAX, durationMaxMs);
+    }
+
+    @FormatMethod
+    private String executeShellCmd(String cmdFormat, Object... args) throws Exception {
+        String cmd = String.format(cmdFormat, args);
+        return SystemUtil.runShellCommand(mInstrumentation, cmd);
     }
 
     private void sleep(long ms) {
@@ -536,4 +861,3 @@ public final class ProfilingFrameworkTests {
         }
     }
 }
-
