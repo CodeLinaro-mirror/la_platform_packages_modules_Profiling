@@ -62,6 +62,8 @@ public final class TracingSession {
     private long mRedactionStartTimeMs;
     private TracingState mState;
     private int mRetryCount = 0;
+    private long mProfilingStartTimeMs;
+    private int mMaxProfilingTimeAllowedMs = 0;
 
     public TracingSession(int profilingType, Bundle params, String appFilePath, int uid,
                 String packageName, String tag, long keyMostSigBits, long keyLeastSigBits) {
@@ -81,7 +83,20 @@ public final class TracingSession {
     }
 
     public int getPostProcessingScheduleDelayMs() throws IllegalArgumentException {
-        return Configs.getPostProcessingScheduleDelayMs(mProfilingType, mParams);
+        return Configs.getInitialProfilingTimeMs(mProfilingType, mParams);
+    }
+
+    /**
+     * Gets the maximum profiling time allowed for this TracingSession.
+     * @return maximum profiling time allowed in ms.
+     */
+    public int getMaxProfilingTimeAllowedMs() {
+        if (mMaxProfilingTimeAllowedMs != 0) {
+            return mMaxProfilingTimeAllowedMs;
+        }
+        mMaxProfilingTimeAllowedMs =
+                Configs.getMaxProfilingTimeAllowedMs(mProfilingType, mParams);
+        return mMaxProfilingTimeAllowedMs;
     }
 
     public String getKey() {
@@ -128,6 +143,10 @@ public final class TracingSession {
     /** Increase retry count by 1 */
     public void incrementRetryCount() {
         mRetryCount += 1;
+    }
+
+    public void setProfilingStartTimeMs(long startTime)  {
+        mProfilingStartTimeMs = startTime;
     }
 
     public Process getActiveTrace() {
@@ -182,6 +201,10 @@ public final class TracingSession {
 
     public long getRedactionStartTimeMs() {
         return mRedactionStartTimeMs;
+    }
+
+    public long getProfilingStartTimeMs() {
+        return mProfilingStartTimeMs;
     }
 
     /**
