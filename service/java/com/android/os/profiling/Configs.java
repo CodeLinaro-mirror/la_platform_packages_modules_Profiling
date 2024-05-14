@@ -24,8 +24,17 @@ public final class Configs {
 
     static final String HEAP_PROFILE_TRACK_JAVA_ALLOCATIONS = "heaps: \"com.android.art\"";
 
+    private static final String STUB_DURATION = "{{duration}}";
+    private static final String STUB_PACKAGE_NAME = "{{package_name}}";
+    private static final String STUB_TRACK_JAVA_ALLOCATIONS = "{{track_java_allocations}}";
+    private static final String STUB_SAMPLING_INTERVAL = "{{sampling_interval}}";
+    private static final String STUB_FREQUENCY = "{{frequency}}";
+    private static final String STUB_SIZE = "{{size_kb}}";
+    private static final String STUB_FLUSH_TIMEOUT = "{{flush_timeout}}";
+    private static final String STUB_DATA_SOURCE_STOP_TIMEOUT = "{{data_source_stop_timeout}}";
+
     static final String CONFIG_HEAP_PROFILE = "buffers {\n"
-            + "  size_kb: {{size_kb}}\n"
+            + "  size_kb: " + STUB_SIZE + "\n"
             + "}\n"
             + "\n"
             + "data_sources {\n"
@@ -34,19 +43,19 @@ public final class Configs {
             + "    heapprofd_config {\n"
             + "      # 8Mb\n"
             + "      shmem_size_bytes: 8388608\n"
-            + "      sampling_interval_bytes: {{sampling_interval}}\n"
-            + "      process_cmdline: \"{{package_name}}\"\n"
-            + "      {{track_java_allocations}}\n"
+            + "      sampling_interval_bytes: " + STUB_SAMPLING_INTERVAL + "\n"
+            + "      process_cmdline: \"" + STUB_PACKAGE_NAME + "\"\n"
+            + "      " + STUB_TRACK_JAVA_ALLOCATIONS + "\n"
             + "    }\n"
             + "  }\n"
             + "}\n"
             + "\n"
-            + "flush_timeout_ms: {{flush_timeout}}\n"
-            + "duration_ms: {{duration}}";
+            + "flush_timeout_ms: " + STUB_FLUSH_TIMEOUT + "\n"
+            + "duration_ms: " + STUB_DURATION;
     static final String CONFIG_JAVA_HEAP_DUMP = "buffers {\n"
             + "  # This is the maximum size of the trace. The buffer will be mmap'd but, only\n"
             + "  # the non empty pages contribute to RSS.\n"
-            + "  size_kb: {{size_kb}}\n"
+            + "  size_kb: " + STUB_SIZE + "\n"
             + "  fill_policy: DISCARD\n"
             + "}\n"
             + "\n"
@@ -54,18 +63,18 @@ public final class Configs {
             + "  config {\n"
             + "    name: \"android.java_hprof\"\n"
             + "    java_hprof_config {\n"
-            + "      process_cmdline: \"{{package_name}}\"\n"
+            + "      process_cmdline: \"" + STUB_PACKAGE_NAME + "\"\n"
             + "      dump_smaps: true\n"
             + "    }\n"
             + "  }\n"
             + "}\n"
             + "\n"
             + "# Wait 1s for the dump to start\n"
-            + "duration_ms: {{duration}}\n"
+            + "duration_ms: " + STUB_DURATION + "\n"
             + "# Wait up to 100s for the dump to finish\n"
-            + "data_source_stop_timeout_ms: {{data_source_stop_timeout}}";
+            + "data_source_stop_timeout_ms: " + STUB_DATA_SOURCE_STOP_TIMEOUT;
     static final String CONFIG_STACK_SAMPLING = "buffers {\n"
-            + "  size_kb: {{size_kb}}\n"
+            + "  size_kb: " + STUB_SIZE + "\n"
             + "  fill_policy: DISCARD\n"
             + "}\n"
             + "\n"
@@ -75,24 +84,22 @@ public final class Configs {
             + "    perf_event_config {\n"
             + "      timebase {\n"
             + "        counter: SW_CPU_CLOCK\n"
-            + "        frequency: {{frequency}}\n"
+            + "        frequency: " + STUB_FREQUENCY + "\n"
             + "        timestamp_clock: PERF_CLOCK_MONOTONIC\n"
             + "      }\n"
             + "      callstack_sampling {\n"
             + "        scope {\n"
-            + "          target_cmdline: \"{{package_name}}\"\n"
+            + "          target_cmdline: \"" + STUB_PACKAGE_NAME + "\"\n"
             + "        }\n"
-            + "        # TODO: Do kernel frame disclose sensitive info?\n"
-            + "        kernel_frames: true\n"
             + "      }\n"
             + "    }\n"
             + "  }\n"
             + "}\n"
             + "\n"
-            + "flush_timeout_ms: {{flush_timeout}}\n"
-            + "duration_ms: {{duration}}";
+            + "flush_timeout_ms: " + STUB_FLUSH_TIMEOUT + "\n"
+            + "duration_ms: " + STUB_DURATION;
     static final String CONFIG_SYSTEM_TRACE = "buffers {\n"
-            + "  size_kb: {{size_kb}}\n"
+            + "  size_kb: " + STUB_SIZE + "\n"
             + "  fill_policy: RING_BUFFER\n"
             + "}\n"
             + "\n"
@@ -182,7 +189,7 @@ public final class Configs {
             + "\n"
             + "      atrace_categories: \"binder_driver\"\n"
             + "\n"
-            + "      atrace_apps: \"{{package_name}}\"\n"
+            + "      atrace_apps: \"" + STUB_PACKAGE_NAME + "\"\n"
             + "    }\n"
             + "  }\n"
             + "}\n"
@@ -193,16 +200,7 @@ public final class Configs {
             + "    target_buffer: 0\n"
             + "  }\n"
             + "}\n"
-            + "duration_ms: {{duration}}";
-
-    private static final String STUB_DURATION = "{{duration}}";
-    private static final String STUB_PACKAGE_NAME = "{{package_name}}";
-    private static final String STUB_TRACK_JAVA_ALLOCATIONS = "{{track_java_allocations}}";
-    private static final String STUB_SAMPLING_INTERVAL = "{{sampling_interval}}";
-    private static final String STUB_FREQUENCY = "{{frequency}}";
-    private static final String STUB_SIZE = "{{size_kb}}";
-    private static final String FLUSH_TIMEOUT = "{{flush_timeout}}";
-    private static final String DATA_SOURCE_STOP_TIMEOUT = "{{{{data_source_stop_timeout}}}}";
+            + "duration_ms: " + STUB_DURATION;
 
     // Time to wait beyond trace timeout to ensure perfetto has time to finish writing output.
     private static final int FILE_PROCESSING_DELAY_MS = 5000;
@@ -351,8 +349,9 @@ public final class Configs {
 
                 return CONFIG_JAVA_HEAP_DUMP
                         .replace(STUB_PACKAGE_NAME, packageName)
+                        .replace(STUB_DURATION, String.valueOf(sJavaHeapDumpDurationMsDefault))
                         .replace(STUB_SIZE, String.valueOf(javaHeapDumpSizeKb))
-                        .replace(DATA_SOURCE_STOP_TIMEOUT,
+                        .replace(STUB_DATA_SOURCE_STOP_TIMEOUT,
                                     String.valueOf(sJavaHeapDumpDataSourceStopTimeoutMsDefault));
 
             // Heap profile
@@ -390,7 +389,8 @@ public final class Configs {
                         .replace(STUB_SAMPLING_INTERVAL, String.valueOf(samplingIntervalBytes))
                         .replace(STUB_DURATION, String.valueOf(heapProfileDuration))
                         .replace(STUB_SIZE, String.valueOf(heapProfileSizeKb))
-                        .replace(FLUSH_TIMEOUT, String.valueOf(sHeapProfileFlushTimeoutMsDefault));
+                        .replace(STUB_FLUSH_TIMEOUT,
+                                String.valueOf(sHeapProfileFlushTimeoutMsDefault));
 
             // Stack sampling
             case ProfilingManager.PROFILING_TYPE_STACK_SAMPLING:
@@ -422,7 +422,7 @@ public final class Configs {
                         .replace(STUB_FREQUENCY, String.valueOf(frequency))
                         .replace(STUB_DURATION, String.valueOf(stackSamplingDuration))
                         .replace(STUB_SIZE, String.valueOf(stackSamplingSizeKb))
-                        .replace(FLUSH_TIMEOUT,
+                        .replace(STUB_FLUSH_TIMEOUT,
                                     String.valueOf(sStackSamplingFlushTimeoutMsDefault));
 
             // System trace

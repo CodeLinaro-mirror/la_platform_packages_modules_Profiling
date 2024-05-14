@@ -148,6 +148,17 @@ public class ProfilingService extends IProfilingService.Stub {
             long keyMostSigBits, long keyLeastSigBits) {
         int uid = Binder.getCallingUid();
 
+        if (profilingType != ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP
+                && profilingType != ProfilingManager.PROFILING_TYPE_HEAP_PROFILE
+                && profilingType != ProfilingManager.PROFILING_TYPE_STACK_SAMPLING
+                && profilingType != ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE) {
+            if (DEBUG) Log.d(TAG, "Invalid request profiling type: " + profilingType);
+            processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
+                    ProfilingResult.ERROR_FAILED_INVALID_REQUEST, null, tag,
+                    "Invalid request profiling type");
+            return;
+        }
+
         // Check if we're running another trace so we don't run multiple at once.
         try {
             if (areAnyTracesRunning()) {
@@ -600,7 +611,12 @@ public class ProfilingService extends IProfilingService.Stub {
 
     private RateLimiter getRateLimiter() {
         if (mRateLimiter == null) {
-            mRateLimiter = new RateLimiter(mContext);
+            mRateLimiter = new RateLimiter(new RateLimiter.HandlerCallback() {
+                @Override
+                public Handler obtainHandler() {
+                    return getHandler();
+                }
+            });
         }
         return mRateLimiter;
     }
