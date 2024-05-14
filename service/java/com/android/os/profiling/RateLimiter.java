@@ -24,6 +24,7 @@ import android.os.Handler;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
 import android.os.RateLimiterRecordsWrapper;
+import android.provider.DeviceConfig;
 import android.util.AtomicFile;
 import android.util.Log;
 import android.util.SparseIntArray;
@@ -65,7 +66,7 @@ public class RateLimiter {
 
     private final Object mLock = new Object();
 
-    private final long mPersistToDiskFrequency;
+    private long mPersistToDiskFrequency;
 
     /** To be disabled for testing only. */
     @GuardedBy("mLock")
@@ -83,10 +84,10 @@ public class RateLimiter {
     @VisibleForTesting
     public final EntryGroupWrapper mPastRunsWeek;
 
-    private final int mCostJavaHeapDump;
-    private final int mCostHeapProfile;
-    private final int mCostStackSampling;
-    private final int mCostSystemTrace;
+    private int mCostJavaHeapDump;
+    private int mCostHeapProfile;
+    private int mCostStackSampling;
+    private int mCostSystemTrace;
 
     private final HandlerCallback mHandlerCallback;
 
@@ -123,35 +124,37 @@ public class RateLimiter {
     public RateLimiter(HandlerCallback handlerCallback) {
         mHandlerCallback = handlerCallback;
 
+        DeviceConfig.Properties properties = DeviceConfigHelper.getAllRateLimiterProperties();
+
         mPastRunsHour = new EntryGroupWrapper(
-                DeviceConfigHelper.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR,
+                properties.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR,
                         DEFAULT_MAX_COST_SYSTEM_HOUR),
-                DeviceConfigHelper.getInt(DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR,
+                properties.getInt(DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR,
                         DEFAULT_MAX_COST_PROCESS_HOUR),
                 TIME_HOUR_MS);
         mPastRunsDay = new EntryGroupWrapper(
-                DeviceConfigHelper.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR,
+                properties.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR,
                         DEFAULT_MAX_COST_SYSTEM_DAY),
-                DeviceConfigHelper.getInt(DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR,
+                properties.getInt(DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR,
                         DEFAULT_MAX_COST_PROCESS_DAY),
                 TIME_DAY_MS);
         mPastRunsWeek = new EntryGroupWrapper(
-                DeviceConfigHelper.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY,
+                properties.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY,
                         DEFAULT_MAX_COST_SYSTEM_WEEK),
-                DeviceConfigHelper.getInt(DeviceConfigHelper.MAX_COST_PROCESS_7_DAY,
+                properties.getInt(DeviceConfigHelper.MAX_COST_PROCESS_7_DAY,
                         DEFAULT_MAX_COST_PROCESS_WEEK),
                 TIME_WEEK_MS);
 
-        mCostJavaHeapDump = DeviceConfigHelper.getInt(DeviceConfigHelper.COST_JAVA_HEAP_DUMP,
+        mCostJavaHeapDump = properties.getInt(DeviceConfigHelper.COST_JAVA_HEAP_DUMP,
                 DEFAULT_COST_PER_SESSION);
-        mCostHeapProfile = DeviceConfigHelper.getInt(DeviceConfigHelper.COST_HEAP_PROFILE,
+        mCostHeapProfile = properties.getInt(DeviceConfigHelper.COST_HEAP_PROFILE,
                 DEFAULT_COST_PER_SESSION);
-        mCostStackSampling = DeviceConfigHelper.getInt(DeviceConfigHelper.COST_STACK_SAMPLING,
+        mCostStackSampling = properties.getInt(DeviceConfigHelper.COST_STACK_SAMPLING,
                 DEFAULT_COST_PER_SESSION);
-        mCostSystemTrace = DeviceConfigHelper.getInt(DeviceConfigHelper.COST_SYSTEM_TRACE,
+        mCostSystemTrace = properties.getInt(DeviceConfigHelper.COST_SYSTEM_TRACE,
                 DEFAULT_COST_PER_SESSION);
 
-        mPersistToDiskFrequency = DeviceConfigHelper.getInt(
+        mPersistToDiskFrequency = properties.getLong(
                 DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS, 0);
         mLastPersistedTimestampMs = System.currentTimeMillis();
 
@@ -403,11 +406,43 @@ public class RateLimiter {
         mDataLoaded.set(true);
     }
 
-    /** Update the disable rate limiter flag. */
-    public void setRateLimiterDisabled(boolean rateLimiterDisabled) {
+    /** Update the disable rate limiter flag if present in the provided properties. */
+    public void maybeUpdateRateLimiterDisabled(DeviceConfig.Properties properties) {
         synchronized (mLock) {
-            mRateLimiterDisabled = rateLimiterDisabled;
+            mRateLimiterDisabled = properties.getBoolean(
+                    DeviceConfigHelper.RATE_LIMITER_DISABLE_PROPERTY, mRateLimiterDisabled);
         }
+    }
+
+    /**
+     * Update DeviceConfig set configuration values if present in the provided properties, leaving
+     * not present values unchanged.
+     */
+    public void maybeUpdateConfigs(DeviceConfig.Properties properties) {
+        // If the field is not present in the changed properties then we want the value to stay the
+        // same, so use the current value as the default in the properties.get.
+        mPersistToDiskFrequency = properties.getLong(
+                DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS, mPersistToDiskFrequency);
+        mCostJavaHeapDump = properties.getInt(DeviceConfigHelper.COST_JAVA_HEAP_DUMP,
+                mCostJavaHeapDump);
+        mCostHeapProfile = properties.getInt(DeviceConfigHelper.COST_HEAP_PROFILE,
+                mCostHeapProfile);
+        mCostStackSampling = properties.getInt(DeviceConfigHelper.COST_STACK_SAMPLING,
+                mCostStackSampling);
+        mCostSystemTrace = properties.getInt(DeviceConfigHelper.COST_SYSTEM_TRACE,
+                mCostSystemTrace);
+
+        // For max cost values, set a invalid default value and pass through to each group wrapper
+        // to determine whether to update values.
+        mPastRunsHour.maybeUpdateMaxCosts(
+                properties.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, -1),
+                properties.getInt(DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, -1));
+        mPastRunsDay.maybeUpdateMaxCosts(
+                properties.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, -1),
+                properties.getInt(DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR, -1));
+        mPastRunsWeek.maybeUpdateMaxCosts(
+                properties.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, -1),
+                properties.getInt(DeviceConfigHelper.MAX_COST_PROCESS_7_DAY, -1));
     }
 
     static int statusToResult(@RateLimitResult int resultStatus) {
@@ -449,21 +484,33 @@ public class RateLimiter {
 
         @GuardedBy("mLock")
         final Queue<CollectionEntry> mEntries;
-
-        int mTotalCost;
         // uid indexed
         final SparseIntArray mPerUidCost;
-        final int mMaxCost;
-        final int mMaxCostPerUid;
         final long mTimeRangeMs;
 
-        EntryGroupWrapper(final int maxCost, final int maxPerUidCost, final long timeRangeMs) {
+        int mMaxCost;
+        int mMaxCostPerUid;
+        int mTotalCost;
+
+        EntryGroupWrapper(int maxCost, int maxPerUidCost, final long timeRangeMs) {
             synchronized (mLock) {
                 mMaxCost = maxCost;
                 mMaxCostPerUid = maxPerUidCost;
                 mTimeRangeMs = timeRangeMs;
                 mEntries = new ArrayDeque<>();
                 mPerUidCost = new SparseIntArray();
+            }
+        }
+
+        /** Update max per system and process costs if values are valid (>=0). */
+        public void maybeUpdateMaxCosts(int maxCost, int maxPerUidCost) {
+            synchronized (mLock) {
+                if (maxCost >= 0) {
+                    mMaxCost = maxCost;
+                }
+                if (maxPerUidCost >= 0) {
+                    mMaxCostPerUid = maxPerUidCost;
+                }
             }
         }
 

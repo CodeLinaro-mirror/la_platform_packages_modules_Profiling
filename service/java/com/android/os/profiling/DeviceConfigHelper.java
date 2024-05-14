@@ -156,4 +156,76 @@ public final class DeviceConfigHelper {
         return DeviceConfig.getBoolean(NAMESPACE_TESTING, name, defaultValue);
     }
 
+    /** Get all properties related to Java Heap Dump configuration. */
+    public static DeviceConfig.Properties getAllJavaHeapDumpProperties() {
+        return DeviceConfig.getProperties(NAMESPACE,
+                KILLSWITCH_JAVA_HEAP_DUMP,
+                JAVA_HEAP_DUMP_DURATION_MS_DEFAULT,
+                JAVA_HEAP_DUMP_DATA_SOURCE_STOP_TIMEOUT_MS_DEFAULT,
+                JAVA_HEAP_DUMP_SIZE_KB_DEFAULT,
+                JAVA_HEAP_DUMP_SIZE_KB_MIN,
+                JAVA_HEAP_DUMP_SIZE_KB_MAX);
+    }
+
+    /** Get all properties related to Heap Profile configuration. */
+    public static DeviceConfig.Properties getAllHeapProfileProperties() {
+        return DeviceConfig.getProperties(NAMESPACE,
+                KILLSWITCH_HEAP_PROFILE,
+                HEAP_PROFILE_TRACK_JAVA_ALLOCATIONS_DEFAULT,
+                HEAP_PROFILE_FLUSH_TIMEOUT_MS_DEFAULT,
+                HEAP_PROFILE_DURATION_MS_DEFAULT,
+                HEAP_PROFILE_DURATION_MS_MIN,
+                HEAP_PROFILE_DURATION_MS_MAX,
+                HEAP_PROFILE_SIZE_KB_DEFAULT,
+                HEAP_PROFILE_SIZE_KB_MIN,
+                HEAP_PROFILE_SIZE_KB_MAX,
+                HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_DEFAULT,
+                HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MIN,
+                HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MAX);
+    }
+
+    /** Get all properties related to Stack Sampling configuration. */
+    public static DeviceConfig.Properties getAllStackSamplingProperties() {
+        return DeviceConfig.getProperties(NAMESPACE,
+                KILLSWITCH_STACK_SAMPLING,
+                STACK_SAMPLING_FLUSH_TIMEOUT_MS_DEFAULT,
+                STACK_SAMPLING_DURATION_MS_DEFAULT,
+                STACK_SAMPLING_DURATION_MS_MIN,
+                STACK_SAMPLING_DURATION_MS_MAX,
+                STACK_SAMPLING_SAMPLING_SIZE_KB_DEFAULT,
+                STACK_SAMPLING_SAMPLING_SIZE_KB_MIN,
+                STACK_SAMPLING_SAMPLING_SIZE_KB_MAX,
+                STACK_SAMPLING_FREQUENCY_DEFAULT,
+                STACK_SAMPLING_FREQUENCY_MIN,
+                STACK_SAMPLING_FREQUENCY_MAX);
+    }
+
+    /** Get all properties related to System Trace configuration. */
+    public static DeviceConfig.Properties getAllSystemTraceProperties() {
+        return DeviceConfig.getProperties(NAMESPACE,
+                KILLSWITCH_SYSTEM_TRACE,
+                SYSTEM_TRACE_DURATION_MS_DEFAULT,
+                SYSTEM_TRACE_DURATION_MS_MIN,
+                SYSTEM_TRACE_DURATION_MS_MAX,
+                SYSTEM_TRACE_SIZE_KB_DEFAULT,
+                SYSTEM_TRACE_SIZE_KB_MIN,
+                SYSTEM_TRACE_SIZE_KB_MAX);
+    }
+
+    /** Get all properties related to rate limiter. */
+    public static DeviceConfig.Properties getAllRateLimiterProperties() {
+        return DeviceConfig.getProperties(NAMESPACE,
+                MAX_COST_PROCESS_1_HOUR,
+                MAX_COST_SYSTEM_1_HOUR,
+                MAX_COST_PROCESS_24_HOUR,
+                MAX_COST_SYSTEM_24_HOUR,
+                MAX_COST_PROCESS_7_DAY,
+                MAX_COST_SYSTEM_7_DAY,
+                COST_JAVA_HEAP_DUMP,
+                COST_HEAP_PROFILE,
+                COST_STACK_SAMPLING,
+                COST_SYSTEM_TRACE,
+                PERSIST_TO_DISK_FREQUENCY_MS);
+    }
+
 }
