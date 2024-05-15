@@ -26,7 +26,9 @@ interface IProfilingService {
 
     void requestProfiling(int profilingType, in Bundle params, String filePath, String tag, long keyMostSigBits, long keyLeastSigBits);
 
-    void registerResultsCallback(IProfilingResultCallback callback);
+    void registerResultsCallback(boolean isGeneralCallback, IProfilingResultCallback callback);
+
+    void generalListenerAdded();
 
     void requestCancel(long keyMostSigBits, long keyLeastSigBits);
 }

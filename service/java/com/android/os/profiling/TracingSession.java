@@ -24,6 +24,26 @@ import java.util.UUID;
  * Represents a single in progress tracing session and all necessary data to manage and process it.
  */
 public final class TracingSession {
+
+    public enum TracingState {
+        NOT_STARTED(0),
+        PROFILING_STARTED(1),
+        PROFILING_FINISHED(2),
+        REDACTED(3),
+        COPIED_FILE(4),
+        DISCARDED(5);
+
+        private final int mValue;
+
+        TracingState(int value) {
+            mValue = value;
+        }
+
+        public int getValue() {
+            return mValue;
+        }
+    }
+
     private Process mActiveTrace;
     private Process mActiveRedaction;
     private Runnable mProcessResultRunnable;
@@ -40,6 +60,8 @@ public final class TracingSession {
     private String mDestinationFileName = null;
     private String mRedactedFileName = null;
     private long mRedactionStartTimeMs;
+    private TracingState mState;
+    private int mRetryCount = 0;
 
     public TracingSession(int profilingType, Bundle params, String appFilePath, int uid,
                 String packageName, String tag, long keyMostSigBits, long keyLeastSigBits) {
@@ -51,6 +73,7 @@ public final class TracingSession {
         mTag = tag;
         mKeyMostSigBits = keyMostSigBits;
         mKeyLeastSigBits = keyLeastSigBits;
+        mState = TracingState.NOT_STARTED;
     }
 
     public byte[] getConfigBytes() throws IllegalArgumentException {
@@ -92,6 +115,19 @@ public final class TracingSession {
 
     public void setRedactionStartTimeMs(long startTime) {
         mRedactionStartTimeMs = startTime;
+    }
+
+    public void setRetryCount(int retryCount) {
+        mRetryCount = retryCount;
+    }
+
+    public void setState(TracingState state) {
+        mState = state;
+    }
+
+    /** Increase retry count by 1 */
+    public void incrementRetryCount() {
+        mRetryCount += 1;
     }
 
     public Process getActiveTrace() {
@@ -162,5 +198,13 @@ public final class TracingSession {
                     + ((this.getRedactedFileName() == null) ? mFileName : mRedactedFileName);
         }
         return mDestinationFileName;
+    }
+
+    public TracingState getState() {
+        return mState;
+    }
+
+    public int getRetryCount() {
+        return mRetryCount;
     }
 }

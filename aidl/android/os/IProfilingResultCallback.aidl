@@ -25,4 +25,6 @@ interface IProfilingResultCallback {
     boolean sendResult(String resultFile, long keyMostSigBits, long keyLeastSigBits, int status, String tag, String error);
 
     ParcelFileDescriptor generateFile(String filePathAbsolute, String fileName);
+
+    boolean deleteFile(String filePathAndName);
 }

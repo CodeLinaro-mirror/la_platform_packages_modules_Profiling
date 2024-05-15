@@ -29,6 +29,8 @@ import com.android.internal.annotations.VisibleForTesting;
 import java.io.File;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.UUID;
 import java.util.concurrent.Executor;
@@ -127,8 +129,10 @@ public final class ProfilingManager {
     @GuardedBy("mLock")
     public final ArrayList<ProfilingRequestCallbackWrapper> mCallbacks = new ArrayList<>();
 
+    /** @hide */
+    @VisibleForTesting
     @GuardedBy("mLock")
-    private IProfilingService mProfilingService;
+    public IProfilingService mProfilingService;
 
     /**
      * Constructor for ProfilingManager.
@@ -198,7 +202,7 @@ public final class ProfilingManager {
                 }
                 // If neither case above was hit, app wide listeners were provided. Continue.
 
-                final IProfilingService service = getIProfilingServiceLocked();
+                final IProfilingService service = getOrCreateIProfilingServiceLocked(false);
                 if (service == null) {
                     executor.execute(() -> listener.accept(
                             new ProfilingResult(ProfilingResult.ERROR_UNKNOWN, null, tag,
@@ -240,6 +244,10 @@ public final class ProfilingManager {
      * Register a listener to be called for all profiling results for this uid. Listeners set here
      * will be called in addition to any provided with the request.
      *
+     * <p class="note"> Note: If a callback attempt fails (for example, because your app is killed
+     * while a trace is in progress) re-delivery may be attempted using a listener added via this
+     * method. </p>
+     *
      * @param executor The executor to call back with.
      * @param listener Listener to be triggered with result.
      */
@@ -247,7 +255,11 @@ public final class ProfilingManager {
             @NonNull Executor executor,
             @NonNull Consumer<ProfilingResult> listener) {
         synchronized (mLock) {
-            if (getIProfilingServiceLocked() == null) {
+            // Only notify {@link mProfilingService} of a general listener being added if it already
+            // exists as registering it also handles the notifying.
+            boolean shouldNotifyService = mProfilingService != null;
+
+            if (getOrCreateIProfilingServiceLocked(true) == null) {
                 // If the binder object was not successfully registered then this listener will
                 // not ever be triggered.
                 executor.execute(() -> listener.accept(new ProfilingResult(
@@ -256,6 +268,19 @@ public final class ProfilingManager {
                 return;
             }
             mCallbacks.add(new ProfilingRequestCallbackWrapper(executor, listener, null));
+
+            if (shouldNotifyService) {
+                // Notify service that a general listener was added. General listeners are also used
+                // for queued callbacks if any are waiting.
+                try {
+                    mProfilingService.generalListenerAdded();
+                } catch (RemoteException e) {
+                    // Do nothing. Binder callback is already registered, but service won't know
+                    // there is a general listener so queued callbacks won't occur.
+                    Log.d(TAG, "Exception notifying service of general callback,"
+                            + " queued callbacks will not occur.", e);
+                }
+            }
         }
     }
 
@@ -300,11 +325,19 @@ public final class ProfilingManager {
         }
     }
 
+
+    /** @hide */
+    @VisibleForTesting
     @GuardedBy("mLock")
-    private @Nullable IProfilingService getIProfilingServiceLocked() {
+    public @Nullable IProfilingService getOrCreateIProfilingServiceLocked(
+            boolean isGeneralListener) {
+        // We only register the callback with registerResultsCallback once per binder object, and we
+        // only create one binder object per ProfilingManager instance. If the object already exists
+        // then it was successfully created and registered previously so we can just return it.
         if (mProfilingService != null) {
             return mProfilingService;
         }
+
         mProfilingService = IProfilingService.Stub.asInterface(
                 ProfilingFrameworkInitializer.getProfilingServiceManager()
                     .getProfilingServiceRegisterer().get());
@@ -313,109 +346,135 @@ public final class ProfilingManager {
             return mProfilingService;
         }
         try {
-            mProfilingService.registerResultsCallback(new IProfilingResultCallback.Stub() {
+            mProfilingService.registerResultsCallback(isGeneralListener,
+                    new IProfilingResultCallback.Stub() {
 
-                /**
-                 * Called by {@link ProfilingService} when a result is ready,
-                 * both for success and failure.
-                 *
-                 * @return whether there are additional callbacks backed by this binder object.
-                 */
-                @Override
-                public boolean sendResult(@Nullable String resultFile, long keyMostSigBits,
-                        long keyLeastSigBits, int status, @Nullable String tag,
-                        @Nullable String error) {
-                    synchronized (mLock) {
-                        if (mCallbacks.isEmpty()) {
-                            // This shouldn't happen - no callbacks, nowhere to report this result.
-                            if (DEBUG) Log.d(TAG, "No callbacks");
-                            mProfilingService = null;
-                            return false;
-                        }
-
-                        // This shouldn't be true, but if the file is null ensure the status
-                        // represents a failure.
-                        final boolean overrideStatusToError = resultFile == null
-                                && status == ProfilingResult.ERROR_NONE;
-
-                        UUID key = new UUID(keyMostSigBits, keyLeastSigBits);
-                        int removeListenerPos = -1;
-                        for (int i = 0; i < mCallbacks.size(); i++) {
-                            ProfilingRequestCallbackWrapper wrapper = mCallbacks.get(i);
-                            if (key.equals(wrapper.mKey)) {
-                                // At most 1 listener can have a key matching this result: the one
-                                // registered with the request, remove that one only.
-                                if (removeListenerPos == -1) {
-                                    removeListenerPos = i;
-                                } else {
-                                    // This should never happen.
-                                    if (DEBUG) Log.d(TAG, "More than 1 listener with the same key");
+                        /**
+                         * Called by {@link ProfilingService} when a result is ready,
+                         * both for success and failure.
+                         *
+                         * @return whether there are additional callbacks backed by this binder
+                         *         object.
+                         */
+                        @Override
+                        public boolean sendResult(@Nullable String resultFile, long keyMostSigBits,
+                                long keyLeastSigBits, int status, @Nullable String tag,
+                                @Nullable String error) {
+                            synchronized (mLock) {
+                                if (mCallbacks.isEmpty()) {
+                                    // This shouldn't happen - no callbacks, nowhere to report this
+                                    // result.
+                                    if (DEBUG) Log.d(TAG, "No callbacks");
+                                    mProfilingService = null;
+                                    return false;
                                 }
-                            } else if (wrapper.mKey != null) {
-                                // If the key is not null, and doesn't matched the result key, then
-                                // this key belongs to another request and should not be triggered.
-                                continue;
+
+                                // This shouldn't be true, but if the file is null ensure the status
+                                // represents a failure.
+                                final boolean overrideStatusToError = resultFile == null
+                                        && status == ProfilingResult.ERROR_NONE;
+
+                                UUID key = new UUID(keyMostSigBits, keyLeastSigBits);
+                                int removeListenerPos = -1;
+                                for (int i = 0; i < mCallbacks.size(); i++) {
+                                    ProfilingRequestCallbackWrapper wrapper = mCallbacks.get(i);
+                                    if (key.equals(wrapper.mKey)) {
+                                        // At most 1 listener can have a key matching this result:
+                                        // the one registered with the request, remove that one
+                                        // only.
+                                        if (removeListenerPos == -1) {
+                                            removeListenerPos = i;
+                                        } else {
+                                            // This should never happen.
+                                            if (DEBUG) {
+                                                Log.d(TAG,
+                                                        "More than 1 listener with the same key");
+                                            }
+                                        }
+                                    } else if (wrapper.mKey != null) {
+                                        // If the key is not null, and doesn't matched the result
+                                        // key, then this key belongs to another request and should
+                                        // not be triggered.
+                                        continue;
+                                    }
+
+                                    // TODO: b/337017299 - check resultFile is valid before
+                                    // returning Now trigger the callback for any listener that
+                                    // doesn't belong to another request.
+                                    wrapper.mExecutor.execute(() -> wrapper.mListener.accept(
+                                            new ProfilingResult(overrideStatusToError
+                                                    ? ProfilingResult.ERROR_UNKNOWN : status,
+                                                    resultFile, tag, error)));
+                                }
+
+                                // Remove the single listener that was tied to the request, if
+                                // applicable.
+                                if (removeListenerPos != -1) {
+                                    mCallbacks.remove(removeListenerPos);
+                                }
+
+                                if (mCallbacks.isEmpty()) {
+                                    mProfilingService = null;
+                                    return false;
+                                }
+                                return true;
                             }
-
-                            // TODO: b/337017299 - check resultFile is valid before returning
-                            // Now trigger the callback for any listener that doesn't belong to
-                            // another request.
-                            wrapper.mExecutor.execute(() -> wrapper.mListener.accept(
-                                    new ProfilingResult(overrideStatusToError
-                                            ? ProfilingResult.ERROR_UNKNOWN : status,
-                                            resultFile, tag, error)));
                         }
 
-                        // Remove the single listener that was tied to the request, if applicable.
-                        if (removeListenerPos != -1) {
-                            mCallbacks.remove(removeListenerPos);
+                        /**
+                         * Called by {@link ProfilingService} when a trace is ready and need to be
+                         * copied to callers internal storage.
+                         *
+                         * This method will open a new file and pass back the FileDescriptor for
+                         * ProfilingService to write to.
+                         */
+                        @Override
+                        public ParcelFileDescriptor generateFile(String filePathAbsolute,
+                                String fileName) {
+                            try {
+                                // Ensure the profiling directory exists. Create it if it doesn't.
+                                final File profilingDir = new File(filePathAbsolute);
+                                if (!profilingDir.exists()) {
+                                    profilingDir.mkdir();
+                                }
+
+                                // Create the profiling file for the output to be written to.
+                                final File profilingFile = new File(filePathAbsolute + fileName);
+                                profilingFile.createNewFile();
+                                if (!profilingFile.exists()) {
+                                    // Failed to create output file. Result will be lost.
+                                    if (DEBUG) Log.d(TAG, "Output file couldn't be created");
+                                    return null;
+                                }
+
+                                // Wrap the new output file in a {@link ParcelFileDescriptor} and
+                                // pass back to {@link ProfilingService} to write to.
+                                ParcelFileDescriptor pfd = ParcelFileDescriptor.open(profilingFile,
+                                        ParcelFileDescriptor.MODE_READ_WRITE);
+                                return pfd;
+                            } catch (Exception e) {
+                                // Failure prepping output file. Result will be lost.
+                                if (DEBUG) Log.d(TAG, "Exception preparing file", e);
+                                return null;
+                            }
                         }
 
-                        if (mCallbacks.isEmpty()) {
-                            mProfilingService = null;
-                            return false;
+                        /**
+                         * Delete a file. To be used only for files created by {@link generateFile}.
+                         *
+                         * @return whether the file was successfully deleted.
+                         */
+                        @Override
+                        public boolean deleteFile(String filePathAndName) {
+                            try {
+                                Files.delete(Path.of(filePathAndName));
+                                return true;
+                            } catch (Exception exception) {
+                                if (DEBUG) Log.e(TAG, "Failed to delete file.", exception);
+                                return false;
+                            }
                         }
-                        return true;
-                    }
-                }
-
-                /**
-                 * Called by {@link ProfilingService} when a trace is ready and need to be copied
-                 * to callers internal storage.
-                 *
-                 * This method will open a new file and pass back the FileDescriptor for
-                 * ProfilingService to write to.
-                 */
-                @Override
-                public ParcelFileDescriptor generateFile(String filePathAbsolute, String fileName) {
-                    try {
-                        // Ensure the profiling directory exists. Create it if it doesn't.
-                        final File profilingDir = new File(filePathAbsolute);
-                        if (!profilingDir.exists()) {
-                            profilingDir.mkdir();
-                        }
-
-                        // Create the profiling file for the output to be written to.
-                        final File profilingFile = new File(filePathAbsolute + fileName);
-                        profilingFile.createNewFile();
-                        if (!profilingFile.exists()) {
-                            // Failed to create output file. Result will be lost.
-                            if (DEBUG) Log.d(TAG, "Output file couldn't be created");
-                            return null;
-                        }
-
-                        // Wrap the new output file in a {@link ParcelFileDescriptor} and
-                        // pass back to {@link ProfilingService} to write to.
-                        ParcelFileDescriptor pfd = ParcelFileDescriptor.open(profilingFile,
-                                ParcelFileDescriptor.MODE_READ_WRITE);
-                        return pfd;
-                    } catch (Exception e) {
-                        // Failure prepping output file. Result will be lost.
-                        if (DEBUG) Log.d(TAG, "Exception preparing file", e);
-                        return null;
-                    }
-                }
-            });
+                    });
         } catch (RemoteException e) {
             if (DEBUG) Log.d(TAG, "Exception registering service callback", e);
             throw new RuntimeException("Unable to register profiling result callback."
