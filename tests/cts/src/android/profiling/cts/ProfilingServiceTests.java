@@ -354,6 +354,9 @@ public final class ProfilingServiceTests {
         // Update DeviceConfig defaults to high enough limits, cost of 1, and persist frequency 0.
         overrideRateLimiterDefaults(5, 10, 20, 50, 50, 100, 1, 1, 1, 1, 0);
 
+        // We're using different files so override setup files to do nothing.
+        doReturn(true).when(mRateLimiter).setupPersistFiles();
+
         // Override file path because test app context that can't access /data/system/
         mRateLimiter.mPersistStoreDir = new File(mContext.getFilesDir(), "testdir");
         mRateLimiter.mPersistStoreDir.mkdir();
@@ -401,8 +404,8 @@ public final class ProfilingServiceTests {
         assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
         assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
 
-        // Now load the persisted records from disk
-        mRateLimiter.loadFromDisk();
+        // Now load the persisted records from disk using the overridden files we set up earlier.
+        mRateLimiter.setupFromPersistedData();
 
         // Finally, verify the records.
         confirmRateLimiterEntriesEqual(hourEntriesOriginal,
