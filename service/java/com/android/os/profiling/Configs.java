@@ -24,6 +24,8 @@ import android.provider.DeviceConfig;
 public final class Configs {
 
     static final String HEAP_PROFILE_TRACK_JAVA_ALLOCATIONS = "heaps: \"com.android.art\"";
+    private static final String BUFFER_FILL_POLICY_DISCARD = "DISCARD";
+    private static final String BUFFER_FILL_POLICY_RING_BUFFER = "RING_BUFFER";
 
     private static final String STUB_DURATION = "{{duration}}";
     private static final String STUB_PACKAGE_NAME = "{{package_name}}";
@@ -33,9 +35,11 @@ public final class Configs {
     private static final String STUB_SIZE = "{{size_kb}}";
     private static final String STUB_FLUSH_TIMEOUT = "{{flush_timeout}}";
     private static final String STUB_DATA_SOURCE_STOP_TIMEOUT = "{{data_source_stop_timeout}}";
+    private static final String STUB_BUFFER_FILL_POLICY = "{{buffer_fill_policy}}";
 
     static final String CONFIG_HEAP_PROFILE = "buffers {\n"
             + "  size_kb: " + STUB_SIZE + "\n"
+            + "  fill_policy: DISCARD\n"
             + "}\n"
             + "\n"
             + "data_sources {\n"
@@ -100,8 +104,12 @@ public final class Configs {
             + "flush_timeout_ms: " + STUB_FLUSH_TIMEOUT + "\n"
             + "duration_ms: " + STUB_DURATION;
     static final String CONFIG_SYSTEM_TRACE = "buffers {\n"
+            + "  size_kb: 4096\n"
+            + "  fill_policy: DISCARD\n"
+            + "}\n"
+            + "buffers {\n"
             + "  size_kb: " + STUB_SIZE + "\n"
-            + "  fill_policy: RING_BUFFER\n"
+            + "  fill_policy: " + STUB_BUFFER_FILL_POLICY + "\n"
             + "}\n"
             + "\n"
             + "data_sources {\n"
@@ -118,13 +126,16 @@ public final class Configs {
             + "  config {\n"
             + "    name: \"android.packages_list\"\n"
             + "    target_buffer: 0\n"
+            + "    packages_list_config {\n"
+            + "      package_name_filter: \"" + STUB_PACKAGE_NAME + "\"\n"
+            + "    }\n"
             + "  }\n"
             + "}\n"
             + "\n"
             + "data_sources {\n"
             + "  config {\n"
             + "    name: \"linux.ftrace\"\n"
-            + "    target_buffer: 0\n"
+            + "    target_buffer: 1\n"
             + "    ftrace_config {\n"
             + "      throttle_rss_stat: true\n"
             + "      disable_generic_events: true\n"
@@ -181,7 +192,7 @@ public final class Configs {
             + "data_sources {\n"
             + "  config {\n"
             + "    name: \"android.surfaceflinger.frametimeline\"\n"
-            + "    target_buffer: 0\n"
+            + "    target_buffer: 1\n"
             + "  }\n"
             + "}\n"
             + "incremental_state_config {\n"
@@ -602,13 +613,17 @@ public final class Configs {
                         sSystemTraceSizeKbMin,
                         sSystemTraceSizeKbMax,
                         paramsCopy);
+                String systemTraceBufferFillPolicy = getBufferFillPolicyString(
+                        getAndRemove(ProfilingManager.KEY_BUFFER_FILL_POLICY,
+                                ProfilingManager.VALUE_BUFFER_FILL_POLICY_RING_BUFFER, paramsCopy));
 
                 confirmEmptyOrThrow(paramsCopy);
 
                 return CONFIG_SYSTEM_TRACE
                         .replace(STUB_PACKAGE_NAME, packageName)
                         .replace(STUB_DURATION, String.valueOf(systemTraceDuration))
-                        .replace(STUB_SIZE, String.valueOf(systemTraceSizeKb));
+                        .replace(STUB_SIZE, String.valueOf(systemTraceSizeKb))
+                        .replace(STUB_BUFFER_FILL_POLICY, systemTraceBufferFillPolicy);
 
             // Invalid type
             default:
@@ -656,6 +671,18 @@ public final class Configs {
         return duration + FILE_PROCESSING_DELAY_MS;
     }
 
+    private static String getBufferFillPolicyString(int bufferFillPolicy)
+            throws IllegalArgumentException {
+        switch (bufferFillPolicy) {
+            case ProfilingManager.VALUE_BUFFER_FILL_POLICY_DISCARD:
+                return BUFFER_FILL_POLICY_DISCARD;
+            case ProfilingManager.VALUE_BUFFER_FILL_POLICY_RING_BUFFER:
+                return BUFFER_FILL_POLICY_RING_BUFFER;
+            default:
+                throw new IllegalArgumentException("Invalid buffer fill policy.");
+        }
+    }
+
     private static int getWithinBounds(String key, int defaultValue, int minValue,
             int maxValue, @Nullable Bundle params) {
         if (params == null) {
@@ -677,6 +704,18 @@ public final class Configs {
         }
         if (bundle.containsKey(key)) {
             boolean value = bundle.getBoolean(key);
+            bundle.remove(key);
+            return value;
+        }
+        return defaultValue;
+    }
+
+    private static int getAndRemove(String key, int defaultValue, @Nullable Bundle bundle) {
+        if (bundle == null) {
+            return defaultValue;
+        }
+        if (bundle.containsKey(key)) {
+            int value = bundle.getInt(key);
             bundle.remove(key);
             return value;
         }
