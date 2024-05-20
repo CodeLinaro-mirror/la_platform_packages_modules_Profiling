@@ -107,7 +107,8 @@ public class RateLimiter {
     @VisibleForTesting
     public File mPersistFile;
 
-    private AtomicBoolean mDataLoaded = new AtomicBoolean();
+    @VisibleForTesting
+    public AtomicBoolean mDataLoaded = new AtomicBoolean();
 
     @IntDef(value = {
         RATE_LIMIT_RESULT_ALLOWED,
@@ -422,7 +423,8 @@ public class RateLimiter {
      *
      * @return whether the bad file state has been successfully remediated.
      */
-    private boolean handleBadFile() {
+    @VisibleForTesting
+    public boolean handleBadFile() {
         if (mPersistFile == null) {
             // This should not happen, if there is no file how can it have been determined to be
             // bad?
