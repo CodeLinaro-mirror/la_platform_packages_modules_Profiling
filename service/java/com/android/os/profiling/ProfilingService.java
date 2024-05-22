@@ -52,7 +52,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -128,15 +127,24 @@ public class ProfilingService extends IProfilingService.Stub {
                     @Override
                     public void onPropertiesChanged(@NonNull DeviceConfig.Properties properties) {
                         synchronized (mLock) {
-                            Set<String> keys = properties.getKeyset();
-                            if (keys.contains(DeviceConfigHelper.DISABLE_DELETE_UNREDACTED_TRACE)) {
-                                mKeepUnredactedTrace = properties.getBoolean(
-                                        DeviceConfigHelper.DISABLE_DELETE_UNREDACTED_TRACE, false);
-                            }
-                            if (keys.contains(DeviceConfigHelper.RATE_LIMITER_DISABLE_PROPERTY)) {
-                                getRateLimiter().setRateLimiterDisabled(properties.getBoolean(
-                                        DeviceConfigHelper.RATE_LIMITER_DISABLE_PROPERTY, false));
-                            }
+                            mKeepUnredactedTrace = properties.getBoolean(
+                                    DeviceConfigHelper.DISABLE_DELETE_UNREDACTED_TRACE, false);
+                            getRateLimiter().maybeUpdateRateLimiterDisabled(properties);
+                        }
+                    }
+                });
+
+        // Subscribe to updates on the main config.
+        DeviceConfig.addOnPropertiesChangedListener(DeviceConfigHelper.NAMESPACE,
+                mContext.getMainExecutor(), new DeviceConfig.OnPropertiesChangedListener() {
+                    @Override
+                    public void onPropertiesChanged(@NonNull DeviceConfig.Properties properties) {
+                        synchronized (mLock) {
+                            getRateLimiter().maybeUpdateConfigs(properties);
+                            Configs.maybeUpdateConfigs(properties);
+                            mPerfettoDestroyTimeoutMs = properties.getInt(
+                                    DeviceConfigHelper.PERFETTO_DESTROY_TIMEOUT_MS,
+                                    mPerfettoDestroyTimeoutMs);
                         }
                     }
                 });
