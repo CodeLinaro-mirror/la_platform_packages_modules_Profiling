@@ -21,184 +21,17 @@ import android.os.Bundle;
 import android.os.ProfilingManager;
 import android.provider.DeviceConfig;
 
+import perfetto.protos.DataSourceConfigOuterClass.DataSourceConfig;
+import perfetto.protos.FtraceConfigOuterClass.FtraceConfig;
+import perfetto.protos.HeapprofdConfigOuterClass.HeapprofdConfig;
+import perfetto.protos.JavaHprofConfigOuterClass.JavaHprofConfig;
+import perfetto.protos.PackagesListConfigOuterClass.PackagesListConfig;
+import perfetto.protos.PerfEventConfigOuterClass.PerfEventConfig;
+import perfetto.protos.PerfEventsOuterClass.PerfEvents;
+import perfetto.protos.ProcessStatsConfigOuterClass.ProcessStatsConfig;
+import perfetto.protos.TraceConfigOuterClass.TraceConfig;
+
 public final class Configs {
-
-    static final String HEAP_PROFILE_TRACK_JAVA_ALLOCATIONS = "heaps: \"com.android.art\"";
-    private static final String BUFFER_FILL_POLICY_DISCARD = "DISCARD";
-    private static final String BUFFER_FILL_POLICY_RING_BUFFER = "RING_BUFFER";
-
-    private static final String STUB_DURATION = "{{duration}}";
-    private static final String STUB_PACKAGE_NAME = "{{package_name}}";
-    private static final String STUB_TRACK_JAVA_ALLOCATIONS = "{{track_java_allocations}}";
-    private static final String STUB_SAMPLING_INTERVAL = "{{sampling_interval}}";
-    private static final String STUB_FREQUENCY = "{{frequency}}";
-    private static final String STUB_SIZE = "{{size_kb}}";
-    private static final String STUB_FLUSH_TIMEOUT = "{{flush_timeout}}";
-    private static final String STUB_DATA_SOURCE_STOP_TIMEOUT = "{{data_source_stop_timeout}}";
-    private static final String STUB_BUFFER_FILL_POLICY = "{{buffer_fill_policy}}";
-
-    static final String CONFIG_HEAP_PROFILE = "buffers {\n"
-            + "  size_kb: " + STUB_SIZE + "\n"
-            + "  fill_policy: DISCARD\n"
-            + "}\n"
-            + "\n"
-            + "data_sources {\n"
-            + "  config {\n"
-            + "    name: \"android.heapprofd\"\n"
-            + "    heapprofd_config {\n"
-            + "      # 8Mb\n"
-            + "      shmem_size_bytes: 8388608\n"
-            + "      sampling_interval_bytes: " + STUB_SAMPLING_INTERVAL + "\n"
-            + "      process_cmdline: \"" + STUB_PACKAGE_NAME + "\"\n"
-            + "      " + STUB_TRACK_JAVA_ALLOCATIONS + "\n"
-            + "    }\n"
-            + "  }\n"
-            + "}\n"
-            + "\n"
-            + "flush_timeout_ms: " + STUB_FLUSH_TIMEOUT + "\n"
-            + "duration_ms: " + STUB_DURATION;
-    static final String CONFIG_JAVA_HEAP_DUMP = "buffers {\n"
-            + "  # This is the maximum size of the trace. The buffer will be mmap'd but, only\n"
-            + "  # the non empty pages contribute to RSS.\n"
-            + "  size_kb: " + STUB_SIZE + "\n"
-            + "  fill_policy: DISCARD\n"
-            + "}\n"
-            + "\n"
-            + "data_sources {\n"
-            + "  config {\n"
-            + "    name: \"android.java_hprof\"\n"
-            + "    java_hprof_config {\n"
-            + "      process_cmdline: \"" + STUB_PACKAGE_NAME + "\"\n"
-            + "      dump_smaps: true\n"
-            + "    }\n"
-            + "  }\n"
-            + "}\n"
-            + "\n"
-            + "# Wait 1s for the dump to start\n"
-            + "duration_ms: " + STUB_DURATION + "\n"
-            + "# Wait up to 100s for the dump to finish\n"
-            + "data_source_stop_timeout_ms: " + STUB_DATA_SOURCE_STOP_TIMEOUT;
-    static final String CONFIG_STACK_SAMPLING = "buffers {\n"
-            + "  size_kb: " + STUB_SIZE + "\n"
-            + "  fill_policy: DISCARD\n"
-            + "}\n"
-            + "\n"
-            + "data_sources {\n"
-            + "  config {\n"
-            + "    name: \"linux.perf\"\n"
-            + "    perf_event_config {\n"
-            + "      timebase {\n"
-            + "        counter: SW_CPU_CLOCK\n"
-            + "        frequency: " + STUB_FREQUENCY + "\n"
-            + "        timestamp_clock: PERF_CLOCK_MONOTONIC\n"
-            + "      }\n"
-            + "      callstack_sampling {\n"
-            + "        scope {\n"
-            + "          target_cmdline: \"" + STUB_PACKAGE_NAME + "\"\n"
-            + "        }\n"
-            + "      }\n"
-            + "    }\n"
-            + "  }\n"
-            + "}\n"
-            + "\n"
-            + "flush_timeout_ms: " + STUB_FLUSH_TIMEOUT + "\n"
-            + "duration_ms: " + STUB_DURATION;
-    static final String CONFIG_SYSTEM_TRACE = "buffers {\n"
-            + "  size_kb: 4096\n"
-            + "  fill_policy: DISCARD\n"
-            + "}\n"
-            + "buffers {\n"
-            + "  size_kb: " + STUB_SIZE + "\n"
-            + "  fill_policy: " + STUB_BUFFER_FILL_POLICY + "\n"
-            + "}\n"
-            + "\n"
-            + "data_sources {\n"
-            + "  config {\n"
-            + "    name: \"linux.process_stats\"\n"
-            + "    target_buffer: 0\n"
-            + "    process_stats_config {\n"
-            + "      scan_all_processes_on_start: true\n"
-            + "    }\n"
-            + "  }\n"
-            + "}\n"
-            + "\n"
-            + "data_sources {\n"
-            + "  config {\n"
-            + "    name: \"android.packages_list\"\n"
-            + "    target_buffer: 0\n"
-            + "    packages_list_config {\n"
-            + "      package_name_filter: \"" + STUB_PACKAGE_NAME + "\"\n"
-            + "    }\n"
-            + "  }\n"
-            + "}\n"
-            + "\n"
-            + "data_sources {\n"
-            + "  config {\n"
-            + "    name: \"linux.ftrace\"\n"
-            + "    target_buffer: 1\n"
-            + "    ftrace_config {\n"
-            + "      throttle_rss_stat: true\n"
-            + "      disable_generic_events: true\n"
-            + "      compact_sched {\n"
-            + "        enabled: true\n"
-            + "      }\n"
-            + "\n"
-            + "      # RSS and ION buffer events:\n"
-            + "      ftrace_events: \"gpu_mem/gpu_mem_total\"\n"
-            + "\n"
-            + "      # Scheduling information & process tracking. Useful for:\n"
-            + "      # - what is happening on each CPU at each moment\n"
-            + "      # - why a thread was descheduled\n"
-            + "      # - parent/child relationships between processes and threads.\n"
-            + "      ftrace_events: \"power/suspend_resume\"\n"
-            + "      ftrace_events: \"sched/sched_process_free\"\n"
-            + "      ftrace_events: \"sched/sched_switch\"\n"
-            + "      ftrace_events: \"task/task_newtask\"\n"
-            + "      ftrace_events: \"task/task_rename\"\n"
-            + "\n"
-            + "      # Wakeup info. Allows you to compute how long a task was\n"
-            + "      # blocked due to CPU contention.\n"
-            + "      ftrace_events: \"sched/sched_waking\"\n"
-            + "      ftrace_events: \"sched/sched_wakeup_new\"\n"
-            + "\n"
-            + "      # vmscan and mm_compaction events.\n"
-            + "      ftrace_events: \"vmscan/mm_vmscan_kswapd_wake\"\n"
-            + "      ftrace_events: \"vmscan/mm_vmscan_kswapd_sleep\"\n"
-            + "      ftrace_events: \"vmscan/mm_vmscan_direct_reclaim_begin\"\n"
-            + "      ftrace_events: \"vmscan/mm_vmscan_direct_reclaim_end\"\n"
-            + "      ftrace_events: \"compaction/mm_compaction_begin\"\n"
-            + "      ftrace_events: \"compaction/mm_compaction_end\"\n"
-            + "\n"
-            + "      # Atrace activity manager:\n"
-            + "      atrace_categories: \"am\"\n"
-            + "\n"
-            + "      # Java and C:\n"
-            + "      atrace_categories: \"dalvik\"\n"
-            + "      atrace_categories: \"bionic\"\n"
-            + "\n"
-            + "      atrace_categories: \"binder_driver\"\n"
-            + "\n"
-            + "      atrace_categories: \"view\"\n"
-            + "\n"
-            + "      atrace_categories: \"input\"\n"
-            + "\n"
-            + "      atrace_categories: \"gfx\"\n"
-            + "\n"
-            + "      atrace_apps: \"" + STUB_PACKAGE_NAME + "\"\n"
-            + "    }\n"
-            + "  }\n"
-            + "}\n"
-            + "\n"
-            + "data_sources {\n"
-            + "  config {\n"
-            + "    name: \"android.surfaceflinger.frametimeline\"\n"
-            + "    target_buffer: 1\n"
-            + "  }\n"
-            + "}\n"
-            + "incremental_state_config {\n"
-            + "  clear_period_ms: 10000\n"
-            + "}\n"
-            + "duration_ms: " + STUB_DURATION;
 
     // Time to wait beyond trace timeout to ensure perfetto has time to finish writing output.
     private static final int FILE_PROCESSING_DELAY_MS = 5000;
@@ -481,7 +314,7 @@ public final class Configs {
     }
 
     /** This method transforms a request into a useable config for perfetto. */
-    public static String generateConfigForRequest(int profilingType, final @Nullable Bundle params,
+    public static byte[] generateConfigForRequest(int profilingType, final @Nullable Bundle params,
             String packageName) throws IllegalArgumentException {
         // Create a copy to modify. Entries will be removed from the copy as they're accessed to
         // ensure that no invalid parameters are present.
@@ -505,12 +338,7 @@ public final class Configs {
 
                 confirmEmptyOrThrow(paramsCopy);
 
-                return CONFIG_JAVA_HEAP_DUMP
-                        .replace(STUB_PACKAGE_NAME, packageName)
-                        .replace(STUB_DURATION, String.valueOf(sJavaHeapDumpDurationMsDefault))
-                        .replace(STUB_SIZE, String.valueOf(javaHeapDumpSizeKb))
-                        .replace(STUB_DATA_SOURCE_STOP_TIMEOUT,
-                                    String.valueOf(sJavaHeapDumpDataSourceStopTimeoutMsDefault));
+                return generateJavaHeapDumpConfig(packageName, javaHeapDumpSizeKb);
 
             // Heap profile
             case ProfilingManager.PROFILING_TYPE_HEAP_PROFILE:
@@ -530,7 +358,8 @@ public final class Configs {
                         sHeapProfileSamplingIntervalBytesMin,
                         sHeapProfileSamplingIntervalBytesMax,
                         paramsCopy);
-                int heapProfileDuration = getAndRemoveWithinBounds(ProfilingManager.KEY_DURATION_MS,
+                int heapProfileDurationMs = getAndRemoveWithinBounds(
+                        ProfilingManager.KEY_DURATION_MS,
                         sHeapProfileDurationMsDefault,
                         sHeapProfileDurationMsMin,
                         sHeapProfileDurationMsMax,
@@ -543,15 +372,8 @@ public final class Configs {
 
                 confirmEmptyOrThrow(paramsCopy);
 
-                return CONFIG_HEAP_PROFILE
-                        .replace(STUB_PACKAGE_NAME, packageName)
-                        .replace(STUB_TRACK_JAVA_ALLOCATIONS, trackJavaAllocations
-                                ? HEAP_PROFILE_TRACK_JAVA_ALLOCATIONS : "")
-                        .replace(STUB_SAMPLING_INTERVAL, String.valueOf(samplingIntervalBytes))
-                        .replace(STUB_DURATION, String.valueOf(heapProfileDuration))
-                        .replace(STUB_SIZE, String.valueOf(heapProfileSizeKb))
-                        .replace(STUB_FLUSH_TIMEOUT,
-                                String.valueOf(sHeapProfileFlushTimeoutMsDefault));
+                return generateHeapProfileConfig(packageName, heapProfileSizeKb,
+                        heapProfileDurationMs, samplingIntervalBytes, trackJavaAllocations);
 
             // Stack sampling
             case ProfilingManager.PROFILING_TYPE_STACK_SAMPLING:
@@ -567,7 +389,7 @@ public final class Configs {
                         sStackSamplingSamplingFrequencyMin,
                         sStackSamplingSamplingFrequencyMax,
                         paramsCopy);
-                int stackSamplingDuration = getAndRemoveWithinBounds(
+                int stackSamplingDurationMs = getAndRemoveWithinBounds(
                         ProfilingManager.KEY_DURATION_MS,
                         sStackSamplingDurationMsDefault,
                         sStackSamplingDurationMsMin,
@@ -581,13 +403,8 @@ public final class Configs {
 
                 confirmEmptyOrThrow(paramsCopy);
 
-                return CONFIG_STACK_SAMPLING
-                        .replace(STUB_PACKAGE_NAME, packageName)
-                        .replace(STUB_FREQUENCY, String.valueOf(frequency))
-                        .replace(STUB_DURATION, String.valueOf(stackSamplingDuration))
-                        .replace(STUB_SIZE, String.valueOf(stackSamplingSizeKb))
-                        .replace(STUB_FLUSH_TIMEOUT,
-                                    String.valueOf(sStackSamplingFlushTimeoutMsDefault));
+                return generateStackSamplingConfig(packageName, stackSamplingSizeKb,
+                        stackSamplingDurationMs, frequency);
 
             // System trace
             case ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE:
@@ -602,7 +419,7 @@ public final class Configs {
                     throw new IllegalArgumentException("System trace is disabled");
                 }
 
-                int systemTraceDuration = getAndRemoveWithinBounds(
+                int systemTraceDurationMs = getAndRemoveWithinBounds(
                         ProfilingManager.KEY_DURATION_MS,
                         sSystemTraceDurationMsDefault,
                         sSystemTraceDurationMsMin,
@@ -613,17 +430,14 @@ public final class Configs {
                         sSystemTraceSizeKbMin,
                         sSystemTraceSizeKbMax,
                         paramsCopy);
-                String systemTraceBufferFillPolicy = getBufferFillPolicyString(
-                        getAndRemove(ProfilingManager.KEY_BUFFER_FILL_POLICY,
+                TraceConfig.BufferConfig.FillPolicy systemTraceBufferFillPolicy =
+                        getBufferFillPolicy(getAndRemove(ProfilingManager.KEY_BUFFER_FILL_POLICY,
                                 ProfilingManager.VALUE_BUFFER_FILL_POLICY_RING_BUFFER, paramsCopy));
 
                 confirmEmptyOrThrow(paramsCopy);
 
-                return CONFIG_SYSTEM_TRACE
-                        .replace(STUB_PACKAGE_NAME, packageName)
-                        .replace(STUB_DURATION, String.valueOf(systemTraceDuration))
-                        .replace(STUB_SIZE, String.valueOf(systemTraceSizeKb))
-                        .replace(STUB_BUFFER_FILL_POLICY, systemTraceBufferFillPolicy);
+                return generateSystemTraceConfig(packageName, systemTraceSizeKb,
+                        systemTraceDurationMs, systemTraceBufferFillPolicy);
 
             // Invalid type
             default:
@@ -671,13 +485,13 @@ public final class Configs {
         return duration + FILE_PROCESSING_DELAY_MS;
     }
 
-    private static String getBufferFillPolicyString(int bufferFillPolicy)
+    private static TraceConfig.BufferConfig.FillPolicy getBufferFillPolicy(int bufferFillPolicy)
             throws IllegalArgumentException {
         switch (bufferFillPolicy) {
             case ProfilingManager.VALUE_BUFFER_FILL_POLICY_DISCARD:
-                return BUFFER_FILL_POLICY_DISCARD;
+                return TraceConfig.BufferConfig.FillPolicy.DISCARD;
             case ProfilingManager.VALUE_BUFFER_FILL_POLICY_RING_BUFFER:
-                return BUFFER_FILL_POLICY_RING_BUFFER;
+                return TraceConfig.BufferConfig.FillPolicy.RING_BUFFER;
             default:
                 throw new IllegalArgumentException("Invalid buffer fill policy.");
         }
@@ -747,4 +561,242 @@ public final class Configs {
                     "Bundle contains invalid or unsupported parameters");
         }
     }
+
+    private static byte[] generateJavaHeapDumpConfig(String packageName, int bufferSizeKb) {
+        TraceConfig.Builder builder = TraceConfig.newBuilder();
+
+        // Add a buffer
+        TraceConfig.BufferConfig buffer = TraceConfig.BufferConfig.newBuilder()
+                .setSizeKb(bufferSizeKb)
+                .setFillPolicy(TraceConfig.BufferConfig.FillPolicy.DISCARD)
+                .build();
+        builder.addBuffers(buffer);
+
+        // Add data source
+        JavaHprofConfig javaHprofConfig = JavaHprofConfig.newBuilder()
+                .addProcessCmdline(packageName)
+                .setDumpSmaps(true)
+                .build();
+        DataSourceConfig dataSourceConfig = DataSourceConfig.newBuilder()
+                .setName("android.java_hprof")
+                .setJavaHprofConfig(javaHprofConfig)
+                .build();
+        TraceConfig.DataSource dataSource = TraceConfig.DataSource.newBuilder()
+                .setConfig(dataSourceConfig)
+                .build();
+        builder.addDataSources(dataSource);
+
+        // Add duration and timeout
+        builder.setDurationMs(sJavaHeapDumpDurationMsDefault);
+        builder.setDataSourceStopTimeoutMs(sJavaHeapDumpDataSourceStopTimeoutMsDefault);
+
+        return builder.build().toByteArray();
+    }
+
+    private static byte[] generateHeapProfileConfig(String packageName, int bufferSizeKb,
+            int durationMs, long samplingIntervalBytes, boolean trackJavaAllocations) {
+        TraceConfig.Builder builder = TraceConfig.newBuilder();
+
+        // Add a buffer
+        TraceConfig.BufferConfig buffer = TraceConfig.BufferConfig.newBuilder()
+                .setSizeKb(bufferSizeKb)
+                .setFillPolicy(TraceConfig.BufferConfig.FillPolicy.DISCARD)
+                .build();
+        builder.addBuffers(buffer);
+
+        // Add data source
+        HeapprofdConfig.Builder heapprofdConfigBuilder = HeapprofdConfig.newBuilder()
+                .setShmemSizeBytes(8388608) //8MB
+                .setSamplingIntervalBytes(samplingIntervalBytes)
+                .addProcessCmdline(packageName);
+        if (trackJavaAllocations) {
+            heapprofdConfigBuilder.addHeaps("com.android.art");
+        }
+        DataSourceConfig dataSourceConfig = DataSourceConfig.newBuilder()
+                .setName("android.heapprofd")
+                .setHeapprofdConfig(heapprofdConfigBuilder.build())
+                .build();
+        TraceConfig.DataSource dataSource = TraceConfig.DataSource.newBuilder()
+                .setConfig(dataSourceConfig)
+                .build();
+        builder.addDataSources(dataSource);
+
+        // Add duration and timeout
+        builder.setDurationMs(durationMs);
+        builder.setFlushTimeoutMs(sHeapProfileFlushTimeoutMsDefault);
+
+        return builder.build().toByteArray();
+    }
+
+    private static byte[] generateStackSamplingConfig(String packageName, int bufferSizeKb,
+            int durationMs, long frequency) {
+        TraceConfig.Builder builder = TraceConfig.newBuilder();
+
+        // Add a buffer
+        TraceConfig.BufferConfig buffer = TraceConfig.BufferConfig.newBuilder()
+                .setSizeKb(bufferSizeKb)
+                .setFillPolicy(TraceConfig.BufferConfig.FillPolicy.DISCARD)
+                .build();
+        builder.addBuffers(buffer);
+
+        // Add data source
+        PerfEvents.Timebase timebase = PerfEvents.Timebase.newBuilder()
+                .setCounter(PerfEvents.Counter.SW_CPU_CLOCK)
+                .setFrequency(frequency)
+                .setTimestampClock(PerfEvents.PerfClock.PERF_CLOCK_MONOTONIC)
+                .build();
+        PerfEventConfig.Scope scope = PerfEventConfig.Scope.newBuilder()
+                .addTargetCmdline(packageName)
+                .build();
+        PerfEventConfig.CallstackSampling callstackSampling = PerfEventConfig.CallstackSampling
+                .newBuilder()
+                .setScope(scope)
+                .build();
+        PerfEventConfig perfEventConfig = PerfEventConfig.newBuilder()
+                .setTimebase(timebase)
+                .setCallstackSampling(callstackSampling)
+                .build();
+        DataSourceConfig dataSourceConfig = DataSourceConfig.newBuilder()
+                .setName("linux.perf")
+                .setPerfEventConfig(perfEventConfig)
+                .build();
+        TraceConfig.DataSource dataSource = TraceConfig.DataSource.newBuilder()
+                .setConfig(dataSourceConfig)
+                .build();
+        builder.addDataSources(dataSource);
+
+        // Add duration and timeout
+        builder.setDurationMs(durationMs);
+        builder.setFlushTimeoutMs(sStackSamplingFlushTimeoutMsDefault);
+
+        return builder.build().toByteArray();
+    }
+
+    private static byte[] generateSystemTraceConfig(String packageName, int bufferSizeKb,
+            int durationMs, TraceConfig.BufferConfig.FillPolicy bufferFillPolicy) {
+        TraceConfig.Builder builder = TraceConfig.newBuilder();
+
+        // Add 2 buffers, discard for data sources dumped at beginning and ring for contiuously
+        // updated data sources.
+        TraceConfig.BufferConfig buffer0 = TraceConfig.BufferConfig.newBuilder()
+                .setSizeKb(4096)
+                .setFillPolicy(TraceConfig.BufferConfig.FillPolicy.DISCARD)
+                .build();
+        builder.addBuffers(buffer0);
+        TraceConfig.BufferConfig buffer1 = TraceConfig.BufferConfig.newBuilder()
+                .setSizeKb(bufferSizeKb)
+                .setFillPolicy(bufferFillPolicy)
+                .build();
+        builder.addBuffers(buffer1);
+
+        // Add a whole bunch of data sources
+
+        // Scan and dump all processes to buffer 0 when trace starts
+        ProcessStatsConfig processStatsConfig = ProcessStatsConfig.newBuilder()
+                .setScanAllProcessesOnStart(true)
+                .build();
+        DataSourceConfig dataSourceConfigProcessStats = DataSourceConfig.newBuilder()
+                .setName("linux.process_stats")
+                .setTargetBuffer(0)
+                .setProcessStatsConfig(processStatsConfig)
+                .build();
+        TraceConfig.DataSource dataSourceProcessStats = TraceConfig.DataSource.newBuilder()
+                .setConfig(dataSourceConfigProcessStats)
+                .build();
+        builder.addDataSources(dataSourceProcessStats);
+
+        // Dump details about the requesting package to buffer 0
+        PackagesListConfig packagesListConfig = PackagesListConfig.newBuilder()
+                .addPackageNameFilter(packageName)
+                .build();
+        DataSourceConfig dataSourceConfigPackagesList = DataSourceConfig.newBuilder()
+                .setName("android.packages_list")
+                .setTargetBuffer(0)
+                .setPackagesListConfig(packagesListConfig)
+                .build();
+        TraceConfig.DataSource dataSourcePackagesList = TraceConfig.DataSource.newBuilder()
+                .setConfig(dataSourceConfigPackagesList)
+                .build();
+        builder.addDataSources(dataSourcePackagesList);
+
+        // Dump select ftrace events to buffer 1
+        FtraceConfig.CompactSchedConfig compactSchedConfig = FtraceConfig.CompactSchedConfig
+                .newBuilder()
+                .setEnabled(true)
+                .build();
+        FtraceConfig ftraceConfig = FtraceConfig.newBuilder()
+                .setThrottleRssStat(true)
+                .setDisableGenericEvents(true)
+                .setCompactSched(compactSchedConfig)
+                // RSS and ION buffer events:
+                .addFtraceEvents("gpu_mem/gpu_mem_total")
+                // Scheduling information & process tracking. Useful for:
+                // - what is happening on each CPU at each moment
+                // - why a thread was descheduled
+                // - parent/child relationships between processes and threads
+                .addFtraceEvents("power/suspend_resume")
+                .addFtraceEvents("sched/sched_process_free")
+                .addFtraceEvents("sched/sched_switch")
+                .addFtraceEvents("task/task_newtask")
+                .addFtraceEvents("task/task_rename")
+                // Wakeup info. Allows you to compute how long a task was:
+                .addFtraceEvents("sched/sched_waking")
+                .addFtraceEvents("sched/sched_wakeup_new")
+                // vmscan and mm_compaction events:
+                .addFtraceEvents("vmscan/mm_vmscan_kswapd_wake")
+                .addFtraceEvents("vmscan/mm_vmscan_kswapd_sleep")
+                .addFtraceEvents("vmscan/mm_vmscan_direct_reclaim_begin")
+                .addFtraceEvents("vmscan/mm_vmscan_direct_reclaim_end")
+                .addFtraceEvents("compaction/mm_compaction_begin")
+                .addFtraceEvents("compaction/mm_compaction_end")
+                // Atrace activity manager:
+                .addAtraceCategories("am")
+                // Java and C:
+                .addAtraceCategories("dalvik")
+                // Bionic C library:
+                .addAtraceCategories("bionic")
+                // Binder kernel driver
+                .addAtraceCategories("binder_driver")
+                // View system:
+                .addAtraceCategories("view")
+                // Input:
+                .addAtraceCategories("input")
+                // Graphics:
+                .addAtraceCategories("gfx")
+                // Enable events for requesting app only:
+                .addAtraceApps(packageName)
+                .build();
+        DataSourceConfig dataSourceConfigFtrace = DataSourceConfig.newBuilder()
+                .setName("linux.ftrace")
+                .setTargetBuffer(1)
+                .setFtraceConfig(ftraceConfig)
+                .build();
+        TraceConfig.DataSource dataSourceFtrace = TraceConfig.DataSource.newBuilder()
+                .setConfig(dataSourceConfigFtrace)
+                .build();
+        builder.addDataSources(dataSourceFtrace);
+
+        // Dump surfaceflinger frame timeline to buffer 1
+        DataSourceConfig dataSourceConfigSurfaceFlinger = DataSourceConfig.newBuilder()
+                .setName("android.surfaceflinger.frametimeline")
+                .setTargetBuffer(1)
+                .build();
+        TraceConfig.DataSource dataSourceSurfaceFlinger = TraceConfig.DataSource.newBuilder()
+                .setConfig(dataSourceConfigSurfaceFlinger)
+                .build();
+        builder.addDataSources(dataSourceSurfaceFlinger);
+
+        // Clear incremental state
+        TraceConfig.IncrementalStateConfig incrementalStateConfig = TraceConfig
+                .IncrementalStateConfig.newBuilder()
+                        .setClearPeriodMs(10000)
+                        .build();
+        builder.setIncrementalStateConfig(incrementalStateConfig);
+
+        // Add duration
+        builder.setDurationMs(durationMs);
+
+        return builder.build().toByteArray();
+    }
+
 }

@@ -18,7 +18,6 @@ package android.os.profiling;
 
 import android.os.Bundle;
 
-import java.nio.charset.Charset;
 import java.util.UUID;
 
 /**
@@ -55,8 +54,7 @@ public final class TracingSession {
     }
 
     public byte[] getConfigBytes() throws IllegalArgumentException {
-        return Configs.generateConfigForRequest(mProfilingType, mParams, mPackageName)
-              .getBytes(Charset.forName("UTF-8"));
+        return Configs.generateConfigForRequest(mProfilingType, mParams, mPackageName);
     }
 
     public int getPostProcessingScheduleDelayMs() throws IllegalArgumentException {
