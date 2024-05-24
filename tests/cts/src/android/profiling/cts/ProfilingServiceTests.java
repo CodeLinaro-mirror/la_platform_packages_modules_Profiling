@@ -59,6 +59,7 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -108,6 +109,13 @@ public final class ProfilingServiceTests {
         doReturn(mPackageManager).when(mContext).getPackageManager();
         mProfilingService.mRateLimiter = mRateLimiter;
         doReturn(APP_PACKAGE_NAME).when(mPackageManager).getNameForUid(anyInt());
+
+        // Override the persist file/directory and instead point to our own file/directory in app
+        // storage, since the test app context can't access /data/system
+        doReturn(true).when(mRateLimiter).setupPersistFiles();
+        mRateLimiter.mPersistStoreDir = new File(mContext.getFilesDir(), "testdir");
+        mRateLimiter.mPersistStoreDir.mkdir();
+        mRateLimiter.mPersistFile = new File(mRateLimiter.mPersistStoreDir, "testfile");
     }
 
     /** Test that registering binder callbacks works as expected. */
@@ -351,13 +359,7 @@ public final class ProfilingServiceTests {
     /** Test that rate limiter correctly persists and restores data. */
     @Test
     public void testRateLimiter_PersistAndRestore() throws Exception {
-        // Update DeviceConfig defaults to high enough limits, cost of 1, and persist frequency 0.
-        overrideRateLimiterDefaults(5, 10, 20, 50, 50, 100, 1, 1, 1, 1, 0);
-
-        // Override file path because test app context that can't access /data/system/
-        mRateLimiter.mPersistStoreDir = new File(mContext.getFilesDir(), "testdir");
-        mRateLimiter.mPersistStoreDir.mkdir();
-        mRateLimiter.mPersistFile = new File(mRateLimiter.mPersistStoreDir, "testfile");
+        overrideRateLimiterDefaults();
 
         // Remove all records
         long currentTimeMillis = System.currentTimeMillis();
@@ -401,8 +403,8 @@ public final class ProfilingServiceTests {
         assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
         assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
 
-        // Now load the persisted records from disk
-        mRateLimiter.loadFromDisk();
+        // Now load the persisted records from disk using the overridden files we set up earlier.
+        mRateLimiter.setupFromPersistedData();
 
         // Finally, verify the records.
         confirmRateLimiterEntriesEqual(hourEntriesOriginal,
@@ -413,7 +415,179 @@ public final class ProfilingServiceTests {
                 mRateLimiter.mPastRunsWeek.getEntriesCopy());
     }
 
+    /**
+     * Test that rate limiter handles no persist file correctly.
+     *
+     * - Test setup ensures records are empty and that no file exists.
+     * - Rate limiter is expected to handle no file as a "profiling has never been used" state,
+     *       resulting in the records remaining empty and data load being marked complete.
+     */
+    @Test
+    public void testRateLimiter_NoPersistFile() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // Ensure file doesn't exist
+        mRateLimiter.mPersistFile.delete();
+
+        // Remove all records
+        long currentTimeMillis = System.currentTimeMillis();
+        mRateLimiter.mPastRunsHour.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsDay.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsWeek.removeOlderThan(currentTimeMillis);
+
+        // Confirm records have been removed
+        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+
+        // Now load the persisted records from disk using the overridden files we set up earlier.
+        mRateLimiter.setupFromPersistedData();
+
+        // Confirm load is marked complete
+        assertTrue(mRateLimiter.mDataLoaded.get());
+
+        // Confirm records are still empty
+        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+    }
+
+    /**
+     * Test that rate limiter handles an empty persist file correctly.
+     *
+     * - Test setup ensures records are empty and that an empty file exists.
+     * - Rate limiter is expected to handle the empty file as a "profiling has never been used"
+     *       state, resulting in the records remaining empty and data load being marked complete.
+     */
+    @Test
+    public void testRateLimiter_EmptyPersistFile() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // Ensure file exists and is empty
+        mRateLimiter.mPersistFile.delete();
+        mRateLimiter.mPersistFile.createNewFile();
+        assertTrue(mRateLimiter.mPersistFile.exists());
+
+        // Remove all records
+        long currentTimeMillis = System.currentTimeMillis();
+        mRateLimiter.mPastRunsHour.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsDay.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsWeek.removeOlderThan(currentTimeMillis);
+
+        // Confirm records have been removed
+        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+
+        // Now load the persisted records from disk using the overridden files we set up earlier.
+        mRateLimiter.setupFromPersistedData();
+
+        // Confirm load is marked complete
+        assertTrue(mRateLimiter.mDataLoaded.get());
+
+        // Confirm records are still empty
+        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+    }
+
+    /**
+     * Test that rate limiter handles a invalid persist file with remediation success correctly.
+     *
+     * - Test setup ensures records are empty, that a file with contents not of expected proto
+     *       type exists, and that remediation succeeds.
+     * - Rate limiter is expected to handle the invalid file contents by attempting remediation and
+     *       succeeding, resulting in stub records being added and data load being marked complete.
+     */
+    @Test
+    public void testRateLimiter_BadFile_RemediateSuccess() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // Ensure file exists and is written with data not matching proto expectation
+        mRateLimiter.mPersistFile.delete();
+        mRateLimiter.mPersistFile.createNewFile();
+        FileOutputStream fileOutputStream = new FileOutputStream(mRateLimiter.mPersistFile);
+        fileOutputStream.write("some text that is definitely not a proto".getBytes());
+        fileOutputStream.close();
+
+        // Remove all records
+        long currentTimeMillis = System.currentTimeMillis();
+        mRateLimiter.mPastRunsHour.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsDay.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsWeek.removeOlderThan(currentTimeMillis);
+
+        // Confirm records have been removed
+        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+
+        // Now load the persisted records from disk using the overridden files we set up earlier.
+        mRateLimiter.setupFromPersistedData();
+
+        // Confirm load is marked complete
+        assertTrue(mRateLimiter.mDataLoaded.get());
+
+        // Confirm fake records have been added
+        assertEquals(1, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
+        assertEquals(Integer.MAX_VALUE, mRateLimiter.mPastRunsHour.getEntriesCopy()[0].mCost);
+        assertEquals(1, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
+        assertEquals(Integer.MAX_VALUE, mRateLimiter.mPastRunsDay.getEntriesCopy()[0].mCost);
+        assertEquals(1, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+        assertEquals(Integer.MAX_VALUE, mRateLimiter.mPastRunsWeek.getEntriesCopy()[0].mCost);
+    }
+
+    /**
+     * Test that rate limiter handles a invalid persist file with remediation failure correctly.
+     *
+     * - Test setup ensures records are empty, that a file with contents not of expected proto
+     *       type exists, and that remediation fails.
+     * - Rate limiter is expected to handle the invalid file contents by attempting remediation and
+     *       failing, resulting in records remaining empty and data load being marked incomplete.
+     */
+    @Test
+    public void testRateLimiter_BadFile_RemediateFailure() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // Mock failure of handleBadFile.
+        doReturn(false).when(mRateLimiter).handleBadFile();
+
+        // Ensure file exists and is written with data not matching proto expectation
+        mRateLimiter.mPersistFile.delete();
+        mRateLimiter.mPersistFile.createNewFile();
+        FileOutputStream fileOutputStream = new FileOutputStream(mRateLimiter.mPersistFile);
+        fileOutputStream.write("some text that is definitely not a proto".getBytes());
+        fileOutputStream.close();
+
+        // Remove all records
+        long currentTimeMillis = System.currentTimeMillis();
+        mRateLimiter.mPastRunsHour.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsDay.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsWeek.removeOlderThan(currentTimeMillis);
+
+        // Confirm records have been removed
+        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+
+        // Now load the persisted records from disk using the overridden files we set up earlier.
+        mRateLimiter.setupFromPersistedData();
+
+        // Confirm load is marked incomplete
+        assertFalse(mRateLimiter.mDataLoaded.get());
+
+        // Confirm records are still empty
+        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+    }
+
     // TODO: b/333579817 - Add more rate limiter tests
+
+    private void overrideRateLimiterDefaults() throws Exception {
+        // Update DeviceConfig defaults to general high enough limits, cost of 1, and persist
+        // frequency 0.
+        overrideRateLimiterDefaults(5, 10, 20, 50, 50, 100, 1, 1, 1, 1, 0);
+    }
 
     private void overrideRateLimiterDefaults(int systemHour, int processHour, int systemDay,
             int processDay, int systemWeek, int processWeek, int costHeapDump, int costHeapProfile,
