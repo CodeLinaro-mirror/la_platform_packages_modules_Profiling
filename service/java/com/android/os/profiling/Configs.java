@@ -100,7 +100,7 @@ public final class Configs {
         sSystemTraceSizeKbDefault = properties.getInt(
                 DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_DEFAULT, 32768);
         sSystemTraceSizeKbMin = properties.getInt(
-                DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_MIN, 1);
+                DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_MIN, 4);
         sSystemTraceSizeKbMax = properties.getInt(
                 DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_MAX, 32768);
 
@@ -124,7 +124,7 @@ public final class Configs {
         sJavaHeapDumpSizeKbDefault = properties.getInt(
                 DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_DEFAULT, 256000);
         sJavaHeapDumpSizeKbMin = properties.getInt(
-                DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_MIN, 1);
+                DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_MIN, 4);
         sJavaHeapDumpSizeKbMax = properties.getInt(
                 DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_MAX, 256000);
 
@@ -154,15 +154,15 @@ public final class Configs {
         sHeapProfileSizeKbDefault = properties.getInt(
                 DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_DEFAULT, 65536);
         sHeapProfileSizeKbMin = properties.getInt(
-                DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MIN, 1);
+                DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MIN, 4);
         sHeapProfileSizeKbMax = properties.getInt(
                 DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MAX, 65536);
         sHeapProfileSamplingIntervalBytesDefault = properties.getInt(
                 DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_DEFAULT, 4096);
         sHeapProfileSamplingIntervalBytesMin = properties.getInt(
-                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MIN, 1028);
+                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MIN, 1);
         sHeapProfileSamplingIntervalBytesMax = properties.getInt(
-                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MAX, 8192);
+                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MAX, 65536);
 
         sHeapProfileConfigsInitialized = true;
     }
@@ -188,7 +188,7 @@ public final class Configs {
         sStackSamplingSizeKbDefault = properties.getInt(
                 DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_DEFAULT, 65536);
         sStackSamplingSizeKbMin = properties.getInt(
-                DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_MIN, 1);
+                DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_MIN, 4);
         sStackSamplingSizeKbMax = properties.getInt(
                 DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_MAX, 65536);
         sStackSamplingSamplingFrequencyDefault = properties.getInt(
@@ -330,11 +330,12 @@ public final class Configs {
                     throw new IllegalArgumentException("Java heap dump is disabled");
                 }
 
-                int javaHeapDumpSizeKb = getAndRemoveWithinBounds(ProfilingManager.KEY_SIZE_KB,
+                int javaHeapDumpSizeKb = roundUpForBufferSize(getAndRemoveWithinBounds(
+                        ProfilingManager.KEY_SIZE_KB,
                         sJavaHeapDumpSizeKbDefault,
                         sJavaHeapDumpSizeKbMin,
                         sJavaHeapDumpSizeKbMax,
-                        paramsCopy);
+                        paramsCopy));
 
                 confirmEmptyOrThrow(paramsCopy);
 
@@ -364,11 +365,12 @@ public final class Configs {
                         sHeapProfileDurationMsMin,
                         sHeapProfileDurationMsMax,
                         paramsCopy);
-                int heapProfileSizeKb = getAndRemoveWithinBounds(ProfilingManager.KEY_SIZE_KB,
+                int heapProfileSizeKb = roundUpForBufferSize(getAndRemoveWithinBounds(
+                        ProfilingManager.KEY_SIZE_KB,
                         sHeapProfileSizeKbDefault,
                         sHeapProfileSizeKbMin,
                         sHeapProfileSizeKbMax,
-                        paramsCopy);
+                        paramsCopy));
 
                 confirmEmptyOrThrow(paramsCopy);
 
@@ -395,11 +397,12 @@ public final class Configs {
                         sStackSamplingDurationMsMin,
                         sStackSamplingDurationMsMax,
                         paramsCopy);
-                int stackSamplingSizeKb = getAndRemoveWithinBounds(ProfilingManager.KEY_SIZE_KB,
+                int stackSamplingSizeKb = roundUpForBufferSize(getAndRemoveWithinBounds(
+                        ProfilingManager.KEY_SIZE_KB,
                         sStackSamplingSizeKbDefault,
                         sStackSamplingSizeKbMin,
                         sStackSamplingSizeKbMax,
-                        paramsCopy);
+                        paramsCopy));
 
                 confirmEmptyOrThrow(paramsCopy);
 
@@ -425,11 +428,12 @@ public final class Configs {
                         sSystemTraceDurationMsMin,
                         sSystemTraceDurationMsMax,
                         paramsCopy);
-                int systemTraceSizeKb = getAndRemoveWithinBounds(ProfilingManager.KEY_SIZE_KB,
+                int systemTraceSizeKb = roundUpForBufferSize(getAndRemoveWithinBounds(
+                        ProfilingManager.KEY_SIZE_KB,
                         sSystemTraceSizeKbDefault,
                         sSystemTraceSizeKbMin,
                         sSystemTraceSizeKbMax,
-                        paramsCopy);
+                        paramsCopy));
                 TraceConfig.BufferConfig.FillPolicy systemTraceBufferFillPolicy =
                         getBufferFillPolicy(getAndRemove(ProfilingManager.KEY_BUFFER_FILL_POLICY,
                                 ProfilingManager.VALUE_BUFFER_FILL_POLICY_RING_BUFFER, paramsCopy));
@@ -552,6 +556,11 @@ public final class Configs {
             return value;
         }
         return defaultValue;
+    }
+
+    /** Buffer sizes are preferred to be multiples of 4kb, round up to next lowest 4 multiple. */
+    private static int roundUpForBufferSize(int bufferSize) {
+        return (bufferSize % 4 == 0) ? bufferSize : bufferSize + (4 - (bufferSize % 4));
     }
 
     private static void confirmEmptyOrThrow(@Nullable Bundle bundle)
