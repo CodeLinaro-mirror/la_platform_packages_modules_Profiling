@@ -24,6 +24,7 @@ import android.os.Handler;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
 import android.os.RateLimiterRecordsWrapper;
+import android.provider.DeviceConfig;
 import android.util.AtomicFile;
 import android.util.Log;
 import android.util.SparseIntArray;
@@ -65,7 +66,7 @@ public class RateLimiter {
 
     private final Object mLock = new Object();
 
-    private final long mPersistToDiskFrequency;
+    private long mPersistToDiskFrequency;
 
     /** To be disabled for testing only. */
     @GuardedBy("mLock")
@@ -83,10 +84,10 @@ public class RateLimiter {
     @VisibleForTesting
     public final EntryGroupWrapper mPastRunsWeek;
 
-    private final int mCostJavaHeapDump;
-    private final int mCostHeapProfile;
-    private final int mCostStackSampling;
-    private final int mCostSystemTrace;
+    private int mCostJavaHeapDump;
+    private int mCostHeapProfile;
+    private int mCostStackSampling;
+    private int mCostSystemTrace;
 
     private final HandlerCallback mHandlerCallback;
 
@@ -106,7 +107,8 @@ public class RateLimiter {
     @VisibleForTesting
     public File mPersistFile;
 
-    private AtomicBoolean mDataLoaded = new AtomicBoolean();
+    @VisibleForTesting
+    public AtomicBoolean mDataLoaded = new AtomicBoolean();
 
     @IntDef(value = {
         RATE_LIMIT_RESULT_ALLOWED,
@@ -123,35 +125,37 @@ public class RateLimiter {
     public RateLimiter(HandlerCallback handlerCallback) {
         mHandlerCallback = handlerCallback;
 
+        DeviceConfig.Properties properties = DeviceConfigHelper.getAllRateLimiterProperties();
+
         mPastRunsHour = new EntryGroupWrapper(
-                DeviceConfigHelper.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR,
+                properties.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR,
                         DEFAULT_MAX_COST_SYSTEM_HOUR),
-                DeviceConfigHelper.getInt(DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR,
+                properties.getInt(DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR,
                         DEFAULT_MAX_COST_PROCESS_HOUR),
                 TIME_HOUR_MS);
         mPastRunsDay = new EntryGroupWrapper(
-                DeviceConfigHelper.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR,
+                properties.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR,
                         DEFAULT_MAX_COST_SYSTEM_DAY),
-                DeviceConfigHelper.getInt(DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR,
+                properties.getInt(DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR,
                         DEFAULT_MAX_COST_PROCESS_DAY),
                 TIME_DAY_MS);
         mPastRunsWeek = new EntryGroupWrapper(
-                DeviceConfigHelper.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY,
+                properties.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY,
                         DEFAULT_MAX_COST_SYSTEM_WEEK),
-                DeviceConfigHelper.getInt(DeviceConfigHelper.MAX_COST_PROCESS_7_DAY,
+                properties.getInt(DeviceConfigHelper.MAX_COST_PROCESS_7_DAY,
                         DEFAULT_MAX_COST_PROCESS_WEEK),
                 TIME_WEEK_MS);
 
-        mCostJavaHeapDump = DeviceConfigHelper.getInt(DeviceConfigHelper.COST_JAVA_HEAP_DUMP,
+        mCostJavaHeapDump = properties.getInt(DeviceConfigHelper.COST_JAVA_HEAP_DUMP,
                 DEFAULT_COST_PER_SESSION);
-        mCostHeapProfile = DeviceConfigHelper.getInt(DeviceConfigHelper.COST_HEAP_PROFILE,
+        mCostHeapProfile = properties.getInt(DeviceConfigHelper.COST_HEAP_PROFILE,
                 DEFAULT_COST_PER_SESSION);
-        mCostStackSampling = DeviceConfigHelper.getInt(DeviceConfigHelper.COST_STACK_SAMPLING,
+        mCostStackSampling = properties.getInt(DeviceConfigHelper.COST_STACK_SAMPLING,
                 DEFAULT_COST_PER_SESSION);
-        mCostSystemTrace = DeviceConfigHelper.getInt(DeviceConfigHelper.COST_SYSTEM_TRACE,
+        mCostSystemTrace = properties.getInt(DeviceConfigHelper.COST_SYSTEM_TRACE,
                 DEFAULT_COST_PER_SESSION);
 
-        mPersistToDiskFrequency = DeviceConfigHelper.getInt(
+        mPersistToDiskFrequency = properties.getLong(
                 DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS, 0);
         mLastPersistedTimestampMs = System.currentTimeMillis();
 
@@ -162,42 +166,7 @@ public class RateLimiter {
                     DeviceConfigHelper.RATE_LIMITER_DISABLE_PROPERTY, false);
         }
 
-        try {
-            if (setupPersistFiles()) {
-                loadFromDisk();
-            } else {
-                // Directory doesn't exist so file must not exist. Nothing to load.
-                // Mark complete and return.
-                if (DEBUG) {
-                    Log.d(TAG, "Persist file directory does not exist, skipping load from disk.");
-                }
-                mDataLoaded.set(true);
-            }
-        } catch (SecurityException e) {
-            if (DEBUG) Log.d(TAG, "Exception creating directory.", e);
-        } finally {
-            if (!mDataLoaded.get()) {
-                // Loading of persisted data failed for a reason other than the file not existing.
-                // Delete the file, pad history with fake entries to reduce availability,
-                // and then mark complete.
-                if (mPersistFile != null) {
-                    try {
-                        mPersistFile.delete();
-                        if (DEBUG) Log.d(TAG, "Deleted persist file which could not be parsed.");
-                    } catch (SecurityException e) {
-                        if (DEBUG) Log.d(TAG, "Failed to delete persist file", e);
-                    }
-                }
-
-                // TODO: b/335542725 - revisit how to deal with failed load case
-                final long timestamp = System.currentTimeMillis();
-                mPastRunsHour.add(-1 /*fake uid*/, mPastRunsHour.mMaxCost / 2, timestamp);
-                mPastRunsDay.add(-1 /*fake uid*/, mPastRunsDay.mMaxCost / 2, timestamp);
-                mPastRunsWeek.add(-1 /*fake uid*/, mPastRunsWeek.mMaxCost / 2, timestamp);
-
-                mDataLoaded.set(true);
-            }
-        }
+        setupFromPersistedData();
     }
 
     public @RateLimitResult int isProfilingRequestAllowed(int uid,
@@ -209,8 +178,8 @@ public class RateLimiter {
                 return RATE_LIMIT_RESULT_ALLOWED;
             }
             if (!mDataLoaded.get()) {
-                // Requests before rate limiter data are all rejected.
-                Log.e(TAG, "Data loading in progress, request denied.");
+                // Requests are rejected before rate limiter data is loaded or if data load fails.
+                Log.e(TAG, "Data loading in progress or failed, request denied.");
                 return RATE_LIMIT_RESULT_BLOCKED_SYSTEM;
             }
             final int cost = getCostForProfiling(profilingType);
@@ -337,15 +306,32 @@ public class RateLimiter {
     }
 
     /**
-     * Load initial records data from disk.
-     *
-     * If the file doesn't exist or if it hits an error loading then it marks complete and exits.
+     * Load initial records data from disk and marks rate limiter ready to use if it's in an
+     * acceptable state.
      */
-    public void loadFromDisk() {
+    @VisibleForTesting
+    public void setupFromPersistedData() {
+        // Setup persist files
+        try {
+            if (!setupPersistFiles()) {
+                // If setup directory and file was unsuccessful then we won't be able to persist
+                // records, return and leave feature disabled entirely.
+                if (DEBUG) Log.d(TAG, "Failed to setup persist directory/files. Feature disabled.");
+                mDataLoaded.set(false);
+                return;
+            }
+        } catch (SecurityException e) {
+            // Can't access files.
+            if (DEBUG) Log.d(TAG, "Failed to setup persist directory/files. Feature disabled.", e);
+            mDataLoaded.set(false);
+            return;
+        }
+
         // Check if file exists
         try {
-            if (mPersistFile == null || !mPersistFile.exists()) {
-                // No file, nothing to load. Mark complete and return.
+            if (!mPersistFile.exists()) {
+                // No file, nothing to load. This is an expected state for before the feature has
+                // ever been used so mark ready to use and return.
                 if (DEBUG) Log.d(TAG, "Persist file does not exist, skipping load from disk.");
                 mDataLoaded.set(true);
                 return;
@@ -353,20 +339,35 @@ public class RateLimiter {
         } catch (SecurityException e) {
             // Can't access file.
             if (DEBUG) Log.d(TAG, "Exception accessing persist file", e);
+            mDataLoaded.set(false);
             return;
         }
 
         // Read the file
         AtomicFile persistFile = new AtomicFile(mPersistFile);
-        byte[] bytes = null;
+        byte[] bytes;
         try {
             bytes = persistFile.readFully();
         } catch (IOException e) {
             if (DEBUG) Log.d(TAG, "Exception reading persist file", e);
+            // We already handled no file case above and empty file would not result in exception
+            // so this is a problem reading the file. Attempt remediation.
+            if (handleBadFile()) {
+                // Successfully remediated bad state! Mark ready to use.
+                mDataLoaded.set(true);
+            } else {
+                // Failed to remediate bad state. Feature disabled.
+                mDataLoaded.set(false);
+            }
+            // Return either way as {@link handleBadFile} handles the entirety of remediating the
+            // bad state and the remainder of this method is no longer applicable.
+            return;
         }
-        if (bytes == null) {
-            // Failed to read file.
-            if (DEBUG) Log.d(TAG, "Persist file loaded bytes empty.");
+        if (bytes.length == 0) {
+            // Empty file, nothing to load. This is an expected state for before the feature
+            // persists so mark ready to use and return.
+            if (DEBUG) Log.d(TAG, "Persist file is empty, skipping load from disk.");
+            mDataLoaded.set(true);
             return;
         }
 
@@ -375,14 +376,22 @@ public class RateLimiter {
         try {
             outerWrapper = RateLimiterRecordsWrapper.parseFrom(bytes);
         } catch (Exception e) {
-            // Failed to parse.
+            // Failed to parse. Attempt remediation.
             if (DEBUG) Log.d(TAG, "Error parsing proto from persisted bytes", e);
+            if (handleBadFile()) {
+                // Successfully remediated bad state! Mark ready to use.
+                mDataLoaded.set(true);
+            } else {
+                // Failed to remediate bad state. Feature disabled.
+                mDataLoaded.set(false);
+            }
+            // Return either way as {@link handleBadFile} handles the entirety of remediating the
+            // bad state and the remainder of this method is no longer applicable.
             return;
         }
 
         // Populate in memory records stores
-        RateLimiterRecordsWrapper.EntryGroupWrapper weekGroupWrapper =
-                outerWrapper.getRecords();
+        RateLimiterRecordsWrapper.EntryGroupWrapper weekGroupWrapper = outerWrapper.getRecords();
         final long currentTimeMillis = System.currentTimeMillis();
         for (int i = 0; i < weekGroupWrapper.getEntriesCount(); i++) {
             RateLimiterRecordsWrapper.EntryGroupWrapper.Entry entry =
@@ -399,15 +408,113 @@ public class RateLimiter {
             }
         }
 
-        // Set loaded to api usage can start
+        // Success!
         mDataLoaded.set(true);
     }
 
-    /** Update the disable rate limiter flag. */
-    public void setRateLimiterDisabled(boolean rateLimiterDisabled) {
-        synchronized (mLock) {
-            mRateLimiterDisabled = rateLimiterDisabled;
+    /**
+     * Handle a bad persist file - this can be a file that can't be read or can't be parsed.
+     *
+     * This case is handled by attempting to delete and recreate the persist file. If this is
+     * successful, it adds some fake records to make up for potentially lost records.
+     *
+     * If the bad file is successfully remediated then RateLimiter is ready to use and no further
+     * initialization is needed.
+     *
+     * @return whether the bad file state has been successfully remediated.
+     */
+    @VisibleForTesting
+    public boolean handleBadFile() {
+        if (mPersistFile == null) {
+            // This should not happen, if there is no file how can it have been determined to be
+            // bad?
+            if (DEBUG) Log.d(TAG, "Attempted to remediate a bad file but the file doesn't exist.");
+            return false;
         }
+
+        try {
+            // Delete the bad file, we won't likely have better luck reading it a second time.
+            mPersistFile.delete();
+            if (DEBUG) Log.d(TAG, "Deleted persist file which could not be parsed.");
+        } catch (SecurityException e) {
+            // Can't delete file so we can't recover from this state.
+            if (DEBUG) Log.d(TAG, "Failed to delete persist file", e);
+            return false;
+        }
+
+        try {
+            if (!setupPersistFiles()) {
+                // If setup files was unsuccessful then we won't be able to persist files.
+                if (DEBUG) Log.d(TAG, "Failed to setup persist directory/files. Feature disabled.");
+                return false;
+            }
+            mPersistFile.createNewFile();
+            if (!mPersistFile.exists()) {
+                // If creating the file failed then we won't be able to persist.
+                if (DEBUG) Log.d(TAG, "Failed to create persist file. Feature disabled.");
+                return false;
+            }
+        } catch (SecurityException | IOException e) {
+            // Can't access/setup files.
+            if (DEBUG) Log.d(TAG, "Failed to setup persist directory/files. Feature disabled.", e);
+            return false;
+        }
+
+        // If we made it this far then we have successfully deleted the bad file and created a new
+        // useable one - the feature is now ready to be used!
+        // However, we may have lost some records from the bad file, so add some fake records for
+        // the current time with a very high cost, this effectively disables the feature for the
+        // duration of rate limiting (1 week) to err on the cautious side regarding the potentially
+        // lost records.
+        final long timestamp = System.currentTimeMillis();
+        mPastRunsHour.add(-1 /*fake uid*/, Integer.MAX_VALUE, timestamp);
+        mPastRunsDay.add(-1 /*fake uid*/, Integer.MAX_VALUE, timestamp);
+        mPastRunsWeek.add(-1 /*fake uid*/, Integer.MAX_VALUE, timestamp);
+
+        // Now persist the fake records.
+        maybePersistToDisk();
+
+        // Finally, return true as we successfully remediated the bad file state.
+        return true;
+    }
+
+    /** Update the disable rate limiter flag if present in the provided properties. */
+    public void maybeUpdateRateLimiterDisabled(DeviceConfig.Properties properties) {
+        synchronized (mLock) {
+            mRateLimiterDisabled = properties.getBoolean(
+                    DeviceConfigHelper.RATE_LIMITER_DISABLE_PROPERTY, mRateLimiterDisabled);
+        }
+    }
+
+    /**
+     * Update DeviceConfig set configuration values if present in the provided properties, leaving
+     * not present values unchanged.
+     */
+    public void maybeUpdateConfigs(DeviceConfig.Properties properties) {
+        // If the field is not present in the changed properties then we want the value to stay the
+        // same, so use the current value as the default in the properties.get.
+        mPersistToDiskFrequency = properties.getLong(
+                DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS, mPersistToDiskFrequency);
+        mCostJavaHeapDump = properties.getInt(DeviceConfigHelper.COST_JAVA_HEAP_DUMP,
+                mCostJavaHeapDump);
+        mCostHeapProfile = properties.getInt(DeviceConfigHelper.COST_HEAP_PROFILE,
+                mCostHeapProfile);
+        mCostStackSampling = properties.getInt(DeviceConfigHelper.COST_STACK_SAMPLING,
+                mCostStackSampling);
+        mCostSystemTrace = properties.getInt(DeviceConfigHelper.COST_SYSTEM_TRACE,
+                mCostSystemTrace);
+
+        // For max cost values, set a invalid default value and pass through to each group wrapper
+        // to determine whether to update values.
+        mPastRunsHour.maybeUpdateMaxCosts(
+                properties.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, -1),
+                properties.getInt(DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, -1));
+        mPastRunsDay.maybeUpdateMaxCosts(
+                properties.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, -1),
+                properties.getInt(DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR, -1));
+        mPastRunsWeek.maybeUpdateMaxCosts(
+                properties.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, -1),
+                properties.getInt(DeviceConfigHelper.MAX_COST_PROCESS_7_DAY, -1));
     }
 
     static int statusToResult(@RateLimitResult int resultStatus) {
@@ -421,7 +528,13 @@ public class RateLimiter {
         }
     }
 
-    private boolean setupPersistFiles() throws SecurityException {
+    /**
+     * Create the directory and initialize the file variable for persisting records.
+     *
+     * @return Whether the files were successfully created.
+     */
+    @VisibleForTesting
+    public boolean setupPersistFiles() throws SecurityException {
         File dataDir = Environment.getDataDirectory();
         File systemDir = new File(dataDir, "system");
         mPersistStoreDir = new File(systemDir, RATE_LIMITER_STORE_DIR);
@@ -449,21 +562,33 @@ public class RateLimiter {
 
         @GuardedBy("mLock")
         final Queue<CollectionEntry> mEntries;
-
-        int mTotalCost;
         // uid indexed
         final SparseIntArray mPerUidCost;
-        final int mMaxCost;
-        final int mMaxCostPerUid;
         final long mTimeRangeMs;
 
-        EntryGroupWrapper(final int maxCost, final int maxPerUidCost, final long timeRangeMs) {
+        int mMaxCost;
+        int mMaxCostPerUid;
+        int mTotalCost;
+
+        EntryGroupWrapper(int maxCost, int maxPerUidCost, final long timeRangeMs) {
             synchronized (mLock) {
                 mMaxCost = maxCost;
                 mMaxCostPerUid = maxPerUidCost;
                 mTimeRangeMs = timeRangeMs;
                 mEntries = new ArrayDeque<>();
                 mPerUidCost = new SparseIntArray();
+            }
+        }
+
+        /** Update max per system and process costs if values are valid (>=0). */
+        public void maybeUpdateMaxCosts(int maxCost, int maxPerUidCost) {
+            synchronized (mLock) {
+                if (maxCost >= 0) {
+                    mMaxCost = maxCost;
+                }
+                if (maxPerUidCost >= 0) {
+                    mMaxCostPerUid = maxPerUidCost;
+                }
             }
         }
 
