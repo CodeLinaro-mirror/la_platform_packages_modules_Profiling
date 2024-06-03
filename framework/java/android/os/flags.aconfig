@@ -1,4 +1,5 @@
 package: "android.os.profiling"
+container: "com.android.profiling"
 
 flag {
      name: "telemetry_apis"
@@ -7,4 +8,15 @@ flag {
      description: "Control API portion of telemetry APIs feature."
      is_fixed_read_only: true
      bug: "293957254"
+}
+
+flag {
+     name: "redaction_enabled"
+     namespace: "system_performance"
+     is_exported: true
+     description: "Enables system traces to be ran through redaction process."
+     bug: "327423523"
+     metadata {
+        purpose: PURPOSE_BUGFIX
+     }
 }

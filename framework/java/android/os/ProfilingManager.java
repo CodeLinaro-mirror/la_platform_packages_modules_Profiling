@@ -20,11 +20,6 @@ import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.Context;
-import android.os.Binder;
-import android.os.CancellationSignal;
-import android.os.FileUtils;
-import android.os.IProfilingService;
-import android.os.ParcelFileDescriptor;
 import android.os.profiling.Flags;
 import android.util.Log;
 
@@ -32,12 +27,6 @@ import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 
 import java.io.File;
-import java.io.FileDescriptor;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.lang.Exception;
-import java.lang.IllegalArgumentException;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
@@ -68,33 +57,53 @@ public final class ProfilingManager {
     /* Begin public API defined keys. */
     /* End public API defined keys. */
 
-    /* Begin not-public API defined keys. */
+    /* Begin not-public API defined keys/values. */
     /**
      * Can only be used with profiling type heap profile, stack sampling, or system trace.
      * Value of type int.
-     * @hide */
+     * @hide
+     */
     public static final String KEY_DURATION_MS = "KEY_DURATION_MS";
 
     /**
      * Can only be used with profiling type heap profile. Value of type long.
-     * @hide */
+     * @hide
+     */
     public static final String KEY_SAMPLING_INTERVAL_BYTES = "KEY_SAMPLING_INTERVAL_BYTES";
 
     /**
      * Can only be used with profiling type heap profile. Value of type boolean.
-     * @hide */
+     * @hide
+     */
     public static final String KEY_TRACK_JAVA_ALLOCATIONS = "KEY_TRACK_JAVA_ALLOCATIONS";
 
     /**
      * Can only be used with profiling type stack sampling. Value of type int.
-     * @hide */
+     * @hide
+     */
     public static final String KEY_FREQUENCY_HZ = "KEY_FREQUENCY_HZ";
 
     /**
      * Can be used with all profiling types. Value of type int.
-     * @hide */
+     * @hide
+     */
     public static final String KEY_SIZE_KB = "KEY_SIZE_KB";
-    /* End not-public API defined keys. */
+
+    /**
+     * Can be used with profiling type system trace.
+     * Value of type int must be one of:
+     * {@link VALUE_BUFFER_FILL_POLICY_DISCARD}
+     * {@link VALUE_BUFFER_FILL_POLICY_RING_BUFFER}
+     * @hide
+     */
+    public static final String KEY_BUFFER_FILL_POLICY = "KEY_BUFFER_FILL_POLICY";
+
+    /** @hide */
+    public static final int VALUE_BUFFER_FILL_POLICY_DISCARD = 1;
+
+    /** @hide */
+    public static final int VALUE_BUFFER_FILL_POLICY_RING_BUFFER = 2;
+    /* End not-public API defined keys/values. */
 
     /**
      * @hide *
@@ -205,16 +214,16 @@ public final class ProfilingManager {
                         key.getMostSignificantBits(), key.getLeastSignificantBits());
                 if (cancellationSignal != null) {
                     cancellationSignal.setOnCancelListener(
-                        () -> {
-                            synchronized (mLock) {
-                                try {
-                                    service.requestCancel(key.getMostSignificantBits(),
-                                            key.getLeastSignificantBits());
-                                } catch (RemoteException e) {
-                                    // Ignore, request in flight already and we can't stop it.
+                            () -> {
+                                synchronized (mLock) {
+                                    try {
+                                        service.requestCancel(key.getMostSignificantBits(),
+                                                key.getLeastSignificantBits());
+                                    } catch (RemoteException e) {
+                                        // Ignore, request in flight already and we can't stop it.
+                                    }
                                 }
                             }
-                        }
                     );
                 }
             } catch (RemoteException e) {
@@ -238,6 +247,14 @@ public final class ProfilingManager {
             @NonNull Executor executor,
             @NonNull Consumer<ProfilingResult> listener) {
         synchronized (mLock) {
+            if (getIProfilingServiceLocked() == null) {
+                // If the binder object was not successfully registered then this listener will
+                // not ever be triggered.
+                executor.execute(() -> listener.accept(new ProfilingResult(
+                        ProfilingResult.ERROR_UNKNOWN, null, null,
+                        "Binder exception processing request")));
+                return;
+            }
             mCallbacks.add(new ProfilingRequestCallbackWrapper(executor, listener, null));
         }
     }
@@ -301,16 +318,19 @@ public final class ProfilingManager {
                 /**
                  * Called by {@link ProfilingService} when a result is ready,
                  * both for success and failure.
+                 *
+                 * @return whether there are additional callbacks backed by this binder object.
                  */
                 @Override
-                public void sendResult(@Nullable String resultFile, long keyMostSigBits,
+                public boolean sendResult(@Nullable String resultFile, long keyMostSigBits,
                         long keyLeastSigBits, int status, @Nullable String tag,
                         @Nullable String error) {
                     synchronized (mLock) {
                         if (mCallbacks.isEmpty()) {
                             // This shouldn't happen - no callbacks, nowhere to report this result.
                             if (DEBUG) Log.d(TAG, "No callbacks");
-                            return;
+                            mProfilingService = null;
+                            return false;
                         }
 
                         // This shouldn't be true, but if the file is null ensure the status
@@ -337,7 +357,7 @@ public final class ProfilingManager {
                                 continue;
                             }
 
-                            // TODO: check resultFile is valid before returning
+                            // TODO: b/337017299 - check resultFile is valid before returning
                             // Now trigger the callback for any listener that doesn't belong to
                             // another request.
                             wrapper.mExecutor.execute(() -> wrapper.mListener.accept(
@@ -350,6 +370,12 @@ public final class ProfilingManager {
                         if (removeListenerPos != -1) {
                             mCallbacks.remove(removeListenerPos);
                         }
+
+                        if (mCallbacks.isEmpty()) {
+                            mProfilingService = null;
+                            return false;
+                        }
+                        return true;
                     }
                 }
 

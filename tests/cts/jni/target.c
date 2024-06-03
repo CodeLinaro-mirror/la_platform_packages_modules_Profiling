@@ -14,15 +14,17 @@
  * limitations under the License.
  */
 
-package android.os;
+#include <jni.h>
+#include <stdlib.h>
 
-import android.os.ParcelFileDescriptor;
-/**
- * {@hide}
- */
-interface IProfilingResultCallback {
-
-    boolean sendResult(String resultFile, long keyMostSigBits, long keyLeastSigBits, int status, String tag, String error);
-
-    ParcelFileDescriptor generateFile(String filePathAbsolute, String fileName);
+JNIEXPORT void JNICALL
+Java_android_profiling_cts_ProfilingFrameworkTests_doMallocAndFree(JNIEnv* env,
+                                                                   jclass klass) {
+  (void) env;
+  (void) klass;
+  volatile char* x = malloc(4200);
+  if (x) {
+    x[0] = '\0';
+    free((char*)x);
+  }
 }

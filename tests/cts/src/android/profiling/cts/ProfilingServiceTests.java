@@ -16,30 +16,30 @@
 
 package android.profiling.cts;
 
-import static com.google.common.truth.Truth.assertThat;
-
-import static org.mockito.Mockito.reset;
-
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyObject;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.spy;
 
+import android.app.Instrumentation;
 import android.content.Context;
+import android.content.pm.PackageManager;
+import android.os.Binder;
+import android.os.Handler;
 import android.os.IProfilingResultCallback;
 import android.os.ParcelFileDescriptor;
-import android.os.Binder;
-import android.content.pm.PackageManager;
-import android.app.UiAutomation;
-import android.os.profiling.RateLimiter;
-import android.os.profiling.TracingSession;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
+import android.os.profiling.DeviceConfigHelper;
 import android.os.profiling.ProfilingService;
+import android.os.profiling.RateLimiter;
+import android.os.profiling.TracingSession;
 import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
 
@@ -47,20 +47,22 @@ import androidx.test.core.app.ApplicationProvider;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
-import java.lang.Process;
-import java.util.UUID;
+import com.android.compatibility.common.util.SystemUtil;
 
-import org.junit.After;
+import com.google.errorprone.annotations.FormatMethod;
+
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestRule;
-import org.junit.runner.Description;
 import org.junit.runner.RunWith;
-import org.junit.runners.model.Statement;
-
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.util.Arrays;
+import java.util.List;
+import java.util.UUID;
 
 /**
  * Tests in this class are for testing the ProfilingService directly without the need to get a
@@ -74,6 +76,8 @@ public final class ProfilingServiceTests {
     private static final String APP_PACKAGE_NAME = "com.profiling.test";
     private static final String REQUEST_TAG = "some unique string";
 
+    private static final String OVERRIDE_DEVICE_CONFIG_INT = "device_config put %s %s %d";
+
     // Key most and least significant bits are used to generate a unique key specific to each
     // request. Key is used to pair request back to caller and callbacks so test to keep consistent.
     private static final long KEY_MOST_SIG_BITS = 456l;
@@ -86,18 +90,32 @@ public final class ProfilingServiceTests {
     @Mock private Process mActiveTrace;
 
     private Context mContext = ApplicationProvider.getApplicationContext();
+    private Instrumentation mInstrumentation;
     private ProfilingService mProfilingService;
     private RateLimiter mRateLimiter;
 
     @Before
     public void setUp() {
         MockitoAnnotations.initMocks(this);
+        mInstrumentation = InstrumentationRegistry.getInstrumentation();
         mContext = spy(ApplicationProvider.getApplicationContext());
         mProfilingService = spy(new ProfilingService(mContext));
-        mRateLimiter = spy(new RateLimiter(mContext));
+        mRateLimiter = spy(new RateLimiter(new RateLimiter.HandlerCallback() {
+            @Override
+            public Handler obtainHandler() {
+                return null;
+            }
+        }));
         doReturn(mPackageManager).when(mContext).getPackageManager();
         mProfilingService.mRateLimiter = mRateLimiter;
         doReturn(APP_PACKAGE_NAME).when(mPackageManager).getNameForUid(anyInt());
+
+        // Override the persist file/directory and instead point to our own file/directory in app
+        // storage, since the test app context can't access /data/system
+        doReturn(true).when(mRateLimiter).setupPersistFiles();
+        mRateLimiter.mPersistStoreDir = new File(mContext.getFilesDir(), "testdir");
+        mRateLimiter.mPersistStoreDir.mkdir();
+        mRateLimiter.mPersistFile = new File(mRateLimiter.mPersistStoreDir, "testfile");
     }
 
     /** Test that registering binder callbacks works as expected. */
@@ -109,7 +127,8 @@ public final class ProfilingServiceTests {
         mProfilingService.registerResultsCallback(callback);
 
         // Confirm callback is registered.
-        assertEquals(callback, mProfilingService.mResultCallbacks.get(Binder.getCallingUid()));
+        assertEquals(callback,
+                mProfilingService.mResultCallbacks.get(Binder.getCallingUid()).get(0));
     }
 
     /** Test that only the callback belonging to the requesting uid is triggered. */
@@ -126,11 +145,14 @@ public final class ProfilingServiceTests {
         mProfilingService.registerResultsCallback(callback);
 
         // Add other process callback manually to mock uid.
-        mProfilingService.mResultCallbacks.put(mockProcessUid, mockProcessCallback);
+        List<IProfilingResultCallback> callbacks = Arrays.asList(mockProcessCallback);
+        mProfilingService.mResultCallbacks.put(mockProcessUid, callbacks);
 
         // Confirm both callbacks are registered.
-        assertEquals(callback, mProfilingService.mResultCallbacks.get(Binder.getCallingUid()));
-        assertEquals(mockProcessCallback, mProfilingService.mResultCallbacks.get(mockProcessUid));
+        assertEquals(callback,
+                mProfilingService.mResultCallbacks.get(Binder.getCallingUid()).get(0));
+        assertEquals(mockProcessCallback,
+                mProfilingService.mResultCallbacks.get(mockProcessUid).get(0));
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
@@ -141,6 +163,34 @@ public final class ProfilingServiceTests {
 
         // Confirm callbacks was not triggered for callback registered to other process.
         assertFalse(mockProcessCallback.mResultSent);
+    }
+
+    /** Test that multiple callbacks belonging to the requesting uid are all triggered. */
+    @Test
+    public void testRequestProfiling_MultipleCallbackTriggered() {
+        // Mock traces running check to simulate collection running so it fails early.
+        doReturn(true).when(mProfilingService).areAnyTracesRunning();
+
+        ProfilingResultCallback callbackOne = new ProfilingResultCallback();
+        ProfilingResultCallback callbackTwo = new ProfilingResultCallback();
+
+        // Register callbacks.
+        mProfilingService.registerResultsCallback(callbackOne);
+        mProfilingService.registerResultsCallback(callbackTwo);
+
+        // Confirm both callbacks are registered.
+        assertEquals(callbackOne,
+                mProfilingService.mResultCallbacks.get(Binder.getCallingUid()).get(0));
+        assertEquals(callbackTwo,
+                mProfilingService.mResultCallbacks.get(Binder.getCallingUid()).get(1));
+
+        // Kick off request.
+        mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
+                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+
+        // Confirm callbacks was triggered for callback registered to this process.
+        assertTrue(callbackOne.mResultSent);
+        assertTrue(callbackTwo.mResultSent);
     }
 
     /**
@@ -306,6 +356,283 @@ public final class ProfilingServiceTests {
         assertFalse(callback.mResultSent);
     }
 
+    /** Test that rate limiter correctly persists and restores data. */
+    @Test
+    public void testRateLimiter_PersistAndRestore() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // Remove all records
+        long currentTimeMillis = System.currentTimeMillis();
+        mRateLimiter.mPastRunsHour.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsDay.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsWeek.removeOlderThan(currentTimeMillis);
+
+        // Add some records. Since records are being added directly rather than through normal
+        // request flow, this will not trigger a persist regardless of persist frequency.
+        mRateLimiter.mPastRunsHour.add(1, 1, currentTimeMillis - 1000);
+        mRateLimiter.mPastRunsDay.add(1, 1, currentTimeMillis - 1000);
+        mRateLimiter.mPastRunsWeek.add(1, 1, currentTimeMillis - 1000);
+        mRateLimiter.mPastRunsDay.add(2, 1, currentTimeMillis - (60 * 60 * 1000) - 1000);
+        mRateLimiter.mPastRunsWeek.add(2, 1, currentTimeMillis - (60 * 60 * 1000) - 1000);
+        mRateLimiter.mPastRunsWeek.add(2, 1, currentTimeMillis - (24 * 60 * 60 * 1000) - 1000);
+
+        // Store a copy of the backing data for each type
+        RateLimiter.CollectionEntry[] hourEntriesOriginal =
+                mRateLimiter.mPastRunsHour.getEntriesCopy();
+        RateLimiter.CollectionEntry[] dayEntriesOriginal =
+                mRateLimiter.mPastRunsDay.getEntriesCopy();
+        RateLimiter.CollectionEntry[] weekEntriesOriginal =
+                mRateLimiter.mPastRunsWeek.getEntriesCopy();
+
+        // Confirm collections are correct size.
+        assertEquals(1, hourEntriesOriginal.length);
+        assertEquals(2, dayEntriesOriginal.length);
+        assertEquals(3, weekEntriesOriginal.length);
+
+        // Now persist the records to disk
+        mRateLimiter.persistToDisk();
+
+        // Remove all records again
+        currentTimeMillis = System.currentTimeMillis();
+        mRateLimiter.mPastRunsHour.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsDay.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsWeek.removeOlderThan(currentTimeMillis);
+
+        // Confirm records have been removed
+        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+
+        // Now load the persisted records from disk using the overridden files we set up earlier.
+        mRateLimiter.setupFromPersistedData();
+
+        // Finally, verify the records.
+        confirmRateLimiterEntriesEqual(hourEntriesOriginal,
+                mRateLimiter.mPastRunsHour.getEntriesCopy());
+        confirmRateLimiterEntriesEqual(dayEntriesOriginal,
+                mRateLimiter.mPastRunsDay.getEntriesCopy());
+        confirmRateLimiterEntriesEqual(weekEntriesOriginal,
+                mRateLimiter.mPastRunsWeek.getEntriesCopy());
+    }
+
+    /**
+     * Test that rate limiter handles no persist file correctly.
+     *
+     * - Test setup ensures records are empty and that no file exists.
+     * - Rate limiter is expected to handle no file as a "profiling has never been used" state,
+     *       resulting in the records remaining empty and data load being marked complete.
+     */
+    @Test
+    public void testRateLimiter_NoPersistFile() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // Ensure file doesn't exist
+        mRateLimiter.mPersistFile.delete();
+
+        // Remove all records
+        long currentTimeMillis = System.currentTimeMillis();
+        mRateLimiter.mPastRunsHour.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsDay.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsWeek.removeOlderThan(currentTimeMillis);
+
+        // Confirm records have been removed
+        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+
+        // Now load the persisted records from disk using the overridden files we set up earlier.
+        mRateLimiter.setupFromPersistedData();
+
+        // Confirm load is marked complete
+        assertTrue(mRateLimiter.mDataLoaded.get());
+
+        // Confirm records are still empty
+        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+    }
+
+    /**
+     * Test that rate limiter handles an empty persist file correctly.
+     *
+     * - Test setup ensures records are empty and that an empty file exists.
+     * - Rate limiter is expected to handle the empty file as a "profiling has never been used"
+     *       state, resulting in the records remaining empty and data load being marked complete.
+     */
+    @Test
+    public void testRateLimiter_EmptyPersistFile() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // Ensure file exists and is empty
+        mRateLimiter.mPersistFile.delete();
+        mRateLimiter.mPersistFile.createNewFile();
+        assertTrue(mRateLimiter.mPersistFile.exists());
+
+        // Remove all records
+        long currentTimeMillis = System.currentTimeMillis();
+        mRateLimiter.mPastRunsHour.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsDay.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsWeek.removeOlderThan(currentTimeMillis);
+
+        // Confirm records have been removed
+        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+
+        // Now load the persisted records from disk using the overridden files we set up earlier.
+        mRateLimiter.setupFromPersistedData();
+
+        // Confirm load is marked complete
+        assertTrue(mRateLimiter.mDataLoaded.get());
+
+        // Confirm records are still empty
+        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+    }
+
+    /**
+     * Test that rate limiter handles a invalid persist file with remediation success correctly.
+     *
+     * - Test setup ensures records are empty, that a file with contents not of expected proto
+     *       type exists, and that remediation succeeds.
+     * - Rate limiter is expected to handle the invalid file contents by attempting remediation and
+     *       succeeding, resulting in stub records being added and data load being marked complete.
+     */
+    @Test
+    public void testRateLimiter_BadFile_RemediateSuccess() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // Ensure file exists and is written with data not matching proto expectation
+        mRateLimiter.mPersistFile.delete();
+        mRateLimiter.mPersistFile.createNewFile();
+        FileOutputStream fileOutputStream = new FileOutputStream(mRateLimiter.mPersistFile);
+        fileOutputStream.write("some text that is definitely not a proto".getBytes());
+        fileOutputStream.close();
+
+        // Remove all records
+        long currentTimeMillis = System.currentTimeMillis();
+        mRateLimiter.mPastRunsHour.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsDay.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsWeek.removeOlderThan(currentTimeMillis);
+
+        // Confirm records have been removed
+        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+
+        // Now load the persisted records from disk using the overridden files we set up earlier.
+        mRateLimiter.setupFromPersistedData();
+
+        // Confirm load is marked complete
+        assertTrue(mRateLimiter.mDataLoaded.get());
+
+        // Confirm fake records have been added
+        assertEquals(1, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
+        assertEquals(Integer.MAX_VALUE, mRateLimiter.mPastRunsHour.getEntriesCopy()[0].mCost);
+        assertEquals(1, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
+        assertEquals(Integer.MAX_VALUE, mRateLimiter.mPastRunsDay.getEntriesCopy()[0].mCost);
+        assertEquals(1, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+        assertEquals(Integer.MAX_VALUE, mRateLimiter.mPastRunsWeek.getEntriesCopy()[0].mCost);
+    }
+
+    /**
+     * Test that rate limiter handles a invalid persist file with remediation failure correctly.
+     *
+     * - Test setup ensures records are empty, that a file with contents not of expected proto
+     *       type exists, and that remediation fails.
+     * - Rate limiter is expected to handle the invalid file contents by attempting remediation and
+     *       failing, resulting in records remaining empty and data load being marked incomplete.
+     */
+    @Test
+    public void testRateLimiter_BadFile_RemediateFailure() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // Mock failure of handleBadFile.
+        doReturn(false).when(mRateLimiter).handleBadFile();
+
+        // Ensure file exists and is written with data not matching proto expectation
+        mRateLimiter.mPersistFile.delete();
+        mRateLimiter.mPersistFile.createNewFile();
+        FileOutputStream fileOutputStream = new FileOutputStream(mRateLimiter.mPersistFile);
+        fileOutputStream.write("some text that is definitely not a proto".getBytes());
+        fileOutputStream.close();
+
+        // Remove all records
+        long currentTimeMillis = System.currentTimeMillis();
+        mRateLimiter.mPastRunsHour.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsDay.removeOlderThan(currentTimeMillis);
+        mRateLimiter.mPastRunsWeek.removeOlderThan(currentTimeMillis);
+
+        // Confirm records have been removed
+        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+
+        // Now load the persisted records from disk using the overridden files we set up earlier.
+        mRateLimiter.setupFromPersistedData();
+
+        // Confirm load is marked incomplete
+        assertFalse(mRateLimiter.mDataLoaded.get());
+
+        // Confirm records are still empty
+        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
+        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+    }
+
+    // TODO: b/333579817 - Add more rate limiter tests
+
+    private void overrideRateLimiterDefaults() throws Exception {
+        // Update DeviceConfig defaults to general high enough limits, cost of 1, and persist
+        // frequency 0.
+        overrideRateLimiterDefaults(5, 10, 20, 50, 50, 100, 1, 1, 1, 1, 0);
+    }
+
+    private void overrideRateLimiterDefaults(int systemHour, int processHour, int systemDay,
+            int processDay, int systemWeek, int processWeek, int costHeapDump, int costHeapProfile,
+            int costStackSampling, int costSystemTrace, int persistToDiskFrequency)
+            throws Exception {
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, systemHour);
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, processHour);
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, systemDay);
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR, processDay);
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, systemWeek);
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_7_DAY, processWeek);
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.COST_JAVA_HEAP_DUMP, costHeapDump);
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.COST_HEAP_PROFILE, costHeapProfile);
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.COST_STACK_SAMPLING, costStackSampling);
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.COST_SYSTEM_TRACE, costSystemTrace);
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS, persistToDiskFrequency);
+    }
+
+    @FormatMethod
+    private String executeShellCmd(String cmdFormat, Object... args) throws Exception {
+        String cmd = String.format(cmdFormat, args);
+        return SystemUtil.runShellCommand(mInstrumentation, cmd);
+    }
+
+    private void confirmRateLimiterEntriesEqual(RateLimiter.CollectionEntry[] collectionOne,
+            RateLimiter.CollectionEntry[] collectionTwo) {
+        assertEquals(collectionOne.length, collectionTwo.length);
+        for (int i = 0; i < collectionOne.length; i++) {
+            assertEquals(collectionOne[i].mUid, collectionTwo[i].mUid);
+            assertEquals(collectionOne[i].mCost, collectionTwo[i].mCost);
+            assertEquals(collectionOne[i].mTimestamp, collectionTwo[i].mTimestamp);
+        }
+    }
+
     /** Confirm that all fields returned by callback match expectation. */
     private void confirmResultCallback(ProfilingResultCallback callback, String resultFile,
             long keyMostSigBits, long keyLeastSigBits, int status, String tag,
@@ -332,7 +659,7 @@ public final class ProfilingServiceTests {
         public String mTag;
         public String mError;
         @Override
-        public void sendResult(String resultFile, long keyMostSigBits,
+        public boolean sendResult(String resultFile, long keyMostSigBits,
                 long keyLeastSigBits, int status, String tag, String error) {
             mResultSent = true;
             mResultFile = resultFile;
@@ -341,6 +668,9 @@ public final class ProfilingServiceTests {
             mStatus = status;
             mTag = tag;
             mError = error;
+
+            // Return true so the callback remains registered.
+            return true;
         }
         @Override
         public ParcelFileDescriptor generateFile(String filePathAbsolute, String fileName) {
