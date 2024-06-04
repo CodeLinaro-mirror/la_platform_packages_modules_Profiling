@@ -114,6 +114,9 @@ public final class DeviceConfigHelper {
     // Perfetto configs
     public static final String PERFETTO_DESTROY_TIMEOUT_MS = "perfetto_destroy_timeout_ms";
 
+    // General configs
+    public static final String MAX_RESULT_REDELIVERY_COUNT = "max_result_redelivery_count";
+
     // End section: Server registered constants
 
     /**
