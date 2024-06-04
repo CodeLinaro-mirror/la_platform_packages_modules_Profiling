@@ -19,6 +19,7 @@ package android.os.profiling;
 import android.annotation.Nullable;
 import android.os.Bundle;
 import android.os.ProfilingManager;
+import android.provider.DeviceConfig;
 
 public final class Configs {
 
@@ -133,38 +134,21 @@ public final class Configs {
             + "\n"
             + "      # RSS and ION buffer events:\n"
             + "      ftrace_events: \"gpu_mem/gpu_mem_total\"\n"
-            + "      ftrace_events: \"dmabuf_heap/dma_heap_stat\"\n"
-            + "      ftrace_events: \"ion/ion_stat\"\n"
-            + "      ftrace_events: \"kmem/ion_heap_grow\"\n"
-            + "      ftrace_events: \"kmem/ion_heap_shrink\"\n"
-            + "      ftrace_events: \"rss_stat\"\n"
-            + "      ftrace_events: \"fastrpc/fastrpc_dma_stat\"\n"
             + "\n"
             + "      # Scheduling information & process tracking. Useful for:\n"
             + "      # - what is happening on each CPU at each moment\n"
             + "      # - why a thread was descheduled\n"
             + "      # - parent/child relationships between processes and threads.\n"
             + "      ftrace_events: \"power/suspend_resume\"\n"
-            + "      ftrace_events: \"sched/sched_blocked_reason\"\n"
             + "      ftrace_events: \"sched/sched_process_free\"\n"
             + "      ftrace_events: \"sched/sched_switch\"\n"
             + "      ftrace_events: \"task/task_newtask\"\n"
             + "      ftrace_events: \"task/task_rename\"\n"
             + "\n"
-            + "      # These two give us kernel wakelocks.\n"
-            + "      ftrace_events: \"power/wakeup_source_activate\"\n"
-            + "      ftrace_events: \"power/wakeup_source_deactivate\"\n"
-            + "\n"
             + "      # Wakeup info. Allows you to compute how long a task was\n"
             + "      # blocked due to CPU contention.\n"
             + "      ftrace_events: \"sched/sched_waking\"\n"
             + "      ftrace_events: \"sched/sched_wakeup_new\"\n"
-            + "\n"
-            + "      # Workqueue events.\n"
-            + "      ftrace_events: \"workqueue/workqueue_activate_work\"\n"
-            + "      ftrace_events: \"workqueue/workqueue_execute_end\"\n"
-            + "      ftrace_events: \"workqueue/workqueue_execute_start\"\n"
-            + "      ftrace_events: \"workqueue/workqueue_queue_work\"\n"
             + "\n"
             + "      # vmscan and mm_compaction events.\n"
             + "      ftrace_events: \"vmscan/mm_vmscan_kswapd_wake\"\n"
@@ -174,20 +158,20 @@ public final class Configs {
             + "      ftrace_events: \"compaction/mm_compaction_begin\"\n"
             + "      ftrace_events: \"compaction/mm_compaction_end\"\n"
             + "\n"
-            + "      # CMA events.\n"
-            + "      ftrace_events: \"cma/cma_alloc_start\"\n"
-            + "      ftrace_events: \"cma/cma_alloc_info\"\n"
-            + "\n"
             + "      # Atrace activity manager:\n"
             + "      atrace_categories: \"am\"\n"
-            + "      # Atrace system_server:\n"
-            + "      atrace_categories: \"ss\"\n"
             + "\n"
             + "      # Java and C:\n"
             + "      atrace_categories: \"dalvik\"\n"
             + "      atrace_categories: \"bionic\"\n"
             + "\n"
             + "      atrace_categories: \"binder_driver\"\n"
+            + "\n"
+            + "      atrace_categories: \"view\"\n"
+            + "\n"
+            + "      atrace_categories: \"input\"\n"
+            + "\n"
+            + "      atrace_categories: \"gfx\"\n"
             + "\n"
             + "      atrace_apps: \"" + STUB_PACKAGE_NAME + "\"\n"
             + "    }\n"
@@ -200,129 +184,289 @@ public final class Configs {
             + "    target_buffer: 0\n"
             + "  }\n"
             + "}\n"
+            + "incremental_state_config {\n"
+            + "  clear_period_ms: 10000\n"
+            + "}\n"
             + "duration_ms: " + STUB_DURATION;
 
     // Time to wait beyond trace timeout to ensure perfetto has time to finish writing output.
     private static final int FILE_PROCESSING_DELAY_MS = 5000;
 
-    private static final boolean sKillswitchSystemTrace;
-    private static final int sSystemTraceDurationMsDefault;
-    private static final int sSystemTraceDurationMsMin;
-    private static final int sSystemTraceDurationMsMax;
-    private static final int sSystemTraceSizeKbDefault;
-    private static final int sSystemTraceSizeKbMin;
-    private static final int sSystemTraceSizeKbMax;
+    private static boolean sSystemTraceConfigsInitialized = false;
+    private static boolean sHeapProfileConfigsInitialized = false;
+    private static boolean sJavaHeapDumpConfigsInitialized = false;
+    private static boolean sStackSamplingConfigsInitialized = false;
 
-    private static final boolean sKillswitchHeapProfile;
-    private static final boolean sHeapProfileTrackJavaAllocationsDefault;
-    private static final int sHeapProfileFlushTimeoutMsDefault;
-    private static final int sHeapProfileDurationMsDefault;
-    private static final int sHeapProfileDurationMsMin;
-    private static final int sHeapProfileDurationMsMax;
-    private static final int sHeapProfileSizeKbDefault;
-    private static final int sHeapProfileSizeKbMin;
-    private static final int sHeapProfileSizeKbMax;
-    private static final int sHeapProfileSamplingIntervalBytesDefault;
-    private static final int sHeapProfileSamplingIntervalBytesMin;
-    private static final int sHeapProfileSamplingIntervalBytesMax;
+    private static boolean sKillswitchSystemTrace;
+    private static int sSystemTraceDurationMsDefault;
+    private static int sSystemTraceDurationMsMin;
+    private static int sSystemTraceDurationMsMax;
+    private static int sSystemTraceSizeKbDefault;
+    private static int sSystemTraceSizeKbMin;
+    private static int sSystemTraceSizeKbMax;
 
-    private static final boolean sKillswitchJavaHeapDump;
-    private static final int sJavaHeapDumpDurationMsDefault;
-    private static final int sJavaHeapDumpDataSourceStopTimeoutMsDefault;
-    private static final int sJavaHeapDumpSizeKbDefault;
-    private static final int sJavaHeapDumpSizeKbMin;
-    private static final int sJavaHeapDumpSizeKbMax;
+    private static boolean sKillswitchHeapProfile;
+    private static boolean sHeapProfileTrackJavaAllocationsDefault;
+    private static int sHeapProfileFlushTimeoutMsDefault;
+    private static int sHeapProfileDurationMsDefault;
+    private static int sHeapProfileDurationMsMin;
+    private static int sHeapProfileDurationMsMax;
+    private static int sHeapProfileSizeKbDefault;
+    private static int sHeapProfileSizeKbMin;
+    private static int sHeapProfileSizeKbMax;
+    private static int sHeapProfileSamplingIntervalBytesDefault;
+    private static int sHeapProfileSamplingIntervalBytesMin;
+    private static int sHeapProfileSamplingIntervalBytesMax;
 
-    private static final boolean sKillswitchStackSampling;
-    private static final int sStackSamplingFlushTimeoutMsDefault;
-    private static final int sStackSamplingDurationMsDefault;
-    private static final int sStackSamplingDurationMsMin;
-    private static final int sStackSamplingDurationMsMax;
-    private static final int sStackSamplingSizeKbDefault;
-    private static final int sStackSamplingSizeKbMin;
-    private static final int sStackSamplingSizeKbMax;
-    private static final int sStackSamplingSamplingFrequencyDefault;
-    private static final int sStackSamplingSamplingFrequencyMin;
-    private static final int sStackSamplingSamplingFrequencyMax;
+    private static boolean sKillswitchJavaHeapDump;
+    private static int sJavaHeapDumpDurationMsDefault;
+    private static int sJavaHeapDumpDataSourceStopTimeoutMsDefault;
+    private static int sJavaHeapDumpSizeKbDefault;
+    private static int sJavaHeapDumpSizeKbMin;
+    private static int sJavaHeapDumpSizeKbMax;
 
-    static {
-        // TODO(b/330940387): Revisit defaults before release
+    private static boolean sKillswitchStackSampling;
+    private static int sStackSamplingFlushTimeoutMsDefault;
+    private static int sStackSamplingDurationMsDefault;
+    private static int sStackSamplingDurationMsMin;
+    private static int sStackSamplingDurationMsMax;
+    private static int sStackSamplingSizeKbDefault;
+    private static int sStackSamplingSizeKbMin;
+    private static int sStackSamplingSizeKbMax;
+    private static int sStackSamplingSamplingFrequencyDefault;
+    private static int sStackSamplingSamplingFrequencyMin;
+    private static int sStackSamplingSamplingFrequencyMax;
 
-        sKillswitchSystemTrace = DeviceConfigHelper.getBoolean(
+    /** Initialize System Trace related DeviceConfig set values if they have not been yet. */
+    private static void initializeSystemTraceConfigsIfNecessary() {
+        if (sSystemTraceConfigsInitialized) {
+            return;
+        }
+
+        DeviceConfig.Properties properties = DeviceConfigHelper.getAllSystemTraceProperties();
+
+        sKillswitchSystemTrace = properties.getBoolean(
                 DeviceConfigHelper.KILLSWITCH_SYSTEM_TRACE, false);
-        sSystemTraceDurationMsDefault = DeviceConfigHelper.getInt(
+        sSystemTraceDurationMsDefault = properties.getInt(
                 DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_DEFAULT, 300000);
-        sSystemTraceDurationMsMin = DeviceConfigHelper.getInt(
+        sSystemTraceDurationMsMin = properties.getInt(
                 DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_MIN, 1000);
-        sSystemTraceDurationMsMax = DeviceConfigHelper.getInt(
+        sSystemTraceDurationMsMax = properties.getInt(
                 DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_MAX, 600000);
-        sSystemTraceSizeKbDefault = DeviceConfigHelper.getInt(
+        sSystemTraceSizeKbDefault = properties.getInt(
                 DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_DEFAULT, 32768);
-        sSystemTraceSizeKbMin = DeviceConfigHelper.getInt(
+        sSystemTraceSizeKbMin = properties.getInt(
                 DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_MIN, 1);
-        sSystemTraceSizeKbMax = DeviceConfigHelper.getInt(
+        sSystemTraceSizeKbMax = properties.getInt(
                 DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_MAX, 32768);
 
-        sKillswitchHeapProfile = DeviceConfigHelper.getBoolean(
-                DeviceConfigHelper.KILLSWITCH_HEAP_PROFILE, false);
-        sHeapProfileTrackJavaAllocationsDefault = DeviceConfigHelper.getBoolean(
-                DeviceConfigHelper.HEAP_PROFILE_TRACK_JAVA_ALLOCATIONS_DEFAULT, false);
-        sHeapProfileFlushTimeoutMsDefault = DeviceConfigHelper.getInt(
-                DeviceConfigHelper.HEAP_PROFILE_FLUSH_TIMEOUT_MS_DEFAULT, 30000);
-        sHeapProfileDurationMsDefault = DeviceConfigHelper.getInt(
-                DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_DEFAULT, 120000);
-        sHeapProfileDurationMsMin = DeviceConfigHelper.getInt(
-                DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_MIN, 1000);
-        sHeapProfileDurationMsMax = DeviceConfigHelper.getInt(
-                DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_MAX, 300000);
-        sHeapProfileSizeKbDefault = DeviceConfigHelper.getInt(
-                DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_DEFAULT, 65536);
-        sHeapProfileSizeKbMin = DeviceConfigHelper.getInt(
-                DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MIN, 1);
-        sHeapProfileSizeKbMax = DeviceConfigHelper.getInt(
-                DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MAX, 65536);
-        sHeapProfileSamplingIntervalBytesDefault = DeviceConfigHelper.getInt(
-                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_DEFAULT, 4096);
-        sHeapProfileSamplingIntervalBytesMin = DeviceConfigHelper.getInt(
-                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MIN, 1028);
-        sHeapProfileSamplingIntervalBytesMax = DeviceConfigHelper.getInt(
-                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MAX, 8192);
+        sSystemTraceConfigsInitialized = true;
+    }
 
-        sKillswitchJavaHeapDump = DeviceConfigHelper.getBoolean(
+    /** Initialize Java Heap Dump related DeviceConfig set values if they have not been yet. */
+    private static void initializeJavaHeapDumpConfigsIfNecessary() {
+        if (sJavaHeapDumpConfigsInitialized) {
+            return;
+        }
+
+        DeviceConfig.Properties properties = DeviceConfigHelper.getAllJavaHeapDumpProperties();
+
+        sKillswitchJavaHeapDump = properties.getBoolean(
                 DeviceConfigHelper.KILLSWITCH_JAVA_HEAP_DUMP, false);
-        sJavaHeapDumpDurationMsDefault = DeviceConfigHelper.getInt(
+        sJavaHeapDumpDurationMsDefault = properties.getInt(
                 DeviceConfigHelper.JAVA_HEAP_DUMP_DURATION_MS_DEFAULT, 1000);
-        sJavaHeapDumpDataSourceStopTimeoutMsDefault = DeviceConfigHelper.getInt(
+        sJavaHeapDumpDataSourceStopTimeoutMsDefault = properties.getInt(
                 DeviceConfigHelper.JAVA_HEAP_DUMP_DATA_SOURCE_STOP_TIMEOUT_MS_DEFAULT, 100000);
-        sJavaHeapDumpSizeKbDefault = DeviceConfigHelper.getInt(
+        sJavaHeapDumpSizeKbDefault = properties.getInt(
                 DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_DEFAULT, 256000);
-        sJavaHeapDumpSizeKbMin = DeviceConfigHelper.getInt(
+        sJavaHeapDumpSizeKbMin = properties.getInt(
                 DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_MIN, 1);
-        sJavaHeapDumpSizeKbMax = DeviceConfigHelper.getInt(
+        sJavaHeapDumpSizeKbMax = properties.getInt(
                 DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_MAX, 256000);
 
-        sKillswitchStackSampling = DeviceConfigHelper.getBoolean(
+        sJavaHeapDumpConfigsInitialized = true;
+    }
+
+    /** Initialize Heap Profile related DeviceConfig set values if they have not been yet. */
+    private static void initializeHeapProfileConfigsIfNecessary() {
+        if (sHeapProfileConfigsInitialized) {
+            return;
+        }
+
+        DeviceConfig.Properties properties = DeviceConfigHelper.getAllHeapProfileProperties();
+
+        sKillswitchHeapProfile = properties.getBoolean(
+                DeviceConfigHelper.KILLSWITCH_HEAP_PROFILE, false);
+        sHeapProfileTrackJavaAllocationsDefault = properties.getBoolean(
+                DeviceConfigHelper.HEAP_PROFILE_TRACK_JAVA_ALLOCATIONS_DEFAULT, false);
+        sHeapProfileFlushTimeoutMsDefault = properties.getInt(
+                DeviceConfigHelper.HEAP_PROFILE_FLUSH_TIMEOUT_MS_DEFAULT, 30000);
+        sHeapProfileDurationMsDefault = properties.getInt(
+                DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_DEFAULT, 120000);
+        sHeapProfileDurationMsMin = properties.getInt(
+                DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_MIN, 1000);
+        sHeapProfileDurationMsMax = properties.getInt(
+                DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_MAX, 300000);
+        sHeapProfileSizeKbDefault = properties.getInt(
+                DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_DEFAULT, 65536);
+        sHeapProfileSizeKbMin = properties.getInt(
+                DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MIN, 1);
+        sHeapProfileSizeKbMax = properties.getInt(
+                DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MAX, 65536);
+        sHeapProfileSamplingIntervalBytesDefault = properties.getInt(
+                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_DEFAULT, 4096);
+        sHeapProfileSamplingIntervalBytesMin = properties.getInt(
+                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MIN, 1028);
+        sHeapProfileSamplingIntervalBytesMax = properties.getInt(
+                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MAX, 8192);
+
+        sHeapProfileConfigsInitialized = true;
+    }
+
+    /** Initialize Stack Sampling related DeviceConfig set values if they have not been yet. */
+    private static void initializeStackSamplingConfigsIfNecessary() {
+        if (sStackSamplingConfigsInitialized) {
+            return;
+        }
+
+        DeviceConfig.Properties properties = DeviceConfigHelper.getAllStackSamplingProperties();
+
+        sKillswitchStackSampling = properties.getBoolean(
                 DeviceConfigHelper.KILLSWITCH_STACK_SAMPLING, false);
-        sStackSamplingFlushTimeoutMsDefault = DeviceConfigHelper.getInt(
+        sStackSamplingFlushTimeoutMsDefault = properties.getInt(
                 DeviceConfigHelper.STACK_SAMPLING_FLUSH_TIMEOUT_MS_DEFAULT, 30000);
-        sStackSamplingDurationMsDefault = DeviceConfigHelper.getInt(
+        sStackSamplingDurationMsDefault = properties.getInt(
                 DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_DEFAULT, 60000);
-        sStackSamplingDurationMsMin = DeviceConfigHelper.getInt(
+        sStackSamplingDurationMsMin = properties.getInt(
                 DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_MIN, 1000);
-        sStackSamplingDurationMsMax = DeviceConfigHelper.getInt(
+        sStackSamplingDurationMsMax = properties.getInt(
                 DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_MAX, 300000);
-        sStackSamplingSizeKbDefault = DeviceConfigHelper.getInt(
+        sStackSamplingSizeKbDefault = properties.getInt(
                 DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_DEFAULT, 65536);
-        sStackSamplingSizeKbMin = DeviceConfigHelper.getInt(
+        sStackSamplingSizeKbMin = properties.getInt(
                 DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_MIN, 1);
-        sStackSamplingSizeKbMax = DeviceConfigHelper.getInt(
+        sStackSamplingSizeKbMax = properties.getInt(
                 DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_MAX, 65536);
-        sStackSamplingSamplingFrequencyDefault = DeviceConfigHelper.getInt(
+        sStackSamplingSamplingFrequencyDefault = properties.getInt(
                 DeviceConfigHelper.STACK_SAMPLING_FREQUENCY_DEFAULT, 100);
-        sStackSamplingSamplingFrequencyMin = DeviceConfigHelper.getInt(
+        sStackSamplingSamplingFrequencyMin = properties.getInt(
                 DeviceConfigHelper.STACK_SAMPLING_FREQUENCY_MIN, 1);
-        sStackSamplingSamplingFrequencyMax = DeviceConfigHelper.getInt(
+        sStackSamplingSamplingFrequencyMax = properties.getInt(
                 DeviceConfigHelper.STACK_SAMPLING_FREQUENCY_MAX, 200);
+
+        sStackSamplingConfigsInitialized = true;
+    }
+
+    /**
+     * Update DeviceConfig set configuration values if present in the provided properties, leaving
+     * not present values unchanged.
+     *
+     * Will only update values that have already been initialized as initialization is required
+     * before use and the changed values will be available under the normal access path.
+     */
+    public static void maybeUpdateConfigs(DeviceConfig.Properties properties) {
+        // TODO(b/330940387): Revisit defaults before release
+
+        if (sSystemTraceConfigsInitialized) {
+            sKillswitchSystemTrace = properties.getBoolean(
+                    DeviceConfigHelper.KILLSWITCH_SYSTEM_TRACE, sKillswitchSystemTrace);
+            sSystemTraceDurationMsDefault = properties.getInt(
+                    DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_DEFAULT,
+                    sSystemTraceDurationMsDefault);
+            sSystemTraceDurationMsMin = properties.getInt(
+                    DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_MIN, sSystemTraceDurationMsMin);
+            sSystemTraceDurationMsMax = properties.getInt(
+                    DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_MAX, sSystemTraceDurationMsMax);
+            sSystemTraceSizeKbDefault = properties.getInt(
+                    DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_DEFAULT, sSystemTraceSizeKbDefault);
+            sSystemTraceSizeKbMin = properties.getInt(
+                    DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_MIN, sSystemTraceSizeKbMin);
+            sSystemTraceSizeKbMax = properties.getInt(
+                    DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_MAX, sSystemTraceSizeKbMax);
+        }
+
+        if (sHeapProfileConfigsInitialized) {
+            sKillswitchHeapProfile = properties.getBoolean(
+                    DeviceConfigHelper.KILLSWITCH_HEAP_PROFILE, sKillswitchHeapProfile);
+            sHeapProfileTrackJavaAllocationsDefault = properties.getBoolean(
+                    DeviceConfigHelper.HEAP_PROFILE_TRACK_JAVA_ALLOCATIONS_DEFAULT,
+                    sHeapProfileTrackJavaAllocationsDefault);
+            sHeapProfileFlushTimeoutMsDefault = properties.getInt(
+                    DeviceConfigHelper.HEAP_PROFILE_FLUSH_TIMEOUT_MS_DEFAULT,
+                    sHeapProfileFlushTimeoutMsDefault);
+            sHeapProfileDurationMsDefault = properties.getInt(
+                    DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_DEFAULT,
+                    sHeapProfileDurationMsDefault);
+            sHeapProfileDurationMsMin = properties.getInt(
+                    DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_MIN, sHeapProfileDurationMsMin);
+            sHeapProfileDurationMsMax = properties.getInt(
+                    DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_MAX, sHeapProfileDurationMsMax);
+            sHeapProfileSizeKbDefault = properties.getInt(
+                    DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_DEFAULT, sHeapProfileSizeKbDefault);
+            sHeapProfileSizeKbMin = properties.getInt(
+                    DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MIN, sHeapProfileSizeKbMin);
+            sHeapProfileSizeKbMax = properties.getInt(
+                    DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MAX, sHeapProfileSizeKbMax);
+            sHeapProfileSamplingIntervalBytesDefault = properties.getInt(
+                    DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_DEFAULT,
+                    sHeapProfileSamplingIntervalBytesDefault);
+            sHeapProfileSamplingIntervalBytesMin = properties.getInt(
+                    DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MIN,
+                    sHeapProfileSamplingIntervalBytesMin);
+            sHeapProfileSamplingIntervalBytesMax = properties.getInt(
+                    DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MAX,
+                    sHeapProfileSamplingIntervalBytesMax);
+        }
+
+        if (sJavaHeapDumpConfigsInitialized) {
+            sKillswitchJavaHeapDump = properties.getBoolean(
+                    DeviceConfigHelper.KILLSWITCH_JAVA_HEAP_DUMP, sKillswitchJavaHeapDump);
+            sJavaHeapDumpDurationMsDefault = properties.getInt(
+                    DeviceConfigHelper.JAVA_HEAP_DUMP_DURATION_MS_DEFAULT,
+                    sJavaHeapDumpDurationMsDefault);
+            sJavaHeapDumpDataSourceStopTimeoutMsDefault = properties.getInt(
+                    DeviceConfigHelper.JAVA_HEAP_DUMP_DATA_SOURCE_STOP_TIMEOUT_MS_DEFAULT,
+                    sJavaHeapDumpDataSourceStopTimeoutMsDefault);
+            sJavaHeapDumpSizeKbDefault = properties.getInt(
+                    DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_DEFAULT, sJavaHeapDumpSizeKbDefault);
+            sJavaHeapDumpSizeKbMin = properties.getInt(
+                    DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_MIN, sJavaHeapDumpSizeKbMin);
+            sJavaHeapDumpSizeKbMax = properties.getInt(
+                    DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_MAX, sJavaHeapDumpSizeKbMax);
+        }
+
+        if (sStackSamplingConfigsInitialized) {
+            sKillswitchStackSampling = properties.getBoolean(
+                    DeviceConfigHelper.KILLSWITCH_STACK_SAMPLING, sKillswitchStackSampling);
+            sStackSamplingFlushTimeoutMsDefault = properties.getInt(
+                    DeviceConfigHelper.STACK_SAMPLING_FLUSH_TIMEOUT_MS_DEFAULT,
+                    sStackSamplingFlushTimeoutMsDefault);
+            sStackSamplingDurationMsDefault = properties.getInt(
+                    DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_DEFAULT,
+                    sStackSamplingDurationMsDefault);
+            sStackSamplingDurationMsMin = properties.getInt(
+                    DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_MIN, sStackSamplingDurationMsMin);
+            sStackSamplingDurationMsMax = properties.getInt(
+                    DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_MAX, sStackSamplingDurationMsMax);
+            sStackSamplingSizeKbDefault = properties.getInt(
+                    DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_DEFAULT,
+                    sStackSamplingSizeKbDefault);
+            sStackSamplingSizeKbMin = properties.getInt(
+                    DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_MIN,
+                    sStackSamplingSizeKbMin);
+            sStackSamplingSizeKbMax = properties.getInt(
+                    DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_MAX,
+                    sStackSamplingSizeKbMax);
+            sStackSamplingSamplingFrequencyDefault = properties.getInt(
+                    DeviceConfigHelper.STACK_SAMPLING_FREQUENCY_DEFAULT,
+                    sStackSamplingSamplingFrequencyDefault);
+            sStackSamplingSamplingFrequencyMin = properties.getInt(
+                    DeviceConfigHelper.STACK_SAMPLING_FREQUENCY_MIN,
+                    sStackSamplingSamplingFrequencyMin);
+            sStackSamplingSamplingFrequencyMax = properties.getInt(
+                    DeviceConfigHelper.STACK_SAMPLING_FREQUENCY_MAX,
+                    sStackSamplingSamplingFrequencyMax);
+        }
     }
 
     /** This method transforms a request into a useable config for perfetto. */
@@ -335,6 +479,9 @@ public final class Configs {
         switch (profilingType) {
             // Java heap dump
             case ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP:
+                // This should be unnecessary, but make sure configs are initialized just in case.
+                initializeJavaHeapDumpConfigsIfNecessary();
+
                 if (sKillswitchJavaHeapDump) {
                     throw new IllegalArgumentException("Java heap dump is disabled");
                 }
@@ -356,6 +503,9 @@ public final class Configs {
 
             // Heap profile
             case ProfilingManager.PROFILING_TYPE_HEAP_PROFILE:
+                // This should be unnecessary, but make sure configs are initialized just in case.
+                initializeHeapProfileConfigsIfNecessary();
+
                 if (sKillswitchHeapProfile) {
                     throw new IllegalArgumentException("Heap profile is disabled");
                 }
@@ -394,6 +544,9 @@ public final class Configs {
 
             // Stack sampling
             case ProfilingManager.PROFILING_TYPE_STACK_SAMPLING:
+                // This should be unnecessary, but make sure configs are initialized just in case.
+                initializeStackSamplingConfigsIfNecessary();
+
                 if (sKillswitchStackSampling) {
                     throw new IllegalArgumentException("Stack sampling is disabled");
                 }
@@ -427,6 +580,9 @@ public final class Configs {
 
             // System trace
             case ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE:
+                // This should be unnecessary, but make sure configs are initialized just in case.
+                initializeSystemTraceConfigsIfNecessary();
+
                 if (!Flags.redactionEnabled()) {
                     throw new IllegalArgumentException("Trace is not currently supported");
                 }
@@ -469,22 +625,26 @@ public final class Configs {
         int duration;
         switch (profilingType) {
             case ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP:
+                initializeJavaHeapDumpConfigsIfNecessary();
                 duration = sJavaHeapDumpDurationMsDefault + 10000; //TODO(b/327660454): remove const
                 break;
 
             case ProfilingManager.PROFILING_TYPE_HEAP_PROFILE:
+                initializeHeapProfileConfigsIfNecessary();
                 duration = getWithinBounds(ProfilingManager.KEY_DURATION_MS,
                         sHeapProfileDurationMsDefault, sHeapProfileDurationMsMin,
                         sHeapProfileDurationMsMax, params);
                 break;
 
             case ProfilingManager.PROFILING_TYPE_STACK_SAMPLING:
+                initializeStackSamplingConfigsIfNecessary();
                 duration = getWithinBounds(ProfilingManager.KEY_DURATION_MS,
                         sStackSamplingDurationMsDefault, sStackSamplingDurationMsMin,
                         sStackSamplingDurationMsMax, params);
                 break;
 
             case ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE:
+                initializeSystemTraceConfigsIfNecessary();
                 duration = getWithinBounds(ProfilingManager.KEY_DURATION_MS,
                         sSystemTraceDurationMsDefault, sSystemTraceDurationMsMin,
                         sSystemTraceDurationMsMax, params);
