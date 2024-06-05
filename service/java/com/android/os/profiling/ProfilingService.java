@@ -80,6 +80,10 @@ public class ProfilingService extends IProfilingService.Stub {
 
     private static final int REDACTION_CHECK_FREQUENCY_MS = 2 * 1000;
 
+    // The cadence at which the profiling process will be checked after the initial delay
+    // has elapsed.
+    private static final int PROFILING_DEFAULT_RECHECK_DELAY_MS = 5 * 1000;
+
     private final Context mContext;
     private final Object mLock = new Object();
     private final HandlerThread mHandlerThread = new HandlerThread("ProfilingService");
@@ -88,8 +92,8 @@ public class ProfilingService extends IProfilingService.Stub {
 
     // Timeout for Perfetto process to successfully stop after we try to stop it.
     private int mPerfettoDestroyTimeoutMs;
-
     private int mMaxResultRedeliveryCount;
+    private int mProfilingRecheckDelayMs;
 
     private Handler mHandler;
 
@@ -126,6 +130,10 @@ public class ProfilingService extends IProfilingService.Stub {
                 DeviceConfigHelper.MAX_RESULT_REDELIVERY_COUNT,
                 DEFAULT_MAX_RESULT_REDELIVERY_COUNT);
 
+        mProfilingRecheckDelayMs = DeviceConfigHelper.getInt(
+                DeviceConfigHelper.PROFILING_RECHECK_DELAY_MS,
+                PROFILING_DEFAULT_RECHECK_DELAY_MS);
+
         mHandlerThread.start();
 
         // Get initial value for whether unredacted trace should be retained.
@@ -159,9 +167,14 @@ public class ProfilingService extends IProfilingService.Stub {
                             mPerfettoDestroyTimeoutMs = properties.getInt(
                                     DeviceConfigHelper.PERFETTO_DESTROY_TIMEOUT_MS,
                                     mPerfettoDestroyTimeoutMs);
+
                             mMaxResultRedeliveryCount = properties.getInt(
                                     DeviceConfigHelper.MAX_RESULT_REDELIVERY_COUNT,
                                     mMaxResultRedeliveryCount);
+
+                            mProfilingRecheckDelayMs = properties.getInt(
+                                    DeviceConfigHelper.PROFILING_RECHECK_DELAY_MS,
+                                    mProfilingRecheckDelayMs);
                         }
                     }
                 });
@@ -329,12 +342,12 @@ public class ProfilingService extends IProfilingService.Stub {
             throws RuntimeException {
         // Parse config and post processing delay out of request first, if we can't get these
         // we can't start the trace.
-        int postProcessingDelayMs;
+        int postProcessingInitialDelayMs;
         byte[] config;
         String suffix;
         String tag;
         try {
-            postProcessingDelayMs = session.getPostProcessingScheduleDelayMs();
+            postProcessingInitialDelayMs = session.getPostProcessingScheduleDelayMs();
             config = session.getConfigBytes();
             suffix = getFileSuffixForRequest(session.getProfilingType());
 
@@ -374,6 +387,7 @@ public class ProfilingService extends IProfilingService.Stub {
             activeTrace.getOutputStream().close();
             // If we made it this far the trace is running, save the session.
             session.setActiveTrace(activeTrace);
+            session.setProfilingStartTimeMs(System.currentTimeMillis());
             mTracingSessions.put(session.getKey(), session);
         } catch (Exception e) {
             // Catch all exceptions related to starting process as they'll all be handled similarly.
@@ -388,12 +402,40 @@ public class ProfilingService extends IProfilingService.Stub {
         session.setProcessResultRunnable(new Runnable() {
             @Override
             public void run() {
-                // TODO: confirm perfetto is done and reschedule if not
-                session.setProcessResultRunnable(null);
-                processResult(session);
+                // Check if the profiling process is complete or reschedule the check.
+                checkProfilingCompleteRescheduleIfNeeded(session);
             }
         });
-        getHandler().postDelayed(session.getProcessResultRunnable(), postProcessingDelayMs);
+        getHandler().postDelayed(session.getProcessResultRunnable(), postProcessingInitialDelayMs);
+    }
+
+    /**
+        This method will check if the profiling subprocess is still alive. If it's still alive and
+        there is still time permitted to run, another check will be scheduled. If the process is
+        still alive but max allotted processing time has been exceeded, the profiling process will
+        be stopped and results processed and returned to client. If the profiling process is
+        complete results will be processed and returned to the client.
+     */
+    private void checkProfilingCompleteRescheduleIfNeeded(TracingSession session) {
+
+        long processingTimeRemaining = session.getMaxProfilingTimeAllowedMs()
+                - (System.currentTimeMillis() - session.getProfilingStartTimeMs());
+
+        if (session.getActiveTrace().isAlive()
+                && processingTimeRemaining >= 0) {
+            // still running and under max allotted processing time, reschedule the check.
+            getHandler().postDelayed(session.getProcessResultRunnable(),
+                    Math.min(mProfilingRecheckDelayMs, processingTimeRemaining));
+        } else if (session.getActiveTrace().isAlive()
+                && processingTimeRemaining < 0) {
+            // still running but exceeded max allotted processing time, stop profiling and deliver
+            // what results are available.
+            stopProfiling(session.getKey());
+        } else {
+            // complete, process results and deliver.
+            session.setProcessResultRunnable(null);
+            processResult(session);
+        }
     }
 
     private void stopProfiling(String key) throws RuntimeException {
@@ -425,7 +467,7 @@ public class ProfilingService extends IProfilingService.Stub {
             if (!session.getActiveTrace().waitFor(mPerfettoDestroyTimeoutMs,
                     TimeUnit.MILLISECONDS)) {
                 if (DEBUG) Log.d(TAG, "Stopping of running trace process timed out.");
-                throw new RuntimeException("topping of running trace process timed out.");
+                throw new RuntimeException("Stopping of running trace process timed out.");
             }
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
