@@ -22,6 +22,11 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import android.app.Instrumentation;
 import android.content.Context;
@@ -31,6 +36,7 @@ import android.os.ProfilingManager;
 import android.os.ProfilingResult;
 import android.os.profiling.DeviceConfigHelper;
 import android.os.profiling.Flags;
+import android.os.profiling.ProfilingService;
 import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
@@ -44,6 +50,7 @@ import com.android.compatibility.common.util.SystemUtil;
 
 import com.google.errorprone.annotations.FormatMethod;
 
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -132,6 +139,12 @@ public final class ProfilingFrameworkTests {
 
         // Disable the rate limiter, we're not testing that in any of these tests.
         disableRateLimiter();
+    }
+
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager.mProfilingService lock.
+    @After
+    public void cleanup() {
+        mProfilingManager.mProfilingService = null;
     }
 
     /** Check and see if we can get a reference to the ProfilingManager service. */
@@ -724,6 +737,125 @@ public final class ProfilingFrameworkTests {
 
         // Assert that request failed with correct error code.
         assertEquals(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, callback.mResult.getErrorCode());
+    }
+
+    /**
+     * Test that adding a new general listener when no listeners have been added to that instance
+     * works correctly, that is: that mProfilingService has been initialized.
+     *
+     * The flow should result in registerResultsCallback being triggered with isGeneralListener true
+     * and generalListenerAdded not being triggered, but we cannot confirm this specifically here.
+     */
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
+    @Test
+    @RequiresFlagsEnabled({Flags.FLAG_TELEMETRY_APIS})
+    public void testAddGeneralListenerNoCurrentListeners() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // Setup for no current listener - mProfilingService should be null and mCallbacks empty.
+        mProfilingManager.mProfilingService = null;
+        mProfilingManager.mCallbacks.clear();
+
+        AppCallback callback = new AppCallback();
+
+        // Register the general callback.
+        mProfilingManager.registerForAllProfilingResults(new ProfilingTestUtils.ImmediateExecutor(),
+                callback);
+
+        // Confirm that mProfilingService has been initialized.
+        assertNotNull(mProfilingManager.mProfilingService);
+    }
+
+    /**
+     * Test that adding a new profiling instance specific listener when no listeners have been
+     * added to that instance works correctly, that is: that mProfilingService has been initialized.
+     *
+     * The flow should result in registerResultsCallback being triggered with isGeneralListener
+     * false and generalListenerAdded not being triggered, but we cannot confirm this specifically
+     * here.
+     */
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
+    @Test
+    @RequiresFlagsEnabled({Flags.FLAG_TELEMETRY_APIS})
+    public void testAddSpecificListenerNoCurrentListeners() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
+                FIVE_SECONDS_MS);
+
+        // Setup for no current listener - mProfilingService should be null and mCallbacks empty.
+        mProfilingManager.mProfilingService = null;
+        mProfilingManager.mCallbacks.clear();
+
+        AppCallback callback = new AppCallback();
+
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
+                null,
+                null,
+                null,
+                new ProfilingTestUtils.ImmediateExecutor(),
+                callback);
+
+        // Confirm that mProfilingService has been initialized.
+        assertNotNull(mProfilingManager.mProfilingService);
+    }
+
+    /**
+     * Test that adding a new general listener when a listener has already been added to that
+     * instance works correctly, that is: generalListenerAdded is triggered, but
+     * registerResultsCallback is not.
+     */
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
+    @Test
+    @RequiresFlagsEnabled({Flags.FLAG_TELEMETRY_APIS})
+    public void testAddGeneralListenerWithCurrentListener() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        mProfilingManager.mProfilingService = spy(new ProfilingService(mContext));
+
+        AppCallback callback = new AppCallback();
+
+        // Register the general callback.
+        mProfilingManager.registerForAllProfilingResults(new ProfilingTestUtils.ImmediateExecutor(),
+                callback);
+
+        // Confirm that generalListenerAdded was triggered and registerResultsCallback was not.
+        verify(mProfilingManager.mProfilingService, times(0)).registerResultsCallback(anyBoolean(),
+                any());
+        verify(mProfilingManager.mProfilingService, times(1)).generalListenerAdded();
+    }
+
+    /**
+     * Test that adding a new profiling instance specific listener when a listener has already been
+     * added to that instance works correctly, that is: neither registerResultsCallback nor
+     * generalListenerAdded are triggered.
+     */
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
+    @Test
+    @RequiresFlagsEnabled({Flags.FLAG_TELEMETRY_APIS})
+    public void testAddSpecificListenerWithCurrentListener() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
+                FIVE_SECONDS_MS);
+
+        mProfilingManager.mProfilingService = spy(new ProfilingService(mContext));
+
+        AppCallback callback = new AppCallback();
+
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
+                null,
+                null,
+                null,
+                new ProfilingTestUtils.ImmediateExecutor(),
+                callback);
+
+        // Confirm that neither generalListenerAdded nor registerResultsCallback were triggered.
+        verify(mProfilingManager.mProfilingService, times(0)).registerResultsCallback(anyBoolean(),
+                any());
+        verify(mProfilingManager.mProfilingService, times(0)).generalListenerAdded();
     }
 
     /** Disable the rate limiter and wait long enough for the update to be picked up. */
