@@ -114,6 +114,12 @@ public final class DeviceConfigHelper {
     // Perfetto configs
     public static final String PERFETTO_DESTROY_TIMEOUT_MS = "perfetto_destroy_timeout_ms";
 
+    // General configs
+    public static final String MAX_RESULT_REDELIVERY_COUNT = "max_result_redelivery_count";
+
+    // Post Processing Configs
+    public static final String PROFILING_RECHECK_DELAY_MS = "profiling_recheck_delay_ms";
+
     // End section: Server registered constants
 
     /**

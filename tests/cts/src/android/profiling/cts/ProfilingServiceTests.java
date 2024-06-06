@@ -26,11 +26,14 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import android.app.Instrumentation;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.os.Binder;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.IProfilingResultCallback;
 import android.os.ParcelFileDescriptor;
@@ -60,6 +63,7 @@ import org.mockito.MockitoAnnotations;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -82,6 +86,8 @@ public final class ProfilingServiceTests {
     // request. Key is used to pair request back to caller and callbacks so test to keep consistent.
     private static final long KEY_MOST_SIG_BITS = 456l;
     private static final long KEY_LEAST_SIG_BITS = 123l;
+
+    private static final int FAKE_UID = 12345;
 
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
@@ -124,7 +130,7 @@ public final class ProfilingServiceTests {
         ProfilingResultCallback callback = new ProfilingResultCallback();
 
         // Register callback.
-        mProfilingService.registerResultsCallback(callback);
+        mProfilingService.registerResultsCallback(true, callback);
 
         // Confirm callback is registered.
         assertEquals(callback,
@@ -139,20 +145,19 @@ public final class ProfilingServiceTests {
 
         ProfilingResultCallback callback = new ProfilingResultCallback();
         ProfilingResultCallback mockProcessCallback = new ProfilingResultCallback();
-        int mockProcessUid = 12345;
 
         // Register callback.
-        mProfilingService.registerResultsCallback(callback);
+        mProfilingService.registerResultsCallback(false, callback);
 
         // Add other process callback manually to mock uid.
         List<IProfilingResultCallback> callbacks = Arrays.asList(mockProcessCallback);
-        mProfilingService.mResultCallbacks.put(mockProcessUid, callbacks);
+        mProfilingService.mResultCallbacks.put(FAKE_UID, callbacks);
 
         // Confirm both callbacks are registered.
         assertEquals(callback,
                 mProfilingService.mResultCallbacks.get(Binder.getCallingUid()).get(0));
         assertEquals(mockProcessCallback,
-                mProfilingService.mResultCallbacks.get(mockProcessUid).get(0));
+                mProfilingService.mResultCallbacks.get(FAKE_UID).get(0));
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
@@ -175,8 +180,8 @@ public final class ProfilingServiceTests {
         ProfilingResultCallback callbackTwo = new ProfilingResultCallback();
 
         // Register callbacks.
-        mProfilingService.registerResultsCallback(callbackOne);
-        mProfilingService.registerResultsCallback(callbackTwo);
+        mProfilingService.registerResultsCallback(true, callbackOne);
+        mProfilingService.registerResultsCallback(true, callbackTwo);
 
         // Confirm both callbacks are registered.
         assertEquals(callbackOne,
@@ -204,7 +209,7 @@ public final class ProfilingServiceTests {
 
         // Register callback.
         ProfilingResultCallback callback = new ProfilingResultCallback();
-        mProfilingService.registerResultsCallback(callback);
+        mProfilingService.registerResultsCallback(false, callback);
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
@@ -226,7 +231,7 @@ public final class ProfilingServiceTests {
 
         // Register callback.
         ProfilingResultCallback callback = new ProfilingResultCallback();
-        mProfilingService.registerResultsCallback(callback);
+        mProfilingService.registerResultsCallback(false, callback);
 
         // Kick off request.
         mProfilingService.requestProfiling(-1, null, APP_FILE_PATH, REQUEST_TAG,
@@ -245,7 +250,7 @@ public final class ProfilingServiceTests {
 
         // Register callback.
         ProfilingResultCallback callback = new ProfilingResultCallback();
-        mProfilingService.registerResultsCallback(callback);
+        mProfilingService.registerResultsCallback(false, callback);
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
@@ -268,7 +273,7 @@ public final class ProfilingServiceTests {
 
         // Register callback.
         ProfilingResultCallback callback = new ProfilingResultCallback();
-        mProfilingService.registerResultsCallback(callback);
+        mProfilingService.registerResultsCallback(false, callback);
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
@@ -288,7 +293,7 @@ public final class ProfilingServiceTests {
 
         // Register callback.
         ProfilingResultCallback callback = new ProfilingResultCallback();
-        mProfilingService.registerResultsCallback(callback);
+        mProfilingService.registerResultsCallback(false, callback);
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
@@ -347,7 +352,7 @@ public final class ProfilingServiceTests {
 
         // Register callback.
         ProfilingResultCallback callback = new ProfilingResultCallback();
-        mProfilingService.registerResultsCallback(callback);
+        mProfilingService.registerResultsCallback(false, callback);
 
         // Request cancellation.
         mProfilingService.requestCancel(KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
@@ -583,6 +588,265 @@ public final class ProfilingServiceTests {
 
     // TODO: b/333579817 - Add more rate limiter tests
 
+    /** Test that adding a specific listener does not trigger handling queued results. */
+    @Test
+    public void testQueuedResult_RequestSpecificListener() {
+        // Add a request specific callback.
+        ProfilingResultCallback callback = new ProfilingResultCallback();
+        mProfilingService.registerResultsCallback(false, callback);
+
+        // Confirm handling queued results was not attempted.
+        verify(mProfilingService, times(0)).handleQueuedResults(anyInt());
+    }
+
+    /** Test that adding a general listener does trigger handling queued results. */
+    @Test
+    public void testQueuedResult_GeneralListenerCallbackRegistered() {
+        // Add a general callback.
+        ProfilingResultCallback callback = new ProfilingResultCallback();
+        mProfilingService.registerResultsCallback(true, callback);
+
+        // Confirm handling queued results was attempted.
+        verify(mProfilingService, times(1)).handleQueuedResults(anyInt());
+    }
+
+    /**
+     * Test that notifying of a general listener added to existing callback does trigger handling
+     * queued results.
+     */
+    @Test
+    public void testQueuedResult_GeneralListenerAdded() {
+        // Notify service that a general listener was added to existing callback.
+        mProfilingService.generalListenerAdded();
+
+        // Confirm handling queued results was attempted.
+        verify(mProfilingService, times(1)).handleQueuedResults(anyInt());
+    }
+
+    /** Test that a queued result with an invalid state is discarded with no callback. */
+    @Test
+    public void testQueuedResult_InvalidState() {
+        // Clear all existing queued results.
+        mProfilingService.mQueueTracingResults.clear();
+
+        // Add a in progress session to queue with invalid state. PROFILING_STARTED is an invalid
+        // state because mQueueTracingResults should only contain sessions that have completed with
+        // a result.
+        List<TracingSession> queue = new ArrayList<TracingSession>();
+        TracingSession session = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
+                new Bundle(),
+                mContext.getFilesDir().getPath(),
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                REQUEST_TAG,
+                KEY_LEAST_SIG_BITS,
+                KEY_MOST_SIG_BITS);
+        session.setState(TracingSession.TracingState.PROFILING_STARTED);
+        queue.add(session);
+        mProfilingService.mQueueTracingResults.put(FAKE_UID, queue);
+
+        // Add a callback directly with fake uid
+        ProfilingResultCallback callback = new ProfilingResultCallback();
+        mProfilingService.mResultCallbacks.put(FAKE_UID, Arrays.asList(callback));
+
+        // Trigger handle queued results
+        mProfilingService.handleQueuedResults(FAKE_UID);
+
+        // Confirm that the in progress result was deleted without triggering the callback
+        assertTrue(mProfilingService.mQueueTracingResults.get(FAKE_UID).isEmpty());
+        assertFalse(callback.mResultSent);
+    }
+
+    /**
+     * Test that a queued result which is over the max retry limit is discarded with no callback.
+     */
+    @Test
+    public void testQueuedResult_OverMaxRetries() throws Exception {
+        // Clear all existing queued results.
+        mProfilingService.mQueueTracingResults.clear();
+
+        // Override the retry count
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_RESULT_REDELIVERY_COUNT, 3);
+
+        // Add a in progress session to queue with too many retries
+        List<TracingSession> queue = new ArrayList<TracingSession>();
+        TracingSession session = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
+                new Bundle(),
+                mContext.getFilesDir().getPath(),
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                REQUEST_TAG,
+                KEY_LEAST_SIG_BITS,
+                KEY_MOST_SIG_BITS);
+        session.setState(TracingSession.TracingState.PROFILING_FINISHED);
+        session.setRetryCount(3);
+        queue.add(session);
+        mProfilingService.mQueueTracingResults.put(FAKE_UID, queue);
+
+        // Add a callback directly with fake uid
+        ProfilingResultCallback callback = new ProfilingResultCallback();
+        mProfilingService.mResultCallbacks.put(FAKE_UID, Arrays.asList(callback));
+
+        // Trigger handle queued results
+        mProfilingService.handleQueuedResults(FAKE_UID);
+
+        // Confirm that the in progress result was deleted without triggering the callback
+        assertTrue(mProfilingService.mQueueTracingResults.get(FAKE_UID).isEmpty());
+        assertFalse(callback.mResultSent);
+    }
+
+    /**
+     * Test that a queued result for a finished non-trace profiling follows the path to be redacted.
+     */
+    @Test
+    public void testQueuedResult_ProfilingFinished() {
+        // Clear all existing queued results.
+        mProfilingService.mQueueTracingResults.clear();
+
+        // Add a in progress session to queue with too many retries
+        List<TracingSession> queue = new ArrayList<TracingSession>();
+        TracingSession session = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
+                new Bundle(),
+                mContext.getFilesDir().getPath(),
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                REQUEST_TAG,
+                KEY_LEAST_SIG_BITS,
+                KEY_MOST_SIG_BITS);
+        session.setState(TracingSession.TracingState.PROFILING_FINISHED);
+        queue.add(session);
+        mProfilingService.mQueueTracingResults.put(FAKE_UID, queue);
+
+        // Add a callback directly with fake uid
+        ProfilingResultCallback callback = new ProfilingResultCallback();
+        mProfilingService.mResultCallbacks.put(FAKE_UID, Arrays.asList(callback));
+
+        // Trigger handle queued results
+        mProfilingService.handleQueuedResults(FAKE_UID);
+
+        // Confirm that the correct path was called. Callback will be for failed post processing
+        // because we cannot copy from this context.
+        verify(mProfilingService, times(1)).finishProcessingResult(any());
+        assertTrue(callback.mResultSent);
+        assertEquals(ProfilingResult.ERROR_FAILED_POST_PROCESSING, callback.mStatus);
+    }
+
+    /** Test that a queued result for an unredacted trace follows the path to be redacted. */
+    @Test
+    public void testQueuedResult_TraceUnredacted() {
+        // Clear all existing queued results.
+        mProfilingService.mQueueTracingResults.clear();
+
+        // Add a in progress session to queue with too many retries
+        List<TracingSession> queue = new ArrayList<TracingSession>();
+        TracingSession session = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                new Bundle(),
+                mContext.getFilesDir().getPath(),
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                REQUEST_TAG,
+                KEY_LEAST_SIG_BITS,
+                KEY_MOST_SIG_BITS);
+        session.setState(TracingSession.TracingState.PROFILING_FINISHED);
+        queue.add(session);
+        mProfilingService.mQueueTracingResults.put(FAKE_UID, queue);
+
+        // Add a callback directly with fake uid
+        ProfilingResultCallback callback = new ProfilingResultCallback();
+        mProfilingService.mResultCallbacks.put(FAKE_UID, Arrays.asList(callback));
+
+        // Trigger handle queued results
+        mProfilingService.handleQueuedResults(FAKE_UID);
+
+        // Confirm that the correct path was called. Callback will be for failed post processing
+        // because we cannot copy from this context.
+        verify(mProfilingService, times(1)).handleTraceResult(any());
+        assertTrue(callback.mResultSent);
+        assertEquals(ProfilingResult.ERROR_FAILED_POST_PROCESSING, callback.mStatus);
+    }
+
+
+    /** Test that a queued result for an unredacted trace follows the path to be redacted. */
+    @Test
+    public void testQueuedResult_TraceRedacted() {
+        // Clear all existing queued results.
+        mProfilingService.mQueueTracingResults.clear();
+
+        // Add a in progress session to queue with too many retries
+        List<TracingSession> queue = new ArrayList<TracingSession>();
+        TracingSession session = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                new Bundle(),
+                mContext.getFilesDir().getPath(),
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                REQUEST_TAG,
+                KEY_LEAST_SIG_BITS,
+                KEY_MOST_SIG_BITS);
+        session.setState(TracingSession.TracingState.REDACTED);
+        queue.add(session);
+        mProfilingService.mQueueTracingResults.put(FAKE_UID, queue);
+
+        // Add a callback directly with fake uid
+        ProfilingResultCallback callback = new ProfilingResultCallback();
+        mProfilingService.mResultCallbacks.put(FAKE_UID, Arrays.asList(callback));
+
+        // Trigger handle queued results
+        mProfilingService.handleQueuedResults(FAKE_UID);
+
+        // Confirm that the correct path was called. Callback will be for failed post processing
+        // because we cannot copy from this context.
+        verify(mProfilingService, times(1)).finishProcessingResult(any());
+        assertTrue(callback.mResultSent);
+        assertEquals(ProfilingResult.ERROR_FAILED_POST_PROCESSING, callback.mStatus);
+
+    }
+
+    /**
+     * Test that a queued result for an already redacted and copied trace successfully triggers a
+     * callback.
+     *
+     * Success callback will be received in this case because there is no attempt to re-copy files
+     * which would have failed from this context.
+     */
+    @Test
+    public void testQueuedResult_AlreadyCopied() {
+        // Clear all existing queued results.
+        mProfilingService.mQueueTracingResults.clear();
+
+        // Add a in progress session to queue with too many retries
+        List<TracingSession> queue = new ArrayList<TracingSession>();
+        TracingSession session = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                new Bundle(),
+                mContext.getFilesDir().getPath(),
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                REQUEST_TAG,
+                KEY_LEAST_SIG_BITS,
+                KEY_MOST_SIG_BITS);
+        session.setState(TracingSession.TracingState.COPIED_FILE);
+        queue.add(session);
+        mProfilingService.mQueueTracingResults.put(FAKE_UID, queue);
+
+        // Add a callback directly with fake uid
+        ProfilingResultCallback callback = new ProfilingResultCallback();
+        mProfilingService.mResultCallbacks.put(FAKE_UID, Arrays.asList(callback));
+
+        // Trigger handle queued results
+        mProfilingService.handleQueuedResults(FAKE_UID);
+
+        // Confirm that the correct path was called that a success callback was received.
+        verify(mProfilingService, times(1)).finishProcessingResult(any());
+        assertEquals(ProfilingResult.ERROR_NONE, callback.mStatus);
+        assertTrue(mProfilingService.mQueueTracingResults.get(FAKE_UID).isEmpty());
+    }
+
     private void overrideRateLimiterDefaults() throws Exception {
         // Update DeviceConfig defaults to general high enough limits, cost of 1, and persist
         // frequency 0.
@@ -676,6 +940,10 @@ public final class ProfilingServiceTests {
         public ParcelFileDescriptor generateFile(String filePathAbsolute, String fileName) {
             mFileRequested = true;
             return null;
+        }
+        @Override
+        public boolean deleteFile(String filePathAndName) {
+            return true;
         }
     }
 }
