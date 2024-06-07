@@ -77,9 +77,9 @@ public class ProfilingService extends IProfilingService.Stub {
 
     private static final int DEFAULT_MAX_RESULT_REDELIVERY_COUNT = 3;
 
-    private static final int REDACTION_MAX_RUNTIME_ALLOTTED_MS = 20  * 1000;
+    private static final int REDACTION_DEFAULT_MAX_RUNTIME_ALLOTTED_MS = 20  * 1000;
 
-    private static final int REDACTION_CHECK_FREQUENCY_MS = 2 * 1000;
+    private static final int REDACTION_DEFAULT_CHECK_FREQUENCY_MS = 2 * 1000;
 
     // The cadence at which the profiling process will be checked after the initial delay
     // has elapsed.
@@ -103,6 +103,9 @@ public class ProfilingService extends IProfilingService.Stub {
     private long mLastClearTemporaryDirectoryTimeMs = 0;
     private int mClearTemporaryDirectoryFrequencyMs;
     private final int mClearTemporaryDirectoryBootDelayMs;
+
+    private int mRedactionCheckFrequencyMs;
+    private int mRedactionMaxRuntimeAllottedMs;
 
     private Handler mHandler;
 
@@ -150,6 +153,15 @@ public class ProfilingService extends IProfilingService.Stub {
         mClearTemporaryDirectoryBootDelayMs = DeviceConfigHelper.getInt(
                 DeviceConfigHelper.CLEAR_TEMPORARY_DIRECTORY_BOOT_DELAY_MS,
             CLEAR_TEMPORARY_DIRECTORY_BOOT_DELAY_DEFAULT_MS);
+
+        mRedactionCheckFrequencyMs = DeviceConfigHelper.getInt(
+                DeviceConfigHelper.REDACTION_CHECK_FREQUENCY_MS,
+                REDACTION_DEFAULT_CHECK_FREQUENCY_MS);
+
+        mRedactionMaxRuntimeAllottedMs = DeviceConfigHelper.getInt(
+                DeviceConfigHelper.REDACTION_MAX_RUNTIME_ALLOTTED_MS,
+                REDACTION_DEFAULT_MAX_RUNTIME_ALLOTTED_MS);
+
 
         mHandlerThread.start();
 
@@ -201,6 +213,14 @@ public class ProfilingService extends IProfilingService.Stub {
                             // {@link mClearTemporaryDirectoryBootDelayMs} as it's only used on
                             // initialization of this class so by the time this occurs it will never
                             // be used again.
+
+                            mRedactionCheckFrequencyMs = properties.getInt(
+                                    DeviceConfigHelper.REDACTION_CHECK_FREQUENCY_MS,
+                                    mRedactionCheckFrequencyMs);
+
+                            mRedactionMaxRuntimeAllottedMs = properties.getInt(
+                                    DeviceConfigHelper.REDACTION_MAX_RUNTIME_ALLOTTED_MS,
+                                    mRedactionMaxRuntimeAllottedMs);
                         }
                     }
                 });
@@ -859,8 +879,8 @@ public class ProfilingService extends IProfilingService.Stub {
 
         try {
             // Start the redaction process and log the time of start.  Redaction has
-            // REDACTION_MAX_RUNTIME_ALLOTTED_MS to complete. Redaction status will be checked every
-            // REDACTION_CHECK_FREQUENCY_MS.
+            // mRedactionMaxRuntimeAllottedMs to complete. Redaction status will be checked every
+            // mRedactionCheckFrequencyMs.
             ProcessBuilder redactionProcess = new ProcessBuilder("/system/bin/trace_redactor",
                     TEMP_TRACE_PATH + session.getFileName(),
                     TEMP_TRACE_PATH + session.getRedactedFileName(),
@@ -879,10 +899,9 @@ public class ProfilingService extends IProfilingService.Stub {
                 checkRedactionStatus(session);
             }
         });
-        // TODO b/333476809 adjust frequency time once we have a better
-        //  understanding of redaction performance.
+
         getHandler().postDelayed(session.getProcessResultRunnable(),
-                REDACTION_CHECK_FREQUENCY_MS);
+                mRedactionCheckFrequencyMs);
     }
 
     private void checkRedactionStatus(TracingSession session) {
@@ -893,9 +912,9 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
 
-        // Check if we are over the REDACTION_MAX_RUNTIME_ALLOTTED_MS threshold.
+        // Check if we are over the mRedactionMaxRuntimeAllottedMs threshold.
         if ((System.currentTimeMillis() - session.getRedactionStartTimeMs())
-                > REDACTION_MAX_RUNTIME_ALLOTTED_MS) {
+                > mRedactionMaxRuntimeAllottedMs) {
             if (DEBUG) Log.d(TAG, "Redaction process has timed out");
 
             session.getActiveRedaction().destroyForcibly();
@@ -906,7 +925,7 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
         getHandler().postDelayed(session.getProcessResultRunnable(),
-                Math.min(REDACTION_CHECK_FREQUENCY_MS, REDACTION_MAX_RUNTIME_ALLOTTED_MS
+                Math.min(mRedactionCheckFrequencyMs, mRedactionMaxRuntimeAllottedMs
                         - (System.currentTimeMillis() - session.getRedactionStartTimeMs())));
 
     }
