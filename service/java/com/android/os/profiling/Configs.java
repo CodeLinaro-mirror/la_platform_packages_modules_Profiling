@@ -783,12 +783,8 @@ public final class Configs {
                 .addFtraceEvents("sched/sched_waking")
                 .addFtraceEvents("sched/sched_wakeup_new")
                 // vmscan and mm_compaction events:
-                .addFtraceEvents("vmscan/mm_vmscan_kswapd_wake")
-                .addFtraceEvents("vmscan/mm_vmscan_kswapd_sleep")
                 .addFtraceEvents("vmscan/mm_vmscan_direct_reclaim_begin")
                 .addFtraceEvents("vmscan/mm_vmscan_direct_reclaim_end")
-                .addFtraceEvents("compaction/mm_compaction_begin")
-                .addFtraceEvents("compaction/mm_compaction_end")
                 // Atrace activity manager:
                 .addAtraceCategories("am")
                 // Java and C:
