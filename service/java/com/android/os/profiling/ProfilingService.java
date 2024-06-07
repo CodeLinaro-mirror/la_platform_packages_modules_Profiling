@@ -336,7 +336,7 @@ public class ProfilingService extends IProfilingService.Stub {
 
         try {
             ProcessBuilder pb = new ProcessBuilder("/system/bin/perfetto", "-o",
-                    TEMP_TRACE_PATH + session.getFileName(), "-c", "-", "--txt");
+                    TEMP_TRACE_PATH + session.getFileName(), "-c", "-");
             Process activeTrace = pb.start();
             activeTrace.getOutputStream().write(config);
             activeTrace.getOutputStream().close();

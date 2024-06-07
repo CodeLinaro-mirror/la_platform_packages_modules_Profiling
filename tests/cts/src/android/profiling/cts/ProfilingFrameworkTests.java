@@ -57,6 +57,7 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
@@ -108,6 +109,10 @@ public final class ProfilingFrameworkTests {
     private ProfilingManager mProfilingManager = null;
     private Context mContext = null;
     private Instrumentation mInstrumentation;
+
+    static {
+        System.loadLibrary("cts_profiling_module_test_native");
+    }
 
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
@@ -233,8 +238,12 @@ public final class ProfilingFrameworkTests {
                 new ProfilingTestUtils.ImmediateExecutor(),
                 callback);
 
+        MallocLoopThread mallocThread = new MallocLoopThread();
+
         // Wait until callback#onAccept is triggered so we can confirm the result.
         waitForCallback(callback);
+
+        mallocThread.stop();
 
         // Assert that result matches assumptions for success.
         confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_HEAP_PROFILE_SUFFIX);
@@ -261,8 +270,12 @@ public final class ProfilingFrameworkTests {
                 new ProfilingTestUtils.ImmediateExecutor(),
                 callback);
 
+        BusyLoopThread busy = new BusyLoopThread();
+
         // Wait until callback#onAccept is triggered so we can confirm the result.
         waitForCallback(callback);
+
+        busy.stop();
 
         // Assert that result matches assumptions for success.
         confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_STACK_SAMPLING_SUFFIX);
@@ -843,13 +856,15 @@ public final class ProfilingFrameworkTests {
         return SystemUtil.runShellCommand(mInstrumentation, cmd);
     }
 
-    private void sleep(long ms) {
+    private static void sleep(long ms) {
         try {
             Thread.sleep(ms);
         } catch (InterruptedException e) {
             // Do nothing.
         }
     }
+
+    private static native void doMallocAndFree();
 
     public static class AppCallback implements Consumer<ProfilingResult> {
 
@@ -858,6 +873,56 @@ public final class ProfilingFrameworkTests {
         @Override
         public void accept(ProfilingResult result) {
             mResult = result;
+        }
+    }
+
+    // Starts a thread that keeps a CPU busy.
+    private static class BusyLoopThread {
+        private Thread thread;
+        private AtomicBoolean done = new AtomicBoolean(false);
+
+        public BusyLoopThread() {
+            done.set(false);
+            thread = new Thread(() -> {
+                while (!done.get()) {
+                }
+            });
+            thread.start();
+        }
+
+        public void stop() {
+            done.set(true);
+            try {
+                thread.join();
+            } catch (InterruptedException e) {
+                throw new AssertionError("InterruptedException", e);
+            }
+        }
+    }
+
+    // Starts a thread that repeatedly issues malloc() and free().
+    private static class MallocLoopThread {
+        private Thread thread;
+        private AtomicBoolean done = new AtomicBoolean(false);
+
+        public MallocLoopThread() {
+            done.set(false);
+            thread = new Thread(() -> {
+                while (!done.get()) {
+                    doMallocAndFree();
+                    sleep(10);
+                }
+            });
+            thread.start();
+        }
+
+        public void stop() {
+            done.set(true);
+            try {
+                thread.join();
+            } catch (InterruptedException e) {
+                throw new AssertionError("InterruptedException", e);
+            }
         }
     }
 }
