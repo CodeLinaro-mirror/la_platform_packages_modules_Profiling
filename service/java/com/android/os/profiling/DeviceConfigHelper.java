@@ -124,6 +124,11 @@ public final class DeviceConfigHelper {
     // Post Processing Configs
     public static final String PROFILING_RECHECK_DELAY_MS = "profiling_recheck_delay_ms";
 
+    // Redaction configs
+    public static final String REDACTION_CHECK_FREQUENCY_MS = "redaction_check_frequency_ms";
+    public static final String REDACTION_MAX_RUNTIME_ALLOTTED_MS =
+            "redaction_max_runtime_allotted_ms";
+
     // End section: Server registered constants
 
     /**
