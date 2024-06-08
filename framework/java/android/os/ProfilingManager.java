@@ -57,33 +57,53 @@ public final class ProfilingManager {
     /* Begin public API defined keys. */
     /* End public API defined keys. */
 
-    /* Begin not-public API defined keys. */
+    /* Begin not-public API defined keys/values. */
     /**
      * Can only be used with profiling type heap profile, stack sampling, or system trace.
      * Value of type int.
-     * @hide */
+     * @hide
+     */
     public static final String KEY_DURATION_MS = "KEY_DURATION_MS";
 
     /**
      * Can only be used with profiling type heap profile. Value of type long.
-     * @hide */
+     * @hide
+     */
     public static final String KEY_SAMPLING_INTERVAL_BYTES = "KEY_SAMPLING_INTERVAL_BYTES";
 
     /**
      * Can only be used with profiling type heap profile. Value of type boolean.
-     * @hide */
+     * @hide
+     */
     public static final String KEY_TRACK_JAVA_ALLOCATIONS = "KEY_TRACK_JAVA_ALLOCATIONS";
 
     /**
      * Can only be used with profiling type stack sampling. Value of type int.
-     * @hide */
+     * @hide
+     */
     public static final String KEY_FREQUENCY_HZ = "KEY_FREQUENCY_HZ";
 
     /**
      * Can be used with all profiling types. Value of type int.
-     * @hide */
+     * @hide
+     */
     public static final String KEY_SIZE_KB = "KEY_SIZE_KB";
-    /* End not-public API defined keys. */
+
+    /**
+     * Can be used with profiling type system trace.
+     * Value of type int must be one of:
+     * {@link VALUE_BUFFER_FILL_POLICY_DISCARD}
+     * {@link VALUE_BUFFER_FILL_POLICY_RING_BUFFER}
+     * @hide
+     */
+    public static final String KEY_BUFFER_FILL_POLICY = "KEY_BUFFER_FILL_POLICY";
+
+    /** @hide */
+    public static final int VALUE_BUFFER_FILL_POLICY_DISCARD = 1;
+
+    /** @hide */
+    public static final int VALUE_BUFFER_FILL_POLICY_RING_BUFFER = 2;
+    /* End not-public API defined keys/values. */
 
     /**
      * @hide *
