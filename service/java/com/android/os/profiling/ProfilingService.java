@@ -46,6 +46,7 @@ import com.android.server.SystemService;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FilenameFilter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -76,13 +77,16 @@ public class ProfilingService extends IProfilingService.Stub {
 
     private static final int DEFAULT_MAX_RESULT_REDELIVERY_COUNT = 3;
 
-    private static final int REDACTION_MAX_RUNTIME_ALLOTTED_MS = 20  * 1000;
+    private static final int REDACTION_DEFAULT_MAX_RUNTIME_ALLOTTED_MS = 20  * 1000;
 
-    private static final int REDACTION_CHECK_FREQUENCY_MS = 2 * 1000;
+    private static final int REDACTION_DEFAULT_CHECK_FREQUENCY_MS = 2 * 1000;
 
     // The cadence at which the profiling process will be checked after the initial delay
     // has elapsed.
     private static final int PROFILING_DEFAULT_RECHECK_DELAY_MS = 5 * 1000;
+
+    private static final int CLEAR_TEMPORARY_DIRECTORY_FREQUENCY_DEFAULT_MS = 24 * 60 * 60 * 1000;
+    private static final int CLEAR_TEMPORARY_DIRECTORY_BOOT_DELAY_DEFAULT_MS = 5 * 60 * 1000;
 
     private final Context mContext;
     private final Object mLock = new Object();
@@ -94,6 +98,14 @@ public class ProfilingService extends IProfilingService.Stub {
     private int mPerfettoDestroyTimeoutMs;
     private int mMaxResultRedeliveryCount;
     private int mProfilingRecheckDelayMs;
+
+    @GuardedBy("mLock")
+    private long mLastClearTemporaryDirectoryTimeMs = 0;
+    private int mClearTemporaryDirectoryFrequencyMs;
+    private final int mClearTemporaryDirectoryBootDelayMs;
+
+    private int mRedactionCheckFrequencyMs;
+    private int mRedactionMaxRuntimeAllottedMs;
 
     private Handler mHandler;
 
@@ -133,6 +145,23 @@ public class ProfilingService extends IProfilingService.Stub {
         mProfilingRecheckDelayMs = DeviceConfigHelper.getInt(
                 DeviceConfigHelper.PROFILING_RECHECK_DELAY_MS,
                 PROFILING_DEFAULT_RECHECK_DELAY_MS);
+
+        mClearTemporaryDirectoryFrequencyMs = DeviceConfigHelper.getInt(
+                DeviceConfigHelper.CLEAR_TEMPORARY_DIRECTORY_FREQUENCY_MS,
+                CLEAR_TEMPORARY_DIRECTORY_FREQUENCY_DEFAULT_MS);
+
+        mClearTemporaryDirectoryBootDelayMs = DeviceConfigHelper.getInt(
+                DeviceConfigHelper.CLEAR_TEMPORARY_DIRECTORY_BOOT_DELAY_MS,
+            CLEAR_TEMPORARY_DIRECTORY_BOOT_DELAY_DEFAULT_MS);
+
+        mRedactionCheckFrequencyMs = DeviceConfigHelper.getInt(
+                DeviceConfigHelper.REDACTION_CHECK_FREQUENCY_MS,
+                REDACTION_DEFAULT_CHECK_FREQUENCY_MS);
+
+        mRedactionMaxRuntimeAllottedMs = DeviceConfigHelper.getInt(
+                DeviceConfigHelper.REDACTION_MAX_RUNTIME_ALLOTTED_MS,
+                REDACTION_DEFAULT_MAX_RUNTIME_ALLOTTED_MS);
+
 
         mHandlerThread.start();
 
@@ -175,9 +204,149 @@ public class ProfilingService extends IProfilingService.Stub {
                             mProfilingRecheckDelayMs = properties.getInt(
                                     DeviceConfigHelper.PROFILING_RECHECK_DELAY_MS,
                                     mProfilingRecheckDelayMs);
+
+                            mClearTemporaryDirectoryFrequencyMs = properties.getInt(
+                                    DeviceConfigHelper.CLEAR_TEMPORARY_DIRECTORY_FREQUENCY_MS,
+                                    mClearTemporaryDirectoryFrequencyMs);
+
+                            // No need to handle updates for
+                            // {@link mClearTemporaryDirectoryBootDelayMs} as it's only used on
+                            // initialization of this class so by the time this occurs it will never
+                            // be used again.
+
+                            mRedactionCheckFrequencyMs = properties.getInt(
+                                    DeviceConfigHelper.REDACTION_CHECK_FREQUENCY_MS,
+                                    mRedactionCheckFrequencyMs);
+
+                            mRedactionMaxRuntimeAllottedMs = properties.getInt(
+                                    DeviceConfigHelper.REDACTION_MAX_RUNTIME_ALLOTTED_MS,
+                                    mRedactionMaxRuntimeAllottedMs);
                         }
                     }
                 });
+
+        // Schedule initial storage cleanup after delay so as not to increase non-critical work
+        // during boot.
+        getHandler().postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                maybeCleanupTemporaryDirectory();
+            }
+        }, mClearTemporaryDirectoryBootDelayMs);
+    }
+
+    /** Perform a temporary directory cleanup if it has been long enough to warrant one. */
+    private void maybeCleanupTemporaryDirectory() {
+        synchronized (mLock) {
+            if (mLastClearTemporaryDirectoryTimeMs + mClearTemporaryDirectoryFrequencyMs
+                    < System.currentTimeMillis()) {
+                cleanupTemporaryDirectoryLocked(TEMP_TRACE_PATH);
+            }
+        }
+    }
+
+
+    /** Cleanup untracked data stored in provided directory. */
+    @GuardedBy("mLock")
+    @VisibleForTesting
+    public void cleanupTemporaryDirectoryLocked(String temporaryDirectoryPath) {
+        // Obtain a list of all currently tracked files and create a filter with it. Filter is set
+        // to null if the list is empty as that will efficiently accept all files.
+        final List<String> trackedFilenames = getTrackedFilenames();
+        FilenameFilter filenameFilter = trackedFilenames.isEmpty() ? null : new FilenameFilter() {
+            @Override
+            public boolean accept(File dir, String name) {
+                // We only want to accept files which are not in the tracked files list.
+                return !trackedFilenames.contains(name);
+            }
+        };
+
+        // Now obtain a list of files in the provided directory that are not tracked.
+        File directory = new File(temporaryDirectoryPath);
+        File[] files = null;
+        try {
+            files = directory.listFiles(filenameFilter);
+        } catch (SecurityException e) {
+            // Couldn't get a list of files, can't cleanup anything.
+            if (DEBUG) {
+                Log.d(TAG, "Failed to get file list from temporary directory. Cleanup aborted.", e);
+            }
+            return;
+        }
+
+        if (files == null) {
+            // The path doesn't exist or an I/O error occurred.
+            if (DEBUG) {
+                Log.d(TAG, "Temporary directory doesn't exist or i/o error occurred. "
+                        + "Cleanup aborted.");
+            }
+            return;
+        }
+
+        // Set time here as we'll either return due to no files or attempt to delete files, after
+        // either of which we should wait before checking again.
+        mLastClearTemporaryDirectoryTimeMs = System.currentTimeMillis();
+
+        if (files.length == 0) {
+            // No files, nothing to cleanup.
+            if (DEBUG) Log.d(TAG, "No files in temporary directory to cleanup.");
+            return;
+        }
+
+        // Iterate through and delete them.
+        for (int i = 0; i < files.length; i++) {
+            try {
+                files[i].delete();
+            } catch (SecurityException e) {
+                // Exception deleting file, keep trying for the others.
+                if (DEBUG) Log.d(TAG, "Exception deleting file from temp directory.", e);
+            }
+        }
+    }
+
+    /**
+     * Return a list of all filenames that are currently tracked in either the in progress
+     * collections or the queued results, including both redacted and unredacted.
+     */
+    private List<String> getTrackedFilenames() {
+        List<String> filenames = new ArrayList<String>();
+
+        // If active sessions is not empty, iterate through and add the filenames from each.
+        if (!mTracingSessions.isEmpty()) {
+            for (int i = 0; i < mTracingSessions.size(); i++) {
+                TracingSession session = mTracingSessions.valueAt(i);
+                String filename = session.getFileName();
+                if (filename != null) {
+                    filenames.add(filename);
+                }
+                String redactedFilename = session.getRedactedFileName();
+                if (redactedFilename != null) {
+                    filenames.add(redactedFilename);
+                }
+            }
+        }
+
+        // If queued sessions is not empty, iterate through and add the filenames from each.
+        if (mQueueTracingResults.size() != 0) {
+            for (int i = 0; i < mQueueTracingResults.size(); i++) {
+                List<TracingSession> perUidSessions = mQueueTracingResults.valueAt(i);
+                if (!perUidSessions.isEmpty()) {
+                    for (int j = 0; j < perUidSessions.size(); j++) {
+                        TracingSession session = perUidSessions.get(j);
+                        String filename = session.getFileName();
+                        if (filename != null) {
+                            filenames.add(filename);
+                        }
+                        String redactedFilename = session.getRedactedFileName();
+                        if (redactedFilename != null) {
+                            filenames.add(redactedFilename);
+                        }
+                    }
+                }
+            }
+        }
+
+        return filenames;
     }
 
     /**
@@ -615,6 +784,9 @@ public class ProfilingService extends IProfilingService.Stub {
             if (DEBUG) Log.d(TAG, "Couldn't move file to app storage.");
             processResultCallback(session, ProfilingResult.ERROR_FAILED_POST_PROCESSING, null);
         }
+
+        // Clean up temporary directory if it has been long enough to warrant it.
+        maybeCleanupTemporaryDirectory();
     }
 
     /**
@@ -707,8 +879,8 @@ public class ProfilingService extends IProfilingService.Stub {
 
         try {
             // Start the redaction process and log the time of start.  Redaction has
-            // REDACTION_MAX_RUNTIME_ALLOTTED_MS to complete. Redaction status will be checked every
-            // REDACTION_CHECK_FREQUENCY_MS.
+            // mRedactionMaxRuntimeAllottedMs to complete. Redaction status will be checked every
+            // mRedactionCheckFrequencyMs.
             ProcessBuilder redactionProcess = new ProcessBuilder("/system/bin/trace_redactor",
                     TEMP_TRACE_PATH + session.getFileName(),
                     TEMP_TRACE_PATH + session.getRedactedFileName(),
@@ -727,10 +899,9 @@ public class ProfilingService extends IProfilingService.Stub {
                 checkRedactionStatus(session);
             }
         });
-        // TODO b/333476809 adjust frequency time once we have a better
-        //  understanding of redaction performance.
+
         getHandler().postDelayed(session.getProcessResultRunnable(),
-                REDACTION_CHECK_FREQUENCY_MS);
+                mRedactionCheckFrequencyMs);
     }
 
     private void checkRedactionStatus(TracingSession session) {
@@ -741,9 +912,9 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
 
-        // Check if we are over the REDACTION_MAX_RUNTIME_ALLOTTED_MS threshold.
+        // Check if we are over the mRedactionMaxRuntimeAllottedMs threshold.
         if ((System.currentTimeMillis() - session.getRedactionStartTimeMs())
-                > REDACTION_MAX_RUNTIME_ALLOTTED_MS) {
+                > mRedactionMaxRuntimeAllottedMs) {
             if (DEBUG) Log.d(TAG, "Redaction process has timed out");
 
             session.getActiveRedaction().destroyForcibly();
@@ -754,7 +925,7 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
         getHandler().postDelayed(session.getProcessResultRunnable(),
-                Math.min(REDACTION_CHECK_FREQUENCY_MS, REDACTION_MAX_RUNTIME_ALLOTTED_MS
+                Math.min(mRedactionCheckFrequencyMs, mRedactionMaxRuntimeAllottedMs
                         - (System.currentTimeMillis() - session.getRedactionStartTimeMs())));
 
     }
@@ -884,6 +1055,10 @@ public class ProfilingService extends IProfilingService.Stub {
 
         session.setState(TracingSession.TracingState.DISCARDED);
         queuedSessions.remove(session);
+
+        if (queuedSessions.isEmpty()) {
+            mQueueTracingResults.remove(session.getUid());
+        }
     }
 
     /**

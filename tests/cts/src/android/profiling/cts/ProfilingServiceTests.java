@@ -654,7 +654,7 @@ public final class ProfilingServiceTests {
         mProfilingService.handleQueuedResults(FAKE_UID);
 
         // Confirm that the in progress result was deleted without triggering the callback
-        assertTrue(mProfilingService.mQueueTracingResults.get(FAKE_UID).isEmpty());
+        assertFalse(mProfilingService.mQueueTracingResults.contains(FAKE_UID));
         assertFalse(callback.mResultSent);
     }
 
@@ -694,7 +694,7 @@ public final class ProfilingServiceTests {
         mProfilingService.handleQueuedResults(FAKE_UID);
 
         // Confirm that the in progress result was deleted without triggering the callback
-        assertTrue(mProfilingService.mQueueTracingResults.get(FAKE_UID).isEmpty());
+        assertFalse(mProfilingService.mQueueTracingResults.contains(FAKE_UID));
         assertFalse(callback.mResultSent);
     }
 
@@ -844,7 +844,135 @@ public final class ProfilingServiceTests {
         // Confirm that the correct path was called that a success callback was received.
         verify(mProfilingService, times(1)).finishProcessingResult(any());
         assertEquals(ProfilingResult.ERROR_NONE, callback.mStatus);
-        assertTrue(mProfilingService.mQueueTracingResults.get(FAKE_UID).isEmpty());
+        assertFalse(mProfilingService.mQueueTracingResults.contains(FAKE_UID));
+    }
+
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingService lock.
+    @Test
+    public void testTemporaryDirectoryCleanup_inActiveSession() throws Exception {
+        // Setup the temporary directory in app storage so we can access it from this context. Make
+        // sure it exists and is empty.
+        File directory = new File(mContext.getFilesDir().getPath());
+        directory.delete();
+        directory.mkdirs();
+        assertTrue(directory.isDirectory());
+
+        // Create 3 files, 1 to be tracked and 2 not to be tracked
+        File trackedFile = createAndConfirmFileExists(directory, "tracked_active_file");
+        File untrackedFile1 = createAndConfirmFileExists(directory, "untracked_file_1");
+        File untrackedFile2 = createAndConfirmFileExists(directory, "untracked_file_2");
+
+        // Add the tracked file to active sessions
+        TracingSession session = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                new Bundle(),
+                mContext.getFilesDir().getPath(),
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                REQUEST_TAG,
+                KEY_LEAST_SIG_BITS,
+                KEY_MOST_SIG_BITS);
+        session.setFileName(trackedFile.getName());
+        mProfilingService.mTracingSessions.put(session.getKey(), session);
+        assertEquals(1, mProfilingService.mTracingSessions.size());
+
+        // Now trigger the cleanup
+        mProfilingService.cleanupTemporaryDirectoryLocked(directory.getPath());
+
+        // Finally, confirm that the 1 tracked file is still present and that the 2 non-tracked
+        // files were deleted.
+        confirmNonEmptyFileExists(trackedFile);
+        assertFalse(untrackedFile1.exists());
+        assertFalse(untrackedFile2.exists());
+    }
+
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingService lock.
+    @Test
+    public void testTemporaryDirectoryCleanup_inQueuedSession() throws Exception {
+        // Setup the temporary directory in app storage so we can access it from this context. Make
+        // sure it exists and is empty.
+        File directory = new File(mContext.getFilesDir().getPath());
+        directory.delete();
+        directory.mkdirs();
+        assertTrue(directory.isDirectory());
+
+        // Create 5 files, 3 to be tracked and 2 not to be tracked
+        File trackedFile1 = createAndConfirmFileExists(directory, "tracked_queued_file_1");
+        File trackedFile2 = createAndConfirmFileExists(directory, "tracked_queued_file_2");
+        File trackedFile3 = createAndConfirmFileExists(directory, "tracked_queued_file_3");
+        File untrackedFile1 = createAndConfirmFileExists(directory, "untracked_file_1");
+        File untrackedFile2 = createAndConfirmFileExists(directory, "untracked_file_2");
+
+        // Add the 3 tracked files to active sessions, 2 under 1 uid and 1 under another.
+        int fakeUid2 = FAKE_UID + 1;
+        // Create the fake sessions and set their filenames.
+        TracingSession session1 = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                new Bundle(),
+                mContext.getFilesDir().getPath(),
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                REQUEST_TAG,
+                KEY_LEAST_SIG_BITS,
+                KEY_MOST_SIG_BITS);
+        session1.setRedactedFileName(trackedFile1.getName());
+        TracingSession session2 = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
+                new Bundle(),
+                mContext.getFilesDir().getPath(),
+                fakeUid2,
+                APP_PACKAGE_NAME,
+                REQUEST_TAG,
+                KEY_LEAST_SIG_BITS,
+                KEY_MOST_SIG_BITS);
+        session2.setFileName(trackedFile2.getName());
+        TracingSession session3 = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
+                new Bundle(),
+                mContext.getFilesDir().getPath(),
+                fakeUid2,
+                APP_PACKAGE_NAME,
+                REQUEST_TAG,
+                KEY_LEAST_SIG_BITS,
+                KEY_MOST_SIG_BITS);
+        session3.setFileName(trackedFile3.getName());
+        // Put 1 session in one list.
+        List<TracingSession> sessionList1 = new ArrayList<TracingSession>(Arrays.asList(session1));
+        mProfilingService.mQueueTracingResults.put(FAKE_UID, sessionList1);
+        // Put 2 sessions in the other list.
+        List<TracingSession> sessionList2 = new ArrayList<TracingSession>(
+                Arrays.asList(session2, session3));
+        mProfilingService.mQueueTracingResults.put(fakeUid2, sessionList2);
+        // Add an empty list just for fun.
+        mProfilingService.mQueueTracingResults.put(fakeUid2 + 1, new ArrayList<TracingSession>());
+        // Make sure all lists have been added.
+        assertEquals(3, mProfilingService.mQueueTracingResults.size());
+
+        // Now trigger the cleanup
+        mProfilingService.cleanupTemporaryDirectoryLocked(directory.getPath());
+
+        // Finally, confirm that the 3 tracked files are still present and that the 2 non-tracked
+        // files were deleted.
+        confirmNonEmptyFileExists(trackedFile1);
+        confirmNonEmptyFileExists(trackedFile2);
+        confirmNonEmptyFileExists(trackedFile3);
+        assertFalse(untrackedFile1.exists());
+        assertFalse(untrackedFile2.exists());
+    }
+
+    private File createAndConfirmFileExists(File directory, String fileName) throws Exception {
+        File file = new File(directory, fileName);
+        file.createNewFile();
+        FileOutputStream fileOutputStream = new FileOutputStream(file);
+        fileOutputStream.write("some stub text".getBytes());
+        fileOutputStream.close();
+        confirmNonEmptyFileExists(file);
+        return file;
+    }
+
+    private void confirmNonEmptyFileExists(File file) {
+        assertTrue(file.exists());
+        assertTrue(file.length() > 0L);
     }
 
     private void overrideRateLimiterDefaults() throws Exception {
