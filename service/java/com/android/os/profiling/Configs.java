@@ -34,7 +34,10 @@ import perfetto.protos.TraceConfigOuterClass.TraceConfig;
 public final class Configs {
 
     // Time to wait beyond trace timeout to ensure perfetto has time to finish writing output.
-    private static final int FILE_PROCESSING_DELAY_MS = 5000;
+    private static final int FILE_PROCESSING_DELAY_MS = 2000;
+    // Time used to account for any delay in starting up the underlying profiling process. This
+    // value is used to calculate max profiling time.
+    private static final int MAX_PROFILING_TIME_BUFFER_MS = 10 * 1000;
 
     private static boolean sSystemTraceConfigsInitialized = false;
     private static boolean sHeapProfileConfigsInitialized = false;
@@ -450,16 +453,17 @@ public final class Configs {
     }
 
     /**
-     * This method returns how long in ms to wait before post processing and cleaning up the result
-     * in the event that it's not stopped manually.
+     * This method returns how long in ms to wait initially before checking if profiling is complete
+     * and rescheduling another check or post processing and cleaning up the result in the event
+     * that it's not stopped manually.
      */
-    public static int getPostProcessingScheduleDelayMs(int profilingType, @Nullable Bundle params) {
-        // TODO: b/327660454 adjust timeout/logic to ensure perfetto is finished
+    public static int getInitialProfilingTimeMs(int profilingType,
+            @Nullable Bundle params) {
         int duration;
         switch (profilingType) {
             case ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP:
                 initializeJavaHeapDumpConfigsIfNecessary();
-                duration = sJavaHeapDumpDurationMsDefault + 10000; //TODO(b/327660454): remove const
+                duration = sJavaHeapDumpDurationMsDefault;
                 break;
 
             case ProfilingManager.PROFILING_TYPE_HEAP_PROFILE:
@@ -487,6 +491,33 @@ public final class Configs {
                 throw new IllegalArgumentException("Invalid profiling type");
         }
         return duration + FILE_PROCESSING_DELAY_MS;
+    }
+
+    /**
+     * This method returns the maximum profiling time allowed for the different profiling types.
+     */
+    public static int getMaxProfilingTimeAllowedMs(int profilingType, @Nullable Bundle params) {
+        // Get the initial delay
+        int maxAllowedProcessingTime =
+                getInitialProfilingTimeMs(profilingType, params);
+
+        // Add the respective flush and data source timeouts for the types that have them.
+        switch (profilingType) {
+            case ProfilingManager.PROFILING_TYPE_HEAP_PROFILE:
+                maxAllowedProcessingTime += sHeapProfileFlushTimeoutMsDefault;
+                break;
+
+            case ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP:
+                maxAllowedProcessingTime += sJavaHeapDumpDataSourceStopTimeoutMsDefault;
+                break;
+
+            case ProfilingManager.PROFILING_TYPE_STACK_SAMPLING:
+                maxAllowedProcessingTime += sStackSamplingFlushTimeoutMsDefault;
+                break;
+        }
+        // Add extra buffer time to account for the time it may take to start the underlying
+        // process.
+        return maxAllowedProcessingTime + MAX_PROFILING_TIME_BUFFER_MS;
     }
 
     private static TraceConfig.BufferConfig.FillPolicy getBufferFillPolicy(int bufferFillPolicy)
@@ -752,12 +783,8 @@ public final class Configs {
                 .addFtraceEvents("sched/sched_waking")
                 .addFtraceEvents("sched/sched_wakeup_new")
                 // vmscan and mm_compaction events:
-                .addFtraceEvents("vmscan/mm_vmscan_kswapd_wake")
-                .addFtraceEvents("vmscan/mm_vmscan_kswapd_sleep")
                 .addFtraceEvents("vmscan/mm_vmscan_direct_reclaim_begin")
                 .addFtraceEvents("vmscan/mm_vmscan_direct_reclaim_end")
-                .addFtraceEvents("compaction/mm_compaction_begin")
-                .addFtraceEvents("compaction/mm_compaction_end")
                 // Atrace activity manager:
                 .addAtraceCategories("am")
                 // Java and C:
