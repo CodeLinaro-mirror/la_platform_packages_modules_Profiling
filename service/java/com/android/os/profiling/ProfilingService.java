@@ -355,7 +355,7 @@ public class ProfilingService extends IProfilingService.Stub {
      * and if so, starts the profiling.
      */
     public void requestProfiling(int profilingType, Bundle params, String filePath, String tag,
-            long keyMostSigBits, long keyLeastSigBits) {
+            long keyMostSigBits, long keyLeastSigBits, String packageName) {
         int uid = Binder.getCallingUid();
 
         if (profilingType != ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP
@@ -383,12 +383,36 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
 
-        // Get package name for requesting process. We can't request the trace without it.
-        String packageName = mContext.getPackageManager().getNameForUid(uid);
         if (packageName == null) {
-            if (DEBUG) Log.d(TAG, "Could not get package name for UID: " + uid);
+            // This shouldn't happen as it should be checked on the app side.
+            if (DEBUG) Log.d(TAG, "PackageName is null");
             processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
                     ProfilingResult.ERROR_UNKNOWN, null, tag, "Couldn't determine package name");
+            return;
+        }
+
+        String[] uidPackages = mContext.getPackageManager().getPackagesForUid(uid);
+        if (uidPackages == null || uidPackages.length == 0) {
+            // Failed to get uids for this package, can't validate package name.
+            if (DEBUG) Log.d(TAG, "Failed to resolve package name");
+            processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
+                    ProfilingResult.ERROR_UNKNOWN, null, tag, "Couldn't determine package name");
+            return;
+        }
+
+        boolean packageNameInUidList = false;
+        for (int i = 0; i < uidPackages.length; i++) {
+            if (packageName.equals(uidPackages[i])) {
+                packageNameInUidList = true;
+                break;
+            }
+        }
+        if (!packageNameInUidList) {
+            // Package name is not associated with calling uid, reject request.
+            if (DEBUG) Log.d(TAG, "Package name not associated with calling uid");
+            processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
+                    ProfilingResult.ERROR_FAILED_INVALID_REQUEST, null, tag,
+                    "Package name not associated with calling uid.");
             return;
         }
 

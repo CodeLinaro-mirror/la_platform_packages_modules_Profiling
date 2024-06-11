@@ -24,7 +24,7 @@ import android.os.IProfilingResultCallback;
  */
 interface IProfilingService {
 
-    void requestProfiling(int profilingType, in Bundle params, String filePath, String tag, long keyMostSigBits, long keyLeastSigBits);
+    void requestProfiling(int profilingType, in Bundle params, String filePath, String tag, long keyMostSigBits, long keyLeastSigBits, String packageName);
 
     void registerResultsCallback(boolean isGeneralCallback, IProfilingResultCallback callback);
 
