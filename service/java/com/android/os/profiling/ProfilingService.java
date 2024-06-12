@@ -543,6 +543,146 @@ public class ProfilingService extends IProfilingService.Stub {
         stopProfiling(key);
     }
 
+    /**
+     * Method called by manager, after creating a file from within application context, to send a
+     * file descriptor for service to write the result of the profiling session to.
+     *
+     * Note: only expected to be called in response to a generateFile request sent to manager.
+     */
+    public void receiveFileDescriptor(ParcelFileDescriptor fileDescriptor, long keyMostSigBits,
+            long keyLeastSigBits) {
+        List<TracingSession> sessions = mQueuedTracingResults.get(Binder.getCallingUid());
+        if (sessions == null) {
+            // No sessions for this uid, so no profiling result to write to this file descriptor.
+            // Attempt to cleanup.
+            finishReceiveFileDescriptor(null, fileDescriptor, null, null, false);
+            return;
+        }
+
+        TracingSession session = null;
+        // Iterate through and try to find the session this file is associated with using the
+        // key values. Key values were provided from the session to the generate file call that
+        // triggered this.
+        String key = (new UUID(keyMostSigBits, keyLeastSigBits)).toString();
+        for (int i = 0; i < sessions.size(); i++) {
+            TracingSession tempSession = sessions.get(i);
+            if (tempSession.getKey().equals(key)) {
+                session = tempSession;
+                break;
+            }
+        }
+        if (session == null) {
+            // No session for the provided key, nothing to do with this file descriptor. Attempt
+            // to cleanup.
+            finishReceiveFileDescriptor(session, fileDescriptor, null, null, false);
+            return;
+        }
+
+        // At this point we've identified the session that has sent us this file descriptor.
+        // Now, we'll create a temporary file pointing to the profiling output for that session.
+        // If that file looks good, we'll copy it to the app's local file descriptor.
+        File tempResultFile = new File(TEMP_TRACE_PATH
+                + (session.getProfilingType() == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE
+                ? session.getRedactedFileName() : session.getFileName()));
+        FileInputStream tempPerfettoFileInStream = null;
+        FileOutputStream appFileOutStream = null;
+
+        try {
+            if (!tempResultFile.exists() || tempResultFile.length() == 0L) {
+                // The profiling process output file does not exist or is empty, nothing to copy.
+                if (DEBUG) {
+                    Log.d(TAG, "Temporary profiling output file is missing or empty, nothing to"
+                            + " copy.");
+                }
+                finishReceiveFileDescriptor(session, fileDescriptor, tempPerfettoFileInStream,
+                        appFileOutStream, false);
+                return;
+            }
+        } catch (SecurityException e) {
+            // If we hit a security exception checking file exists or size then we won't be able to
+            // copy it, attempt to cleanup and return.
+            if (DEBUG) {
+                Log.d(TAG, "Exception checking if temporary file exists and is non-empty", e);
+            }
+            finishReceiveFileDescriptor(session, fileDescriptor, tempPerfettoFileInStream,
+                    appFileOutStream, false);
+            return;
+        }
+
+        // Only copy the file if we haven't previously.
+        if (session.getState().getValue() < TracingSession.TracingState.COPIED_FILE.getValue()) {
+            // Setup file streams.
+            try {
+                tempPerfettoFileInStream = new FileInputStream(tempResultFile);
+            } catch (IOException e) {
+                // IO Exception opening temp perfetto file. No result.
+                if (DEBUG) Log.d(TAG, "Exception opening temp perfetto file.", e);
+                finishReceiveFileDescriptor(session, fileDescriptor, tempPerfettoFileInStream,
+                        appFileOutStream, false);
+                return;
+            }
+
+            // Obtain a file descriptor for the result file in app storage from
+            // {@link ProfilingManager}
+            if (fileDescriptor != null) {
+                appFileOutStream = new FileOutputStream(fileDescriptor.getFileDescriptor());
+            }
+
+            if (appFileOutStream == null) {
+                finishReceiveFileDescriptor(session, fileDescriptor, tempPerfettoFileInStream,
+                        appFileOutStream, false);
+                return;
+            }
+
+            // Now copy the file over.
+            try {
+                FileUtils.copy(tempPerfettoFileInStream, appFileOutStream);
+                session.setState(TracingSession.TracingState.COPIED_FILE);
+            } catch (IOException e) {
+                // Exception writing to local app file. Attempt to delete the bad copy.
+                deleteBadCopiedFile(session);
+                if (DEBUG) Log.d(TAG, "Exception writing to local app file.", e);
+                finishReceiveFileDescriptor(session, fileDescriptor, tempPerfettoFileInStream,
+                        appFileOutStream, false);
+                return;
+            }
+        }
+
+        finishReceiveFileDescriptor(session, fileDescriptor, tempPerfettoFileInStream,
+                appFileOutStream, true);
+    }
+
+    private void finishReceiveFileDescriptor(TracingSession session,
+            ParcelFileDescriptor fileDescriptor, FileInputStream tempPerfettoFileInStream,
+            FileOutputStream appFileOutStream, boolean succeeded) {
+        // Cleanup.
+        if (tempPerfettoFileInStream != null) {
+            try {
+                tempPerfettoFileInStream.close();
+            } catch (IOException e) {
+                if (DEBUG) Log.d(TAG, "Failed to close temp perfetto input stream.", e);
+            }
+        }
+        if (fileDescriptor != null) {
+            try {
+                fileDescriptor.close();
+            } catch (IOException e) {
+                if (DEBUG) Log.d(TAG, "Failed to close app file output file FileDescriptor.", e);
+            }
+        }
+        if (appFileOutStream != null) {
+            try {
+                appFileOutStream.close();
+            } catch (IOException e) {
+                if (DEBUG) Log.d(TAG, "Failed to close app file output file stream.", e);
+            }
+        }
+
+        if (session != null) {
+            finishProcessingResult(session, succeeded);
+        }
+    }
+
     private void processResultCallback(TracingSession session, int status, @Nullable String error) {
         processResultCallback(session.getUid(), session.getKeyMostSigBits(),
                 session.getKeyLeastSigBits(), status,
@@ -565,23 +705,14 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
 
-        List<IProfilingResultCallback> remove = new ArrayList<IProfilingResultCallback>();
         for (int i = 0; i < perUidCallbacks.size(); i++) {
             try {
-                if (!perUidCallbacks.get(i).sendResult(filePath, keyMostSigBits,
-                        keyLeastSigBits, status, tag, error)) {
-                    // sendResult will return false if there are no more listeners using this
-                    // connection. Global listeners use the connection continuously and will thus
-                    // not return false.
-                    remove.add(perUidCallbacks.get(i));
-                }
+                perUidCallbacks.get(i).sendResult(filePath, keyMostSigBits, keyLeastSigBits, status,
+                        tag, error);
             } catch (RemoteException e) {
                 // Failed to send result. Ignore.
                 if (DEBUG) Log.d(TAG, "Exception processing result callback", e);
             }
-        }
-        if (!remove.isEmpty()) {
-            mResultCallbacks.get(uid).removeAll(remove);
         }
     }
 
@@ -803,22 +934,18 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     /**
-     * Finish processing profiling result:
-     * - Move the result file from temporary storage to the apps internal storage.
-     * - Delete the temporary file.
-     * - Finally, call back to app.
-     *
-     * Moving the file is is done by requesting {@link ProfilingManager} create a file from within
-     * app context and return a {@link ParcelFileDescriptor} to copy the temporary file contents to.
+     * Begin moving result to storage by validating and then sending a request to
+     * {@link ProfilingManager} for a file to write to. File will be returned as a
+     * {@link ParcelFileDescriptor} via {@link sendFileDescriptor}.
      */
     @VisibleForTesting
-    public void finishProcessingResult(TracingSession session) {
+    public void beginMoveFileToAppStorage(TracingSession session) {
         if (session.getState() == TracingSession.TracingState.DISCARDED) {
             // This should not have happened, if the session was discarded why are we trying to
             // continue processing it? Remove from all data stores just in case.
             if (DEBUG) {
-                Log.d(TAG, "Attempted finishProcessingResult on a session with status discarded or"
-                        + " an invalid status.");
+                Log.d(TAG, "Attempted beginMoveFileToAppStorage on a session with status discarded"
+                        + " or an invalid status.");
             }
             mTracingSessions.remove(session.getKey());
             cleanupTracingSession(session);
@@ -833,78 +960,16 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
 
-        File tempResultFile = new File(TEMP_TRACE_PATH
-                + (session.getProfilingType() == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE
-                ? session.getRedactedFileName() : session.getFileName()));
-        FileInputStream tempPerfettoFileInStream = null;
-        FileOutputStream appFileOutStream = null;
-        ParcelFileDescriptor fileDescriptor = null;
-        boolean failed = false;
+        requestFileForResult(perUidCallbacks, session);
+    }
 
-        // Only copy the file if we haven't previously.
-        if (session.getState().getValue() < TracingSession.TracingState.COPIED_FILE.getValue()) {
-            // Setup file streams.
-            try {
-                tempPerfettoFileInStream = new FileInputStream(tempResultFile);
-            } catch (IOException e) {
-                // IO Exception opening temp perfetto file. No result.
-                if (DEBUG) Log.d(TAG, "Exception opening temp perfetto file.", e);
-                failed = true;
-            }
-
-            // Obtain a file descriptor for the result file in app storage from
-            // {@link ProfilingManager}
-            if (!failed) {
-                fileDescriptor = obtainFileForResult(perUidCallbacks,
-                        session.getAppFilePath() + OUTPUT_FILE_RELATIVE_PATH,
-                        tempResultFile.getName());
-                if (fileDescriptor != null) {
-                    appFileOutStream = new FileOutputStream(fileDescriptor.getFileDescriptor());
-                }
-
-                if (appFileOutStream == null) {
-                    failed = true;
-                }
-            }
-
-            // Now copy the file over.
-            if (!failed) {
-                try {
-                    FileUtils.copy(tempPerfettoFileInStream, appFileOutStream);
-                    session.setState(TracingSession.TracingState.COPIED_FILE);
-                } catch (IOException e) {
-                    // Exception writing to local app file. Attempt to delete the bad copy.
-                    deleteBadCopiedFile(session);
-                    if (DEBUG) Log.d(TAG, "Exception writing to local app file.", e);
-                    failed = true;
-                }
-            }
-        }
-
-        // Now cleanup.
-        if (tempPerfettoFileInStream != null) {
-            try {
-                tempPerfettoFileInStream.close();
-            } catch (IOException e) {
-                if (DEBUG) Log.d(TAG, "Failed to close temp perfetto input stream.", e);
-            }
-        }
-        if (fileDescriptor != null) {
-            try {
-                fileDescriptor.close();
-            } catch (IOException e) {
-                if (DEBUG) Log.d(TAG, "Failed to close app file output file FileDescriptor.", e);
-            }
-        }
-        if (appFileOutStream != null) {
-            try {
-                appFileOutStream.close();
-            } catch (IOException e) {
-                if (DEBUG) Log.d(TAG, "Failed to close app file output file stream.", e);
-            }
-        }
-
-        if (!failed) {
+    /**
+     * Finish processing profiling result by sending the appropriate callback and cleaning up
+     * temporary directory.
+     */
+    @VisibleForTesting
+    public void finishProcessingResult(TracingSession session, boolean success) {
+        if (success) {
             processResultCallback(session, ProfilingResult.ERROR_NONE, null);
             cleanupTracingSession(session);
         } else {
@@ -927,9 +992,11 @@ public class ProfilingService extends IProfilingService.Stub {
                 String fileName =
                         session.getProfilingType() == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE
                         ? session.getRedactedFileName() : session.getFileName();
-                if (perUidCallbacks.get(i).deleteFile(session.getAppFilePath()
-                        + OUTPUT_FILE_RELATIVE_PATH + fileName)) {
-                    // Only need one successful call, return.
+                IProfilingResultCallback callback = perUidCallbacks.get(i);
+                if (callback.asBinder().isBinderAlive()) {
+                    callback.deleteFile(
+                            session.getAppFilePath() + OUTPUT_FILE_RELATIVE_PATH + fileName);
+                    // Only need one delete call, return.
                     return;
                 }
             } catch (RemoteException e) {
@@ -940,24 +1007,29 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     /**
-     * Try each callback for the current process until we successfully obtain a
-     * {@link ParcelFileDescriptor} to a new file in app storage. Returns null if all callbacks
-     * fail.
+     * Request a {@link ParcelFileDescriptor} to a new file in app storage from the first live
+     * callback for this uid.
      *
-     * Result file is created by {@link ProfilingManager} from within app context. We only need a
-     * single file which can be created from any of the requesting apps contexts so it does not
-     * matter which callback we use.
+     * The new file is created by {@link ProfilingManager} from within app context. We only need a
+     * single file, which can be created from any of the contexts belonging to the app that
+     * requested this profiling, so it does not matter which of the requesting app's callbacks we
+     * use.
      */
     @Nullable
-    private ParcelFileDescriptor obtainFileForResult(
-            @NonNull List<IProfilingResultCallback> perUidCallbacks, String filePath,
-            String fileName) {
+    private void requestFileForResult(
+            @NonNull List<IProfilingResultCallback> perUidCallbacks, TracingSession session) {
+        String filePath = session.getAppFilePath() + OUTPUT_FILE_RELATIVE_PATH;
+        String fileName = session.getProfilingType() == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE
+                ? session.getRedactedFileName()
+                : session.getFileName();
         for (int i = 0; i < perUidCallbacks.size(); i++) {
             try {
-                ParcelFileDescriptor fileDescriptor = perUidCallbacks.get(i).generateFile(filePath,
-                        fileName);
-                if (fileDescriptor != null) {
-                    return fileDescriptor;
+                IProfilingResultCallback callback = perUidCallbacks.get(i);
+                if (callback.asBinder().isBinderAlive()) {
+                    // Great, this one works! Call it and exit if we don't hit an exception.
+                    perUidCallbacks.get(i).generateFile(filePath, fileName,
+                            session.getKeyMostSigBits(), session.getKeyLeastSigBits());
+                    return;
                 }
             } catch (RemoteException e) {
                 // Binder exception getting file. Continue trying other callbacks for this process.
@@ -965,7 +1037,6 @@ public class ProfilingService extends IProfilingService.Stub {
             }
         }
         if (DEBUG) Log.d(TAG, "Failed to obtain file descriptor from callbacks.");
-        return null;
     }
 
 
@@ -987,7 +1058,7 @@ public class ProfilingService extends IProfilingService.Stub {
         if (session.getProfilingType() == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE) {
             handleTraceResult(session);
         } else {
-            finishProcessingResult(session);
+            beginMoveFileToAppStorage(session);
         }
     }
 
@@ -1084,7 +1155,7 @@ public class ProfilingService extends IProfilingService.Stub {
 
         session.setState(TracingSession.TracingState.REDACTED);
 
-        finishProcessingResult(session);
+        beginMoveFileToAppStorage(session);
     }
 
     /**
@@ -1127,12 +1198,14 @@ public class ProfilingService extends IProfilingService.Stub {
                             == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE) {
                         handleTraceResult(session);
                     } else {
-                        finishProcessingResult(session);
+                        beginMoveFileToAppStorage(session);
                     }
                     break;
                 case REDACTED:
+                    beginMoveFileToAppStorage(session);
+                    break;
                 case COPIED_FILE:
-                    finishProcessingResult(session);
+                    finishProcessingResult(session, true);
                     break;
                 case DISCARDED:
                     // This should never happen as this state should only occur after cleanup of
