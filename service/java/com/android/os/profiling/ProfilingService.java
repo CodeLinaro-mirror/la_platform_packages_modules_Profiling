@@ -27,6 +27,7 @@ import android.os.Bundle;
 import android.os.FileUtils;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.IBinder;
 import android.os.IProfilingResultCallback;
 import android.os.IProfilingService;
 import android.os.ParcelFileDescriptor;
@@ -112,7 +113,7 @@ public class ProfilingService extends IProfilingService.Stub {
     private Calendar mCalendar = null;
     private SimpleDateFormat mDateFormat = null;
 
-    // uid indexed collecion of lists of JNI callbacks for results.
+    // uid indexed collection of lists of callbacks for results.
     @VisibleForTesting
     public SparseArray<List<IProfilingResultCallback>> mResultCallbacks = new SparseArray<>();
 
@@ -354,7 +355,7 @@ public class ProfilingService extends IProfilingService.Stub {
      * and if so, starts the profiling.
      */
     public void requestProfiling(int profilingType, Bundle params, String filePath, String tag,
-            long keyMostSigBits, long keyLeastSigBits) {
+            long keyMostSigBits, long keyLeastSigBits, String packageName) {
         int uid = Binder.getCallingUid();
 
         if (profilingType != ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP
@@ -382,12 +383,36 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
 
-        // Get package name for requesting process. We can't request the trace without it.
-        String packageName = mContext.getPackageManager().getNameForUid(uid);
         if (packageName == null) {
-            if (DEBUG) Log.d(TAG, "Could not get package name for UID: " + uid);
+            // This shouldn't happen as it should be checked on the app side.
+            if (DEBUG) Log.d(TAG, "PackageName is null");
             processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
                     ProfilingResult.ERROR_UNKNOWN, null, tag, "Couldn't determine package name");
+            return;
+        }
+
+        String[] uidPackages = mContext.getPackageManager().getPackagesForUid(uid);
+        if (uidPackages == null || uidPackages.length == 0) {
+            // Failed to get uids for this package, can't validate package name.
+            if (DEBUG) Log.d(TAG, "Failed to resolve package name");
+            processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
+                    ProfilingResult.ERROR_UNKNOWN, null, tag, "Couldn't determine package name");
+            return;
+        }
+
+        boolean packageNameInUidList = false;
+        for (int i = 0; i < uidPackages.length; i++) {
+            if (packageName.equals(uidPackages[i])) {
+                packageNameInUidList = true;
+                break;
+            }
+        }
+        if (!packageNameInUidList) {
+            // Package name is not associated with calling uid, reject request.
+            if (DEBUG) Log.d(TAG, "Package name not associated with calling uid");
+            processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
+                    ProfilingResult.ERROR_FAILED_INVALID_REQUEST, null, tag,
+                    "Package name not associated with calling uid.");
             return;
         }
 
@@ -437,6 +462,14 @@ public class ProfilingService extends IProfilingService.Stub {
             mResultCallbacks.put(callingUid, perUidCallbacks);
         }
         perUidCallbacks.add(callback);
+
+        ProfilingDeathRecipient deathRecipient = new ProfilingDeathRecipient(callingUid);
+        try {
+            callback.asBinder().linkToDeath(deathRecipient, 0);
+        } catch (RemoteException e) {
+            // Failed to link death recipient. Ignore.
+            if (DEBUG) Log.d(TAG, "Exception linking death recipient", e);
+        }
 
         // Only handle queued results when a new general listener has been added.
         if (isGeneralCallback) {
@@ -604,6 +637,23 @@ public class ProfilingService extends IProfilingService.Stub {
             // complete, process results and deliver.
             session.setProcessResultRunnable(null);
             processResult(session);
+        }
+    }
+
+    /** Stop any active profiling sessions belonging to the provided uid. */
+    private void stopAllProfilingForUid(int uid) {
+        if (mTracingSessions.isEmpty()) {
+            // If there are no active traces, then there are none for this uid.
+            return;
+        }
+
+        // Iterate through active sessions and stop profiling if they belong to the provided uid.
+        // Note: Currently, this will only ever have 1 session.
+        for (int i = 0; i < mTracingSessions.size(); i++) {
+            TracingSession session = mTracingSessions.valueAt(i);
+            if (session.getUid() == uid) {
+                stopProfiling(session);
+            }
         }
     }
 
@@ -1149,6 +1199,45 @@ public class ProfilingService extends IProfilingService.Stub {
             return true;
         }
         return false;
+    }
+
+    private class ProfilingDeathRecipient implements IBinder.DeathRecipient {
+        private final int mUid;
+
+        ProfilingDeathRecipient(int uid) {
+            mUid = uid;
+        }
+
+        @Override
+        public void binderDied() {
+            if (DEBUG) Log.d(TAG, "binderDied without who should not have been called");
+        }
+
+        @Override
+        public void binderDied(IBinder who) {
+            // Synchronize because multiple binder died callbacks may occur simultaneously
+            // on different threads and we want to ensure that when an app dies (i.e. all
+            // binder objects die) we attempt to stop profiling exactly once.
+            synchronized (mLock) {
+                List<IProfilingResultCallback> callbacks = mResultCallbacks.get(mUid);
+
+                if (callbacks == null) {
+                    // No callbacks list for this uid, this likely means profiling was already
+                    // stopped (i.e. this is not the first binderDied call for this death).
+                    return;
+                }
+
+                // Callbacks aren't valid anymore, remove the list.
+                mResultCallbacks.remove(mUid);
+
+                // Finally, attempt to stop profiling. Once the profiling is stopped, processing
+                // will continue as usual and will fail at copy to app storage which is the next
+                // step that requires the now dead binder objects. The failure will result in the
+                // session being added to {@link mQueueTracingResults} and being delivered to the
+                // app the next time it registers a general listener.
+                stopAllProfilingForUid(mUid);
+            }
+        }
     }
 
     public static final class Lifecycle extends SystemService {

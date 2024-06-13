@@ -211,11 +211,21 @@ public final class ProfilingManager {
                     return;
                 }
 
+                String packageName = mContext.getPackageName();
+                if (packageName == null) {
+                    executor.execute(() -> listener.accept(
+                            new ProfilingResult(ProfilingResult.ERROR_UNKNOWN, null, tag,
+                                    "Failed to resolve package name")));
+                    if (DEBUG) Log.d(TAG, "Failed to resolve package name.");
+                    return;
+                }
+
                 // For key, use most and least significant bits so we can create an identical UUID
                 // after passing over binder.
                 service.requestProfiling(profilingType, parameters,
                         mContext.getFilesDir().getPath(), tag,
-                        key.getMostSignificantBits(), key.getLeastSignificantBits());
+                        key.getMostSignificantBits(), key.getLeastSignificantBits(),
+                        packageName);
                 if (cancellationSignal != null) {
                     cancellationSignal.setOnCancelListener(
                             () -> {
