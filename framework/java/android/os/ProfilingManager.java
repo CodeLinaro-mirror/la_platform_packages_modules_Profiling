@@ -27,6 +27,7 @@ import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 
 import java.io.File;
+import java.io.IOException;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.nio.file.Files;
@@ -362,12 +363,9 @@ public final class ProfilingManager {
                         /**
                          * Called by {@link ProfilingService} when a result is ready,
                          * both for success and failure.
-                         *
-                         * @return whether there are additional callbacks backed by this binder
-                         *         object.
                          */
                         @Override
-                        public boolean sendResult(@Nullable String resultFile, long keyMostSigBits,
+                        public void sendResult(@Nullable String resultFile, long keyMostSigBits,
                                 long keyLeastSigBits, int status, @Nullable String tag,
                                 @Nullable String error) {
                             synchronized (mLock) {
@@ -376,7 +374,7 @@ public final class ProfilingManager {
                                     // result.
                                     if (DEBUG) Log.d(TAG, "No callbacks");
                                     mProfilingService = null;
-                                    return false;
+                                    return;
                                 }
 
                                 // This shouldn't be true, but if the file is null ensure the status
@@ -422,66 +420,116 @@ public final class ProfilingManager {
                                 if (removeListenerPos != -1) {
                                     mCallbacks.remove(removeListenerPos);
                                 }
-
-                                if (mCallbacks.isEmpty()) {
-                                    mProfilingService = null;
-                                    return false;
-                                }
-                                return true;
                             }
                         }
 
                         /**
-                         * Called by {@link ProfilingService} when a trace is ready and need to be
+                         * Called by {@link ProfilingService} when a trace is ready and needs to be
                          * copied to callers internal storage.
                          *
                          * This method will open a new file and pass back the FileDescriptor for
-                         * ProfilingService to write to.
+                         * ProfilingService to write to via a new binder call.
+                         *
+                         * Takes in key most/least significant bits which represent the key that
+                         * will be used to associate this back to a profiling session which will
+                         * write to the generated file.
                          */
                         @Override
-                        public ParcelFileDescriptor generateFile(String filePathAbsolute,
-                                String fileName) {
-                            try {
-                                // Ensure the profiling directory exists. Create it if it doesn't.
-                                final File profilingDir = new File(filePathAbsolute);
-                                if (!profilingDir.exists()) {
-                                    profilingDir.mkdir();
-                                }
+                        public void generateFile(String filePathAbsolute, String fileName,
+                                long keyMostSigBits, long keyLeastSigBits) {
+                            synchronized (mLock) {
+                                try {
+                                    // Ensure the profiling directory exists. Create it if it
+                                    // doesn't.
+                                    final File profilingDir = new File(filePathAbsolute);
+                                    if (!profilingDir.exists()) {
+                                        profilingDir.mkdir();
+                                    }
 
-                                // Create the profiling file for the output to be written to.
-                                final File profilingFile = new File(filePathAbsolute + fileName);
-                                profilingFile.createNewFile();
-                                if (!profilingFile.exists()) {
-                                    // Failed to create output file. Result will be lost.
-                                    if (DEBUG) Log.d(TAG, "Output file couldn't be created");
-                                    return null;
-                                }
+                                    // Create the profiling file for the output to be written to.
+                                    final File profilingFile = new File(
+                                            filePathAbsolute + fileName);
+                                    profilingFile.createNewFile();
+                                    if (!profilingFile.exists()) {
+                                        // Failed to create output file. Result may be lost.
+                                        if (DEBUG) Log.d(TAG, "Output file couldn't be created");
+                                        return;
+                                    }
 
-                                // Wrap the new output file in a {@link ParcelFileDescriptor} and
-                                // pass back to {@link ProfilingService} to write to.
-                                ParcelFileDescriptor pfd = ParcelFileDescriptor.open(profilingFile,
-                                        ParcelFileDescriptor.MODE_READ_WRITE);
-                                return pfd;
-                            } catch (Exception e) {
-                                // Failure prepping output file. Result will be lost.
-                                if (DEBUG) Log.d(TAG, "Exception preparing file", e);
-                                return null;
+                                    // Wrap the new output file in a {@link ParcelFileDescriptor} to
+                                    // send back to {@link ProfilingService} to write to.
+                                    ParcelFileDescriptor pfd = ParcelFileDescriptor.open(
+                                            profilingFile,
+                                            ParcelFileDescriptor.MODE_READ_WRITE);
+                                    IProfilingService service =
+                                            getOrCreateIProfilingServiceLocked(false);
+
+                                    if (service == null) {
+                                        // Unable to send file descriptor because we have nowhere to
+                                        // send it to. Result may be lost. Close descriptor and
+                                        // delete file.
+                                        if (DEBUG) Log.d(TAG, "Unable to send file descriptor");
+                                        tryToCleanupGeneratedFile(pfd, profilingFile);
+                                        return;
+                                    }
+
+                                    try {
+                                        // Send the file descriptor to service to write to.
+                                        service.receiveFileDescriptor(pfd, keyMostSigBits,
+                                                keyLeastSigBits);
+                                    } catch (RemoteException e) {
+                                        // If we failed to send it, try to clean it up as it won't
+                                        // be used.
+                                        if (DEBUG) {
+                                            Log.d(TAG, "Failed sending file descriptor to service",
+                                                    e);
+                                        }
+                                        tryToCleanupGeneratedFile(pfd, profilingFile);
+                                    }
+                                } catch (Exception e) {
+                                    // Failure prepping output file. Result may be lost.
+                                    if (DEBUG) Log.d(TAG, "Exception preparing file", e);
+                                    return;
+                                }
+                            }
+                        }
+
+                        /**
+                         * Attempt to clean up the files created for service by closing the file
+                         * descriptor and deleting the file. This is intended for error cases where
+                         * the descriptor could not be sent. If it was successfully sent, service
+                         * will handle closing it and requesting a delete if necessary.
+                         */
+                        private void tryToCleanupGeneratedFile(ParcelFileDescriptor fileDescriptor,
+                                File file) {
+                            if (fileDescriptor != null) {
+                                try {
+                                    fileDescriptor.close();
+                                } catch (IOException e) {
+                                    // Nothing else we can do, ignore.
+                                    if (DEBUG) Log.d(TAG, "Failed to cleanup file descriptor", e);
+                                }
+                            }
+
+                            if (file != null) {
+                                try {
+                                    file.delete();
+                                } catch (SecurityException e) {
+                                    // Nothing else we can do, ignore.
+                                    if (DEBUG) Log.d(TAG, "Failed to cleanup file", e);
+                                }
                             }
                         }
 
                         /**
                          * Delete a file. To be used only for files created by {@link generateFile}.
-                         *
-                         * @return whether the file was successfully deleted.
                          */
                         @Override
-                        public boolean deleteFile(String filePathAndName) {
+                        public void deleteFile(String filePathAndName) {
                             try {
                                 Files.delete(Path.of(filePathAndName));
-                                return true;
                             } catch (Exception exception) {
                                 if (DEBUG) Log.e(TAG, "Failed to delete file.", exception);
-                                return false;
                             }
                         }
                     });

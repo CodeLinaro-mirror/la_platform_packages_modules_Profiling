@@ -25,6 +25,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -35,7 +36,6 @@ import android.os.Binder;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IProfilingResultCallback;
-import android.os.ParcelFileDescriptor;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
 import android.os.profiling.DeviceConfigHelper;
@@ -751,36 +751,42 @@ public final class ProfilingServiceTests {
         // Clear all existing queued results.
         mProfilingService.mQueuedTracingResults.clear();
 
+        int uid = Binder.getCallingUid();
+
         // Add a in progress session to queue with too many retries
         List<TracingSession> queue = new ArrayList<TracingSession>();
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
                 new Bundle(),
                 mContext.getFilesDir().getPath(),
-                FAKE_UID,
+                uid,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
                 KEY_MOST_SIG_BITS);
         session.setState(TracingSession.TracingState.PROFILING_FINISHED);
         queue.add(session);
-        mProfilingService.mQueuedTracingResults.put(FAKE_UID, queue);
+        mProfilingService.mQueuedTracingResults.put(uid, queue);
 
         // Add a callback directly with fake uid
         ProfilingResultCallback callback = new ProfilingResultCallback();
-        mProfilingService.mResultCallbacks.put(FAKE_UID, Arrays.asList(callback));
+        mProfilingService.mResultCallbacks.put(uid, Arrays.asList(callback));
 
         // Trigger handle queued results
-        mProfilingService.handleQueuedResults(FAKE_UID);
+        mProfilingService.handleQueuedResults(uid);
 
         // Confirm that the correct path was called. Callback will be for failed post processing
         // because we cannot copy from this context.
-        verify(mProfilingService, times(1)).finishProcessingResult(any());
+        verify(mProfilingService, times(1)).beginMoveFileToAppStorage(any());
+        verify(mProfilingService, times(1)).finishProcessingResult(any(), eq(false));
+        assertTrue(callback.mFileRequested);
         assertTrue(callback.mResultSent);
         assertEquals(ProfilingResult.ERROR_FAILED_POST_PROCESSING, callback.mStatus);
     }
 
-    /** Test that a queued result for an unredacted trace follows the path to be redacted. */
+    /**
+     * Test that a queued result for an unredacted trace follows the path to be redacted. It will
+     * not actually be redacted because there was no trace run to redact. */
     @Test
     public void testQueuedResult_TraceUnredacted() {
         // Clear all existing queued results.
@@ -822,31 +828,35 @@ public final class ProfilingServiceTests {
         // Clear all existing queued results.
         mProfilingService.mQueuedTracingResults.clear();
 
-        // Add a in progress session to queue with too many retries
+        int uid = Binder.getCallingUid();
+
+        // Add a in progress session to queue with state redacted
         List<TracingSession> queue = new ArrayList<TracingSession>();
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
                 new Bundle(),
                 mContext.getFilesDir().getPath(),
-                FAKE_UID,
+                uid,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
                 KEY_MOST_SIG_BITS);
         session.setState(TracingSession.TracingState.REDACTED);
+        session.setProfilingStartTimeMs(System.currentTimeMillis());
         queue.add(session);
-        mProfilingService.mQueuedTracingResults.put(FAKE_UID, queue);
+        mProfilingService.mQueuedTracingResults.put(uid, queue);
 
-        // Add a callback directly with fake uid
+        // Add a callback directly
         ProfilingResultCallback callback = new ProfilingResultCallback();
-        mProfilingService.mResultCallbacks.put(FAKE_UID, Arrays.asList(callback));
+        mProfilingService.mResultCallbacks.put(uid, Arrays.asList(callback));
 
         // Trigger handle queued results
-        mProfilingService.handleQueuedResults(FAKE_UID);
+        mProfilingService.handleQueuedResults(uid);
 
-        // Confirm that the correct path was called. Callback will be for failed post processing
-        // because we cannot copy from this context.
-        verify(mProfilingService, times(1)).finishProcessingResult(any());
+        // Confirm that the correct path was called.
+        verify(mProfilingService, times(1)).beginMoveFileToAppStorage(any());
+        verify(mProfilingService, times(1)).finishProcessingResult(any(), eq(false));
+        assertTrue(callback.mFileRequested);
         assertTrue(callback.mResultSent);
         assertEquals(ProfilingResult.ERROR_FAILED_POST_PROCESSING, callback.mStatus);
     }
@@ -886,7 +896,7 @@ public final class ProfilingServiceTests {
         mProfilingService.handleQueuedResults(FAKE_UID);
 
         // Confirm that the correct path was called that a success callback was received.
-        verify(mProfilingService, times(1)).finishProcessingResult(any());
+        verify(mProfilingService, times(1)).finishProcessingResult(any(), eq(true));
         assertEquals(ProfilingResult.ERROR_NONE, callback.mStatus);
         assertFalse(mProfilingService.mQueuedTracingResults.contains(FAKE_UID));
     }
@@ -1157,7 +1167,7 @@ public final class ProfilingServiceTests {
         }
     }
 
-    public static class ProfilingResultCallback extends IProfilingResultCallback.Stub {
+    public class ProfilingResultCallback extends IProfilingResultCallback.Stub {
         boolean mResultSent = false;
         boolean mFileRequested = false;
         public String mResultFile;
@@ -1166,8 +1176,9 @@ public final class ProfilingServiceTests {
         public int mStatus;
         public String mTag;
         public String mError;
+
         @Override
-        public boolean sendResult(String resultFile, long keyMostSigBits,
+        public void sendResult(String resultFile, long keyMostSigBits,
                 long keyLeastSigBits, int status, String tag, String error) {
             mResultSent = true;
             mResultFile = resultFile;
@@ -1176,18 +1187,25 @@ public final class ProfilingServiceTests {
             mStatus = status;
             mTag = tag;
             mError = error;
+        }
 
-            // Return true so the callback remains registered.
-            return true;
-        }
         @Override
-        public ParcelFileDescriptor generateFile(String filePathAbsolute, String fileName) {
+        public void generateFile(String filePathAbsolute, String fileName, long keyMostSigBits,
+                long keyLeastSigBits) {
             mFileRequested = true;
-            return null;
+
+            // To properly mock the flow for copy, pass null back to service via
+            // receiveFileDescriptor. This will then fail at the copy step and the test will receive
+            // a callback. In actual use and end-to-end testing via {@link ProfilingFrameworkTests},
+            // this would be done by creating a real file in {@link ProfilingManager}. If we simply
+            // ignored this call then the test flow would not progress past the beginning of copy
+            // attempt.
+            mProfilingService.receiveFileDescriptor(null, keyMostSigBits, keyLeastSigBits);
         }
+
         @Override
-        public boolean deleteFile(String filePathAndName) {
-            return true;
+        public void deleteFile(String filePathAndName) {
+            // Ignore
         }
     }
 }
