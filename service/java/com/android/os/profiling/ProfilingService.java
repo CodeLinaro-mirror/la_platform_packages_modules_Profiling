@@ -89,6 +89,11 @@ public class ProfilingService extends IProfilingService.Stub {
     private static final int CLEAR_TEMPORARY_DIRECTORY_FREQUENCY_DEFAULT_MS = 24 * 60 * 60 * 1000;
     private static final int CLEAR_TEMPORARY_DIRECTORY_BOOT_DELAY_DEFAULT_MS = 5 * 60 * 1000;
 
+    // The longest amount of time that we will retain a queued result and continue retrying to
+    // deliver it. After this amount of time the result will be discarded.
+    @VisibleForTesting
+    public static final int QUEUED_RESULT_MAX_RETAINED_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
+
     private final Context mContext;
     private final Object mLock = new Object();
     private final HandlerThread mHandlerThread = new HandlerThread("ProfilingService");
@@ -125,7 +130,7 @@ public class ProfilingService extends IProfilingService.Stub {
     // uid indexed storage of completed tracing sessions that have not yet successfully handled the
     // result.
     @VisibleForTesting
-    public SparseArray<List<TracingSession>> mQueueTracingResults = new SparseArray<>();
+    public SparseArray<List<TracingSession>> mQueuedTracingResults = new SparseArray<>();
 
     /** To be disabled for testing only. */
     @GuardedBy("mLock")
@@ -328,9 +333,9 @@ public class ProfilingService extends IProfilingService.Stub {
         }
 
         // If queued sessions is not empty, iterate through and add the filenames from each.
-        if (mQueueTracingResults.size() != 0) {
-            for (int i = 0; i < mQueueTracingResults.size(); i++) {
-                List<TracingSession> perUidSessions = mQueueTracingResults.valueAt(i);
+        if (mQueuedTracingResults.size() != 0) {
+            for (int i = 0; i < mQueuedTracingResults.size(); i++) {
+                List<TracingSession> perUidSessions = mQueuedTracingResults.valueAt(i);
                 if (!perUidSessions.isEmpty()) {
                     for (int j = 0; j < perUidSessions.size(); j++) {
                         TracingSession session = perUidSessions.get(j);
@@ -368,6 +373,8 @@ public class ProfilingService extends IProfilingService.Stub {
                     "Invalid request profiling type");
             return;
         }
+
+        cleanupActiveTracingSessions();
 
         // Check if we're running another trace so we don't run multiple at once.
         try {
@@ -455,6 +462,8 @@ public class ProfilingService extends IProfilingService.Stub {
     /** Call from application to register a callback object. */
     public void registerResultsCallback(boolean isGeneralCallback,
             IProfilingResultCallback callback) {
+        maybeCleanupResultsCallbacks();
+
         int callingUid = Binder.getCallingUid();
         List<IProfilingResultCallback> perUidCallbacks = mResultCallbacks.get(callingUid);
         if (perUidCallbacks == null) {
@@ -474,6 +483,42 @@ public class ProfilingService extends IProfilingService.Stub {
         // Only handle queued results when a new general listener has been added.
         if (isGeneralCallback) {
             handleQueuedResults(callingUid);
+        }
+    }
+
+    /**
+     * Iterate through and delete any callbacks for which binder is not alive.
+     *
+     * Each binder object has a registered linkToDeath which also handles removal. This mechanism
+     * serves as a backup to guarantee that the list stays in check.
+     */
+    private void maybeCleanupResultsCallbacks() {
+        // Create a temporary list to hold callbacks to be removed.
+        ArrayList<IProfilingResultCallback> callbacksToRemove =
+                new ArrayList<IProfilingResultCallback>();
+
+        // Iterate through the results callback, each iteration is for a uid which has registered
+        // callbacks.
+        for (int i = 0; i < mResultCallbacks.size(); i++) {
+            // Ensure the temporary list is empty
+            callbacksToRemove.clear();
+
+            // Grab the current list of callbacks.
+            List<IProfilingResultCallback> callbacks = mResultCallbacks.valueAt(i);
+
+            if (callbacks != null && !callbacks.isEmpty()) {
+                // Now iterate through each of the callbacks for this uid.
+                for (int j = 0; j < callbacks.size(); j++) {
+                    IProfilingResultCallback callback = callbacks.get(j);
+                    // If the callback is no longer alive, add it to the list for removal.
+                    if (callback == null || !callback.asBinder().isBinderAlive()) {
+                        callbacksToRemove.add(callback);
+                    }
+                }
+
+                // Now remove all the callbacks that were added to the list for removal.
+                callbacks.removeAll(callbacksToRemove);
+            }
         }
     }
 
@@ -705,6 +750,41 @@ public class ProfilingService extends IProfilingService.Stub {
         return false;
     }
 
+    /**
+     * Cleanup the data structure of active sessions. Non active sessions are never expected to be
+     * present in {@link mTracingSessions} as they would be moved to {@link mQueuedTracingResults}
+     * when profiling completes. If a session is present but not running, remove it. If a session
+     * has a not alive process, try to stop it.
+     */
+    public void cleanupActiveTracingSessions() throws RuntimeException {
+        // Create a temporary list to store the keys of sessions to be stopped.
+        ArrayList<String> sessionsToStop = new ArrayList<String>();
+
+        // Iterate through in reverse order so we can immediately remove the non running sessions
+        // that don't have to be stopped.
+        for (int i = mTracingSessions.size() - 1; i >= 0; i--) {
+            String key = mTracingSessions.keyAt(i);
+            TracingSession session = mTracingSessions.get(key);
+
+            if (session == null || session.getActiveTrace() == null) {
+                // Profiling isn't running, remove from list.
+                mTracingSessions.removeAt(i);
+            } else if (!session.getActiveTrace().isAlive()) {
+                // Profiling process exists but isn't alive, add to list of sessions to stop. Do not
+                // stop here due to potential unanticipated modification of list being iterated
+                // through.
+                sessionsToStop.add(key);
+            }
+        }
+
+        // If we have any sessions to stop, now is the time.
+        if (!sessionsToStop.isEmpty()) {
+            for (int i = 0; i < sessionsToStop.size(); i++) {
+                stopProfiling(sessionsToStop.get(i));
+            }
+        }
+    }
+
     public boolean isTraceRunning(String key) throws RuntimeException {
         TracingSession session = mTracingSessions.get(key);
         if (session == null || session.getActiveTrace() == null) {
@@ -716,10 +796,8 @@ public class ProfilingService extends IProfilingService.Stub {
             if (DEBUG) Log.d(TAG, "Subprocess exists and is alive, trace is running.");
             return true;
         } else {
-            // Subprocess exists but is not alive, nothing running. Clean up before returning.
+            // Subprocess exists but is not alive, nothing running.
             if (DEBUG) Log.d(TAG, "Subprocess exists but is not alive, nothing running.");
-            stopProfiling(key);
-            if (DEBUG) Log.d(TAG, "Non running process cleaned up.");
             return false;
         }
     }
@@ -896,10 +974,10 @@ public class ProfilingService extends IProfilingService.Stub {
     // can be returned as is.
     private void processResult(TracingSession session) {
         // Move this session from active to queued results.
-        List<TracingSession> queuedResults = mQueueTracingResults.get(session.getUid());
+        List<TracingSession> queuedResults = mQueuedTracingResults.get(session.getUid());
         if (queuedResults == null) {
             queuedResults = new ArrayList<TracingSession>();
-            mQueueTracingResults.put(session.getUid(), queuedResults);
+            mQueuedTracingResults.put(session.getUid(), queuedResults);
         }
         queuedResults.add(session);
         mTracingSessions.remove(session.getKey());
@@ -1015,9 +1093,11 @@ public class ProfilingService extends IProfilingService.Stub {
      */
     @VisibleForTesting
     public void handleQueuedResults(int uid) {
-        List<TracingSession> queuedSessions = mQueueTracingResults.get(uid);
+        List<TracingSession> queuedSessions = mQueuedTracingResults.get(uid);
         if (queuedSessions == null || queuedSessions.isEmpty()) {
-            // No queued results, nothing to handle.
+            // No queued results for this uid, nothing to handle. Attempt to cleanup the queue for
+            // all other uids before exiting.
+            maybeCleanupQueue();
             return;
         }
 
@@ -1061,8 +1141,36 @@ public class ProfilingService extends IProfilingService.Stub {
                     break;
             }
         }
+
+        // Now attempt to cleanup the queue.
+        maybeCleanupQueue();
     }
 
+    /** Run through all queued sessions and clean up the ones that are too old. */
+    private void maybeCleanupQueue() {
+        List<TracingSession> sessionsToRemove = new ArrayList();
+        // Iterate in reverse so we can remove the index if empty.
+        for (int i = mQueuedTracingResults.size() - 1; i >= 0; i--) {
+            List<TracingSession> sessions = mQueuedTracingResults.valueAt(i);
+            if (sessions != null && !sessions.isEmpty()) {
+                sessionsToRemove.clear();
+                for (int j = 0; j < sessions.size(); j++) {
+                    TracingSession session = sessions.get(j);
+                    if (session.getProfilingStartTimeMs() + QUEUED_RESULT_MAX_RETAINED_DURATION_MS
+                            < System.currentTimeMillis()) {
+                        cleanupTracingSession(session);
+                        sessionsToRemove.add(session);
+                    }
+                }
+                sessions.removeAll(sessionsToRemove);
+                if (sessions.isEmpty()) {
+                    mQueuedTracingResults.removeAt(i);
+                }
+            } else {
+                mQueuedTracingResults.removeAt(i);
+            }
+        }
+    }
 
     /**
      * Cleanup is intended for when we're done with a queued trace session, whether successful or
@@ -1071,7 +1179,7 @@ public class ProfilingService extends IProfilingService.Stub {
      * Cleanup will attempt to delete the temporary file(s) and then remove it from the queue.
      */
     private void cleanupTracingSession(TracingSession session) {
-        List<TracingSession> queuedSessions = mQueueTracingResults.get(session.getUid());
+        List<TracingSession> queuedSessions = mQueuedTracingResults.get(session.getUid());
         cleanupTracingSession(session, queuedSessions);
     }
 
@@ -1107,7 +1215,7 @@ public class ProfilingService extends IProfilingService.Stub {
         queuedSessions.remove(session);
 
         if (queuedSessions.isEmpty()) {
-            mQueueTracingResults.remove(session.getUid());
+            mQueuedTracingResults.remove(session.getUid());
         }
     }
 
