@@ -417,10 +417,6 @@ public final class Configs {
                 // This should be unnecessary, but make sure configs are initialized just in case.
                 initializeSystemTraceConfigsIfNecessary();
 
-                if (!Flags.redactionEnabled()) {
-                    throw new IllegalArgumentException("Trace is not currently supported");
-                }
-
                 if (sKillswitchSystemTrace) {
                     throw new IllegalArgumentException("System trace is disabled");
                 }
