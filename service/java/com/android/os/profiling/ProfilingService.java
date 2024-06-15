@@ -1132,11 +1132,12 @@ public class ProfilingService extends IProfilingService.Stub {
     private void handleRedactionComplete(TracingSession session) {
         int redactionErrorCode = session.getActiveRedaction().exitValue();
         if (redactionErrorCode != 0) {
-            // Redaction process failed.
+            // Redaction process failed. This failure cannot be recovered.
             if (DEBUG) {
                 Log.d(TAG, String.format("Redaction processed failed with error code: %s",
                         redactionErrorCode));
             }
+            cleanupTracingSession(session);
             processResultCallback(session, ProfilingResult.ERROR_FAILED_POST_PROCESSING, null);
             return;
         }
