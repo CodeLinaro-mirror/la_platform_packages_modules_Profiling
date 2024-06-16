@@ -27,9 +27,6 @@ android_test {
     srcs: [
         "src/android/profiling/cts/*.java",
     ],
-    jni_libs: [
-        "libcts_profiling_module_test_native",
-    ],
     jarjar_rules: "jarjar-rules.txt",
     test_suites: [
         "cts",
