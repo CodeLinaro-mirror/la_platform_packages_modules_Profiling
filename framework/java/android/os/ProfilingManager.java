@@ -147,16 +147,33 @@ public final class ProfilingManager {
     /**
      * Request system profiling.
      *
-     * <p class="note"> Note: use of this API directly is not recommended for most use cases.
-     * Please use the higher level wrappers provided by androidx that will construct the request
-     * correctly based on available options and simplified user provided request parameters.</p>
+     * <p class="note">
+     *   Note: use of this API directly is not recommended for most use cases.
+     *   Consider using the higher level wrappers provided by AndroidX that will construct the
+     *   request correctly, supporting available options with simplified request parameters
+     * </p>
      *
-     * <p class="note"> Note: requests are not guaranteed to be filled.</p>
+     * <p>
+     *   Both a listener and an executor must be set at the time of the request for the request to
+     *   be considered for fulfillment. Listener/executor pairs can be set in this method, with
+     *   {@link registerForAllProfilingResults}, or both. The listener and executor must be set
+     *   together, in the same call. If no listener and executor combination is set, the request
+     *   will be discarded and no callback will be received.
+     * </p>
      *
-     * <p class="note"> Note: Both a listener and executor must be set for the request to be
-     * considered for fulfillment.
-     * Listeners can be set in this method, with {@link #registerForAllProfilingResults}, or both.
-     * If no listener and executor is set the request will be discarded.</p>
+     * <p>
+     *   Requests will be rate limited and are not guaranteed to be filled.
+     * </p>
+     *
+     * <p>
+     *   There might be a delay before profiling begins.
+     *   For continuous profiling types (system tracing, stack sampling, and heap profiling),
+     *   we recommend starting the collection early and stopping it with {@link cancellationSignal}
+     *   immediately after the area of interest to ensure that the section you want profiled is
+     *   captured.
+     *   For heap dumps, we recommend testing locally to ensure that the heap dump is collected at
+     *   the proper time.
+     * </p>
      *
      * @param profilingType Type of profiling to collect.
      * @param parameters Bundle of request related parameters. If the bundle contains any
