@@ -34,7 +34,10 @@ import perfetto.protos.TraceConfigOuterClass.TraceConfig;
 public final class Configs {
 
     // Time to wait beyond trace timeout to ensure perfetto has time to finish writing output.
-    private static final int FILE_PROCESSING_DELAY_MS = 5000;
+    private static final int FILE_PROCESSING_DELAY_MS = 2000;
+    // Time used to account for any delay in starting up the underlying profiling process. This
+    // value is used to calculate max profiling time.
+    private static final int MAX_PROFILING_TIME_BUFFER_MS = 10 * 1000;
 
     private static boolean sSystemTraceConfigsInitialized = false;
     private static boolean sHeapProfileConfigsInitialized = false;
@@ -58,9 +61,9 @@ public final class Configs {
     private static int sHeapProfileSizeKbDefault;
     private static int sHeapProfileSizeKbMin;
     private static int sHeapProfileSizeKbMax;
-    private static int sHeapProfileSamplingIntervalBytesDefault;
-    private static int sHeapProfileSamplingIntervalBytesMin;
-    private static int sHeapProfileSamplingIntervalBytesMax;
+    private static long sHeapProfileSamplingIntervalBytesDefault;
+    private static long sHeapProfileSamplingIntervalBytesMin;
+    private static long sHeapProfileSamplingIntervalBytesMax;
 
     private static boolean sKillswitchJavaHeapDump;
     private static int sJavaHeapDumpDurationMsDefault;
@@ -157,12 +160,12 @@ public final class Configs {
                 DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MIN, 4);
         sHeapProfileSizeKbMax = properties.getInt(
                 DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MAX, 65536);
-        sHeapProfileSamplingIntervalBytesDefault = properties.getInt(
-                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_DEFAULT, 4096);
-        sHeapProfileSamplingIntervalBytesMin = properties.getInt(
-                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MIN, 1);
-        sHeapProfileSamplingIntervalBytesMax = properties.getInt(
-                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MAX, 65536);
+        sHeapProfileSamplingIntervalBytesDefault = properties.getLong(
+                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_DEFAULT, 4096L);
+        sHeapProfileSamplingIntervalBytesMin = properties.getLong(
+                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MIN, 1L);
+        sHeapProfileSamplingIntervalBytesMax = properties.getLong(
+                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MAX, 65536L);
 
         sHeapProfileConfigsInitialized = true;
     }
@@ -251,13 +254,13 @@ public final class Configs {
                     DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MIN, sHeapProfileSizeKbMin);
             sHeapProfileSizeKbMax = properties.getInt(
                     DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MAX, sHeapProfileSizeKbMax);
-            sHeapProfileSamplingIntervalBytesDefault = properties.getInt(
+            sHeapProfileSamplingIntervalBytesDefault = properties.getLong(
                     DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_DEFAULT,
                     sHeapProfileSamplingIntervalBytesDefault);
-            sHeapProfileSamplingIntervalBytesMin = properties.getInt(
+            sHeapProfileSamplingIntervalBytesMin = properties.getLong(
                     DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MIN,
                     sHeapProfileSamplingIntervalBytesMin);
-            sHeapProfileSamplingIntervalBytesMax = properties.getInt(
+            sHeapProfileSamplingIntervalBytesMax = properties.getLong(
                     DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MAX,
                     sHeapProfileSamplingIntervalBytesMax);
         }
@@ -414,10 +417,6 @@ public final class Configs {
                 // This should be unnecessary, but make sure configs are initialized just in case.
                 initializeSystemTraceConfigsIfNecessary();
 
-                if (!Flags.redactionEnabled()) {
-                    throw new IllegalArgumentException("Trace is not currently supported");
-                }
-
                 if (sKillswitchSystemTrace) {
                     throw new IllegalArgumentException("System trace is disabled");
                 }
@@ -450,16 +449,17 @@ public final class Configs {
     }
 
     /**
-     * This method returns how long in ms to wait before post processing and cleaning up the result
-     * in the event that it's not stopped manually.
+     * This method returns how long in ms to wait initially before checking if profiling is complete
+     * and rescheduling another check or post processing and cleaning up the result in the event
+     * that it's not stopped manually.
      */
-    public static int getPostProcessingScheduleDelayMs(int profilingType, @Nullable Bundle params) {
-        // TODO: b/327660454 adjust timeout/logic to ensure perfetto is finished
+    public static int getInitialProfilingTimeMs(int profilingType,
+            @Nullable Bundle params) {
         int duration;
         switch (profilingType) {
             case ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP:
                 initializeJavaHeapDumpConfigsIfNecessary();
-                duration = sJavaHeapDumpDurationMsDefault + 10000; //TODO(b/327660454): remove const
+                duration = sJavaHeapDumpDurationMsDefault;
                 break;
 
             case ProfilingManager.PROFILING_TYPE_HEAP_PROFILE:
@@ -487,6 +487,33 @@ public final class Configs {
                 throw new IllegalArgumentException("Invalid profiling type");
         }
         return duration + FILE_PROCESSING_DELAY_MS;
+    }
+
+    /**
+     * This method returns the maximum profiling time allowed for the different profiling types.
+     */
+    public static int getMaxProfilingTimeAllowedMs(int profilingType, @Nullable Bundle params) {
+        // Get the initial delay
+        int maxAllowedProcessingTime =
+                getInitialProfilingTimeMs(profilingType, params);
+
+        // Add the respective flush and data source timeouts for the types that have them.
+        switch (profilingType) {
+            case ProfilingManager.PROFILING_TYPE_HEAP_PROFILE:
+                maxAllowedProcessingTime += sHeapProfileFlushTimeoutMsDefault;
+                break;
+
+            case ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP:
+                maxAllowedProcessingTime += sJavaHeapDumpDataSourceStopTimeoutMsDefault;
+                break;
+
+            case ProfilingManager.PROFILING_TYPE_STACK_SAMPLING:
+                maxAllowedProcessingTime += sStackSamplingFlushTimeoutMsDefault;
+                break;
+        }
+        // Add extra buffer time to account for the time it may take to start the underlying
+        // process.
+        return maxAllowedProcessingTime + MAX_PROFILING_TIME_BUFFER_MS;
     }
 
     private static TraceConfig.BufferConfig.FillPolicy getBufferFillPolicy(int bufferFillPolicy)
@@ -547,6 +574,24 @@ public final class Configs {
         }
         if (bundle.containsKey(key)) {
             int value = bundle.getInt(key);
+            bundle.remove(key);
+            if (value < minValue) {
+                value = minValue;
+            } else if (value > maxValue) {
+                value = maxValue;
+            }
+            return value;
+        }
+        return defaultValue;
+    }
+
+    private static long getAndRemoveWithinBounds(String key, long defaultValue, long minValue,
+            long maxValue, @Nullable Bundle bundle) {
+        if (bundle == null) {
+            return defaultValue;
+        }
+        if (bundle.containsKey(key)) {
+            long value = bundle.getLong(key);
             bundle.remove(key);
             if (value < minValue) {
                 value = minValue;
@@ -752,12 +797,8 @@ public final class Configs {
                 .addFtraceEvents("sched/sched_waking")
                 .addFtraceEvents("sched/sched_wakeup_new")
                 // vmscan and mm_compaction events:
-                .addFtraceEvents("vmscan/mm_vmscan_kswapd_wake")
-                .addFtraceEvents("vmscan/mm_vmscan_kswapd_sleep")
                 .addFtraceEvents("vmscan/mm_vmscan_direct_reclaim_begin")
                 .addFtraceEvents("vmscan/mm_vmscan_direct_reclaim_end")
-                .addFtraceEvents("compaction/mm_compaction_begin")
-                .addFtraceEvents("compaction/mm_compaction_end")
                 // Atrace activity manager:
                 .addAtraceCategories("am")
                 // Java and C:
