@@ -1,0 +1,18 @@
+{
+  "presubmit": [
+    {
+      "name": "CtsProfilingModuleTests",
+      "options": [
+        {
+          "exclude-annotation": "androidx.test.filters.LargeTest"
+        }
+      ]
+    }
+  ],
+  "postsubmit": [
+    {
+      "name": "CtsProfilingModuleTests"
+    }
+  ]
+}
+

@@ -19,10 +19,8 @@ import android.annotation.FlaggedApi;
 import android.annotation.NonNull;
 import android.annotation.SystemApi;
 import android.annotation.SystemApi.Client;
-import android.annotation.TargetApi;
 import android.app.SystemServiceRegistry;
 import android.content.Context;
-import android.os.ProfilingManager;
 import android.os.profiling.Flags;
 
 /**
@@ -71,7 +69,6 @@ public class ProfilingFrameworkInitializer {
      * @throws IllegalStateException if this is called from anywhere besides
      * {@link SystemServiceRegistry}
      */
-    @TargetApi(35)
     public static void registerServiceWrappers() {
         SystemServiceRegistry.registerContextAwareService(
                 Context.PROFILING_SERVICE,

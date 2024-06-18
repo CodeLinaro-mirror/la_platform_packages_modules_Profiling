@@ -27,31 +27,6 @@ filegroup {
     visibility: ["//packages/modules/Profiling/framework:__subpackages__"],
 }
 
-java_library {
-    name: "framework-profiling-proto",
-    proto: {
-        type: "lite",
-        canonical_path_from_root: false,
-        include_dirs: [
-            "external/protobuf/src",
-            "external/protobuf/java",
-        ],
-    },
-    srcs: [
-        "proto/**/*.proto",
-    ],
-    visibility: [
-        "//packages/modules/Profiling/tests:__subpackages__",
-    ],
-    jarjar_rules: "jarjar-rules.txt",
-    installable: false,
-    min_sdk_version: "34",
-    sdk_version: "system_34",
-    apex_available: [
-        "com.android.profiling",
-    ],
-}
-
 java_sdk_library {
     name: "framework-profiling",
     defaults: ["framework-module-defaults"],
@@ -67,9 +42,12 @@ java_sdk_library {
         "androidx.annotation_annotation",
     ],
 
+    aconfig_declarations: [
+        "android.os.profiling.flags-aconfig",
+    ],
+
     static_libs: [
         "modules-utils-build",
-        "framework-profiling-proto",
         "android.os.profiling.flags-aconfig-java",
     ],
 
@@ -96,24 +74,25 @@ java_sdk_library {
     apex_available: [
         "com.android.profiling",
     ],
-    min_sdk_version: "34",
+    min_sdk_version: "current",
 }
 
 aconfig_declarations {
     name: "android.os.profiling.flags-aconfig",
     package: "android.os.profiling",
     container: "com.android.profiling",
+    exportable: true,
     srcs: ["java/android/os/flags.aconfig"],
 }
 
 java_aconfig_library {
     name: "android.os.profiling.flags-aconfig-java",
     aconfig_declarations: "android.os.profiling.flags-aconfig",
-    min_sdk_version: "34",
-    sdk_version: "core_current",
     apex_available: [
         "com.android.profiling",
     ],
+    mode: "exported",
+    defaults: ["framework-minus-apex-aconfig-java-defaults"],
     visibility: [
         "//packages/modules/Profiling:__subpackages__",
     ],
