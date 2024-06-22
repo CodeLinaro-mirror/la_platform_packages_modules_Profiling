@@ -1,0 +1,13 @@
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+cc_library_shared {
+    name: "libcts_profiling_module_test_native",
+    compile_multilib: "both",
+    header_libs: ["jni_headers"],
+    srcs: [
+        "target.c",
+    ],
+    sdk_version: "current",
+}
