@@ -117,6 +117,10 @@ public final class ProfilingFrameworkTests {
     private Context mContext = null;
     private Instrumentation mInstrumentation;
 
+    static {
+        System.loadLibrary("cts_profiling_module_test_native");
+    }
+
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
 
@@ -251,8 +255,12 @@ public final class ProfilingFrameworkTests {
                 new ProfilingTestUtils.ImmediateExecutor(),
                 callback);
 
+        MallocLoopThread mallocThread = new MallocLoopThread();
+
         // Wait until callback#onAccept is triggered so we can confirm the result.
         waitForCallback(callback);
+
+        mallocThread.stop();
 
         // Assert that result matches assumptions for success.
         confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_HEAP_PROFILE_SUFFIX);
@@ -992,6 +1000,8 @@ public final class ProfilingFrameworkTests {
         }
     }
 
+    private static native void doMallocAndFree();
+
     public static class AppCallback implements Consumer<ProfilingResult> {
 
         public ProfilingResult mResult;
@@ -1011,6 +1021,32 @@ public final class ProfilingFrameworkTests {
             done.set(false);
             thread = new Thread(() -> {
                 while (!done.get()) {
+                }
+            });
+            thread.start();
+        }
+
+        public void stop() {
+            done.set(true);
+            try {
+                thread.join();
+            } catch (InterruptedException e) {
+                throw new AssertionError("InterruptedException", e);
+            }
+        }
+    }
+
+    // Starts a thread that repeatedly issues malloc() and free().
+    private static class MallocLoopThread {
+        private Thread thread;
+        private AtomicBoolean done = new AtomicBoolean(false);
+
+        public MallocLoopThread() {
+            done.set(false);
+            thread = new Thread(() -> {
+                while (!done.get()) {
+                    doMallocAndFree();
+                    sleep(10);
                 }
             });
             thread.start();
