@@ -31,7 +31,6 @@ import static org.mockito.Mockito.verify;
 
 import android.app.Instrumentation;
 import android.content.Context;
-import android.content.pm.PackageManager;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.Handler;
@@ -76,8 +75,8 @@ import java.util.UUID;
 @RunWith(AndroidJUnit4.class)
 public final class ProfilingServiceTests {
 
-    private static final String APP_FILE_PATH = "/data/user/0/com.profiling.test/files";
-    private static final String APP_PACKAGE_NAME = "com.profiling.test";
+    private static final String APP_FILE_PATH = "/data/user/0/com.android.profiling.tests/files";
+    private static final String APP_PACKAGE_NAME = "com.android.profiling.tests";
     private static final String REQUEST_TAG = "some unique string";
 
     private static final String OVERRIDE_DEVICE_CONFIG_INT = "device_config put %s %s %d";
@@ -92,7 +91,6 @@ public final class ProfilingServiceTests {
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
 
-    @Mock private PackageManager mPackageManager;
     @Mock private Process mActiveTrace;
 
     private Context mContext = ApplicationProvider.getApplicationContext();
@@ -112,9 +110,7 @@ public final class ProfilingServiceTests {
                 return null;
             }
         }));
-        doReturn(mPackageManager).when(mContext).getPackageManager();
         mProfilingService.mRateLimiter = mRateLimiter;
-        doReturn(APP_PACKAGE_NAME).when(mPackageManager).getNameForUid(anyInt());
 
         // Override the persist file/directory and instead point to our own file/directory in app
         // storage, since the test app context can't access /data/system
@@ -161,7 +157,8 @@ public final class ProfilingServiceTests {
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
+                APP_PACKAGE_NAME);
 
         // Confirm callbacks was triggered for callback registered to this process.
         assertTrue(callback.mResultSent);
@@ -191,7 +188,8 @@ public final class ProfilingServiceTests {
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
+                APP_PACKAGE_NAME);
 
         // Confirm callbacks was triggered for callback registered to this process.
         assertTrue(callbackOne.mResultSent);
@@ -213,7 +211,8 @@ public final class ProfilingServiceTests {
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
+                APP_PACKAGE_NAME);
 
         // Confirm result matches failure expectation.
         confirmResultCallback(callback, null, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
@@ -235,7 +234,7 @@ public final class ProfilingServiceTests {
 
         // Kick off request.
         mProfilingService.requestProfiling(-1, null, APP_FILE_PATH, REQUEST_TAG,
-                KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+                KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, APP_PACKAGE_NAME);
 
         // Confirm result matches failure expectation.
         confirmResultCallback(callback, null, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
@@ -245,20 +244,35 @@ public final class ProfilingServiceTests {
     /** Test that requesting where we cannot access the package name fails. */
     @Test
     public void testRequestProfiling_PackageNameNotFound_Fails() {
-        // Mock getNameForUid to simulate failure case.
-        doReturn(null).when(mPackageManager).getNameForUid(anyInt());
-
         // Register callback.
         ProfilingResultCallback callback = new ProfilingResultCallback();
         mProfilingService.registerResultsCallback(false, callback);
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
+                null);
 
         // Confirm result matches failure expectation.
         confirmResultCallback(callback, null, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
                 ProfilingResult.ERROR_UNKNOWN, REQUEST_TAG, true);
+    }
+
+    /** Test that requesting with a package name not associated with the calling uid fails. */
+    @Test
+    public void testRequestProfiling_PackageNameNotAssociatedWithCaller_Fails() {
+        // Register callback.
+        ProfilingResultCallback callback = new ProfilingResultCallback();
+        mProfilingService.registerResultsCallback(false, callback);
+
+        // Kick off request.
+        mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
+                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
+                "not.my.application");
+
+        // Confirm result matches failure expectation.
+        confirmResultCallback(callback, null, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
+                ProfilingResult.ERROR_FAILED_INVALID_REQUEST, REQUEST_TAG, true);
     }
 
     /** Test that failing rate limiting blocks trace from running. */
@@ -277,7 +291,8 @@ public final class ProfilingServiceTests {
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
+                APP_PACKAGE_NAME);
 
         // Confirm result matches failure expectation.
         confirmResultCallback(callback, null, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
@@ -297,7 +312,8 @@ public final class ProfilingServiceTests {
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
+                APP_PACKAGE_NAME);
 
         // Perfetto cannot be run from this context, ensure it was attempted and failed permissions.
         confirmResultCallback(callback, null, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
