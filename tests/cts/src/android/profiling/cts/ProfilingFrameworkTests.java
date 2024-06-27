@@ -242,10 +242,14 @@ public final class ProfilingFrameworkTests {
 
         AppCallback callback = new AppCallback();
 
+        // Add sampling interval param to test because it is currently the only long param.
+        Bundle params = ProfilingTestUtils.getOneSecondDurationParamBundle();
+        params.putLong(ProfilingManager.KEY_SAMPLING_INTERVAL_BYTES, 4096L);
+
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
-                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                params,
                 null,
                 null,
                 new ProfilingTestUtils.ImmediateExecutor(),

@@ -61,9 +61,9 @@ public final class Configs {
     private static int sHeapProfileSizeKbDefault;
     private static int sHeapProfileSizeKbMin;
     private static int sHeapProfileSizeKbMax;
-    private static int sHeapProfileSamplingIntervalBytesDefault;
-    private static int sHeapProfileSamplingIntervalBytesMin;
-    private static int sHeapProfileSamplingIntervalBytesMax;
+    private static long sHeapProfileSamplingIntervalBytesDefault;
+    private static long sHeapProfileSamplingIntervalBytesMin;
+    private static long sHeapProfileSamplingIntervalBytesMax;
 
     private static boolean sKillswitchJavaHeapDump;
     private static int sJavaHeapDumpDurationMsDefault;
@@ -160,12 +160,12 @@ public final class Configs {
                 DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MIN, 4);
         sHeapProfileSizeKbMax = properties.getInt(
                 DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MAX, 65536);
-        sHeapProfileSamplingIntervalBytesDefault = properties.getInt(
-                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_DEFAULT, 4096);
-        sHeapProfileSamplingIntervalBytesMin = properties.getInt(
-                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MIN, 1);
-        sHeapProfileSamplingIntervalBytesMax = properties.getInt(
-                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MAX, 65536);
+        sHeapProfileSamplingIntervalBytesDefault = properties.getLong(
+                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_DEFAULT, 4096L);
+        sHeapProfileSamplingIntervalBytesMin = properties.getLong(
+                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MIN, 1L);
+        sHeapProfileSamplingIntervalBytesMax = properties.getLong(
+                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MAX, 65536L);
 
         sHeapProfileConfigsInitialized = true;
     }
@@ -254,13 +254,13 @@ public final class Configs {
                     DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MIN, sHeapProfileSizeKbMin);
             sHeapProfileSizeKbMax = properties.getInt(
                     DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MAX, sHeapProfileSizeKbMax);
-            sHeapProfileSamplingIntervalBytesDefault = properties.getInt(
+            sHeapProfileSamplingIntervalBytesDefault = properties.getLong(
                     DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_DEFAULT,
                     sHeapProfileSamplingIntervalBytesDefault);
-            sHeapProfileSamplingIntervalBytesMin = properties.getInt(
+            sHeapProfileSamplingIntervalBytesMin = properties.getLong(
                     DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MIN,
                     sHeapProfileSamplingIntervalBytesMin);
-            sHeapProfileSamplingIntervalBytesMax = properties.getInt(
+            sHeapProfileSamplingIntervalBytesMax = properties.getLong(
                     DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MAX,
                     sHeapProfileSamplingIntervalBytesMax);
         }
@@ -416,10 +416,6 @@ public final class Configs {
             case ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE:
                 // This should be unnecessary, but make sure configs are initialized just in case.
                 initializeSystemTraceConfigsIfNecessary();
-
-                if (!Flags.redactionEnabled()) {
-                    throw new IllegalArgumentException("Trace is not currently supported");
-                }
 
                 if (sKillswitchSystemTrace) {
                     throw new IllegalArgumentException("System trace is disabled");
@@ -578,6 +574,24 @@ public final class Configs {
         }
         if (bundle.containsKey(key)) {
             int value = bundle.getInt(key);
+            bundle.remove(key);
+            if (value < minValue) {
+                value = minValue;
+            } else if (value > maxValue) {
+                value = maxValue;
+            }
+            return value;
+        }
+        return defaultValue;
+    }
+
+    private static long getAndRemoveWithinBounds(String key, long defaultValue, long minValue,
+            long maxValue, @Nullable Bundle bundle) {
+        if (bundle == null) {
+            return defaultValue;
+        }
+        if (bundle.containsKey(key)) {
+            long value = bundle.getLong(key);
             bundle.remove(key);
             if (value < minValue) {
                 value = minValue;
@@ -783,12 +797,8 @@ public final class Configs {
                 .addFtraceEvents("sched/sched_waking")
                 .addFtraceEvents("sched/sched_wakeup_new")
                 // vmscan and mm_compaction events:
-                .addFtraceEvents("vmscan/mm_vmscan_kswapd_wake")
-                .addFtraceEvents("vmscan/mm_vmscan_kswapd_sleep")
                 .addFtraceEvents("vmscan/mm_vmscan_direct_reclaim_begin")
                 .addFtraceEvents("vmscan/mm_vmscan_direct_reclaim_end")
-                .addFtraceEvents("compaction/mm_compaction_begin")
-                .addFtraceEvents("compaction/mm_compaction_end")
                 // Atrace activity manager:
                 .addAtraceCategories("am")
                 // Java and C:
