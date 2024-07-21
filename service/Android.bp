@@ -45,7 +45,7 @@ java_library {
     apex_available: [
         "com.android.profiling",
     ],
-    min_sdk_version: "current",
+    min_sdk_version: "35",
     installable: true,
 }
 
@@ -66,7 +66,7 @@ java_library {
         "//packages/modules/Profiling/tests:__subpackages__",
     ],
     installable: false,
-    min_sdk_version: "current",
+    min_sdk_version: "35",
     sdk_version: "system_server_current",
     apex_available: [
         "com.android.profiling",
