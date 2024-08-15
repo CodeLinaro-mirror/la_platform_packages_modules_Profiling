@@ -114,6 +114,21 @@ public final class DeviceConfigHelper {
     // Perfetto configs
     public static final String PERFETTO_DESTROY_TIMEOUT_MS = "perfetto_destroy_timeout_ms";
 
+    // General configs
+    public static final String MAX_RESULT_REDELIVERY_COUNT = "max_result_redelivery_count";
+    public static final String CLEAR_TEMPORARY_DIRECTORY_FREQUENCY_MS =
+            "clear_temporary_directory_frequency_ms";
+    public static final String CLEAR_TEMPORARY_DIRECTORY_BOOT_DELAY_MS =
+            "clear_temporary_directory_boot_delay_ms";
+
+    // Post Processing Configs
+    public static final String PROFILING_RECHECK_DELAY_MS = "profiling_recheck_delay_ms";
+
+    // Redaction configs
+    public static final String REDACTION_CHECK_FREQUENCY_MS = "redaction_check_frequency_ms";
+    public static final String REDACTION_MAX_RUNTIME_ALLOTTED_MS =
+            "redaction_max_runtime_allotted_ms";
+
     // End section: Server registered constants
 
     /**
