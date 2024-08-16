@@ -656,9 +656,10 @@ public class RateLimiter {
                 if (mTotalCost + cost > mMaxCost) {
                     return RATE_LIMIT_RESULT_BLOCKED_SYSTEM;
                 }
-                final int index = mPerUidCost.indexOfKey(uid);
-                return ((index < 0 ? 0 : mPerUidCost.valueAt(index)) + cost < mMaxCostPerUid)
-                        ? RATE_LIMIT_RESULT_ALLOWED : RATE_LIMIT_RESULT_BLOCKED_PROCESS;
+                if (mPerUidCost.get(uid, 0) + cost > mMaxCostPerUid) {
+                    return RATE_LIMIT_RESULT_BLOCKED_PROCESS;
+                }
+                return RATE_LIMIT_RESULT_ALLOWED;
             }
         }
 
