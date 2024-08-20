@@ -27,26 +27,12 @@ android_app_certificate {
     certificate: "com.android.profiling",
 }
 
-soong_config_module_type {
-    name: "custom_apex",
-    module_type: "apex",
-    config_namespace: "ANDROID",
-    bool_variables: [
-        "release_package_profiling_module",
-    ],
-    properties: [
-        "enabled",
-    ],
-}
-
-custom_apex {
+apex {
     // This apex will be enabled with release_package_profiling_module flag
-    enabled: false,
-    soong_config_variables: {
-        release_package_profiling_module: {
-            enabled: true,
-        },
-    },
+    enabled: select(release_flag("RELEASE_PACKAGE_PROFILING_MODULE"), {
+        true: true,
+        false: false,
+    }),
 
     name: "com.android.profiling",
     manifest: "manifest.json",
@@ -60,52 +46,24 @@ custom_apex {
     systemserverclasspath_fragments: ["com.android.profiling-systemserverclasspath-fragment"],
 }
 
-soong_config_module_type {
-    name: "custom_systemserverclasspath_fragment",
-    module_type: "systemserverclasspath_fragment",
-    config_namespace: "ANDROID",
-    bool_variables: [
-        "release_package_profiling_module",
-    ],
-    properties: [
-        "enabled",
-    ],
-}
-
-custom_systemserverclasspath_fragment {
+systemserverclasspath_fragment {
     // This fragment will be enabled with release_package_profiling_module flag
-    enabled: false,
-    soong_config_variables: {
-        release_package_profiling_module: {
-            enabled: true,
-        },
-    },
+    enabled: select(release_flag("RELEASE_PACKAGE_PROFILING_MODULE"), {
+        true: true,
+        false: false,
+    }),
 
     name: "com.android.profiling-systemserverclasspath-fragment",
     standalone_contents: ["service-profiling"],
     apex_available: ["com.android.profiling"],
 }
 
-soong_config_module_type {
-    name: "custom_bootclasspath_fragment",
-    module_type: "bootclasspath_fragment",
-    config_namespace: "ANDROID",
-    bool_variables: [
-        "release_package_profiling_module",
-    ],
-    properties: [
-        "enabled",
-    ],
-}
-
-custom_bootclasspath_fragment {
+bootclasspath_fragment {
     // This fragment will be enabled with release_package_profiling_module flag
-    enabled: false,
-    soong_config_variables: {
-        release_package_profiling_module: {
-            enabled: true,
-        },
-    },
+    enabled: select(release_flag("RELEASE_PACKAGE_PROFILING_MODULE"), {
+        true: true,
+        false: false,
+    }),
 
     name: "com.android.profiling-bootclasspath-fragment",
     contents: ["framework-profiling"],
