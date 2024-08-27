@@ -36,8 +36,6 @@ android_test {
     test_suites: [
         "cts",
         "general-tests",
-        "mts-profiling",
-        "mcts-profiling",
     ],
     min_sdk_version: "35",
     sdk_version: "module_current",
