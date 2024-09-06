@@ -40,7 +40,7 @@ apex {
     key: "com.android.profiling.key",
     certificate: ":com.android.profiling.certificate",
     defaults: ["v-launched-apex-module"],
-    min_sdk_version: "34",
+    min_sdk_version: "35",
 
     bootclasspath_fragments: ["com.android.profiling-bootclasspath-fragment"],
     systemserverclasspath_fragments: ["com.android.profiling-systemserverclasspath-fragment"],
