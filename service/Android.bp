@@ -31,7 +31,7 @@ java_library {
     libs: [
         "framework-annotations-lib",
         "framework-profiling.impl",
-        "framework-configinfrastructure",
+        "framework-configinfrastructure.stubs.module_lib",
     ],
     static_libs: [
         "modules-utils-build",
