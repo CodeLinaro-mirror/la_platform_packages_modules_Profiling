@@ -16,6 +16,7 @@
 
 package android.os;
 
+import android.os.Bundle;
 import android.os.IProfilingResultCallback;
 
 /**
@@ -23,9 +24,14 @@ import android.os.IProfilingResultCallback;
  */
 interface IProfilingService {
 
-    void requestProfiling(in byte[] profilingRequest, String filePath, String tag, long keyMostSigBits, long keyLeastSigBits);
+    oneway void requestProfiling(int profilingType, in Bundle params, String filePath, String tag, long keyMostSigBits, long keyLeastSigBits, String packageName);
 
-    void registerResultsCallback(IProfilingResultCallback callback);
+    oneway void registerResultsCallback(boolean isGeneralCallback, IProfilingResultCallback callback);
 
-    void requestCancel(long keyMostSigBits, long keyLeastSigBits);
+    oneway void generalListenerAdded();
+
+    oneway void requestCancel(long keyMostSigBits, long keyLeastSigBits);
+
+    oneway void receiveFileDescriptor(in ParcelFileDescriptor fileDescriptor, long keyMostSigBits, long keyLeastSigBits);
+
 }
