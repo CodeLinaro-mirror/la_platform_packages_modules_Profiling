@@ -16,6 +16,8 @@
 
 package android.os.profiling;
 
+import static android.os.profiling.ProfilingService.TracingState;
+
 import android.os.Bundle;
 
 import java.util.UUID;
@@ -24,25 +26,6 @@ import java.util.UUID;
  * Represents a single in progress tracing session and all necessary data to manage and process it.
  */
 public final class TracingSession {
-
-    public enum TracingState {
-        NOT_STARTED(0),
-        PROFILING_STARTED(1),
-        PROFILING_FINISHED(2),
-        REDACTED(3),
-        COPIED_FILE(4),
-        DISCARDED(5);
-
-        private final int mValue;
-
-        TracingState(int value) {
-            mValue = value;
-        }
-
-        public int getValue() {
-            return mValue;
-        }
-    }
 
     private Process mActiveTrace;
     private Process mActiveRedaction;
@@ -64,6 +47,10 @@ public final class TracingSession {
     private int mRetryCount = 0;
     private long mProfilingStartTimeMs;
     private int mMaxProfilingTimeAllowedMs = 0;
+    private String mErrorMessage = null;
+
+    // Expected to be populated with ProfilingResult.ERROR_* values.
+    private int mErrorStatus = -1; // Default to invalid value.
 
     public TracingSession(int profilingType, Bundle params, String appFilePath, int uid,
                 String packageName, String tag, long keyMostSigBits, long keyLeastSigBits) {
@@ -75,7 +62,7 @@ public final class TracingSession {
         mTag = tag;
         mKeyMostSigBits = keyMostSigBits;
         mKeyLeastSigBits = keyLeastSigBits;
-        mState = TracingState.NOT_STARTED;
+        mState = TracingState.REQUESTED;
     }
 
     public byte[] getConfigBytes() throws IllegalArgumentException {
@@ -136,6 +123,10 @@ public final class TracingSession {
         mRetryCount = retryCount;
     }
 
+    /**
+     * Do not call directly!
+     * State should only be updated with {@link ProfilingService#advanceStateAndContinue}.
+     */
     public void setState(TracingState state) {
         mState = state;
     }
@@ -147,6 +138,20 @@ public final class TracingSession {
 
     public void setProfilingStartTimeMs(long startTime)  {
         mProfilingStartTimeMs = startTime;
+    }
+
+    /**
+     * Update error status. Also overrides error message to null as the two fields must be set
+     * together to ensure they make sense.
+     */
+    public void setError(int status) {
+        setError(status, null);
+    }
+
+    /** Update error status and message. */
+    public void setError(int status, String message) {
+        mErrorStatus = status;
+        mErrorMessage = message;
     }
 
     public Process getActiveTrace() {
@@ -229,5 +234,13 @@ public final class TracingSession {
 
     public int getRetryCount() {
         return mRetryCount;
+    }
+
+    public String getErrorMessage() {
+        return mErrorMessage;
+    }
+
+    public int getErrorStatus() {
+        return mErrorStatus;
     }
 }
