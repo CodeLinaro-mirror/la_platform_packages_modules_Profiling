@@ -1,0 +1,26 @@
+syntax = "proto2";
+
+package android.os;
+
+option java_multiple_files = true;
+
+// LINT.IfChange(proto)
+message QueuedResultsWrapper {
+  message TracingSession {
+    optional int32 profiling_type = 1;
+    optional string app_file_path = 2;
+    optional int32 uid = 3;
+    optional string package_name = 4;
+    optional string tag = 5;
+    optional int64 key_most_sig_bits = 6;
+    optional int64 key_least_sig_bits = 7;
+    optional string file_name = 8;
+    optional string redacted_file_name = 9;
+    optional int32 tracing_state = 10;
+    optional int32 retry_count = 11;
+    optional string error_message = 12;
+    optional int32 error_status = 13;
+  }
+  repeated TracingSession sessions = 1;
+}
+// LINT.ThenChange(/service/java/com/android/os/profiling/TracingSession.java:persisted_params)
