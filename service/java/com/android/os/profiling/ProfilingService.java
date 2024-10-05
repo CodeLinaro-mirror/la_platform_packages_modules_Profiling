@@ -24,6 +24,7 @@ import android.icu.util.Calendar;
 import android.icu.util.TimeZone;
 import android.os.Binder;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.FileUtils;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -33,10 +34,12 @@ import android.os.IProfilingService;
 import android.os.ParcelFileDescriptor;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
+import android.os.QueuedResultsWrapper;
 import android.os.RemoteException;
 import android.provider.DeviceConfig;
 import android.text.TextUtils;
 import android.util.ArrayMap;
+import android.util.AtomicFile;
 import android.util.Log;
 import android.util.SparseArray;
 
@@ -52,10 +55,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class ProfilingService extends IProfilingService.Stub {
     private static final String TAG = ProfilingService.class.getSimpleName();
@@ -71,6 +76,10 @@ public class ProfilingService extends IProfilingService.Stub {
     private static final String OUTPUT_FILE_STACK_SAMPLING_SUFFIX = ".perfetto-stack-sample";
     private static final String OUTPUT_FILE_TRACE_SUFFIX = ".perfetto-trace";
     private static final String OUTPUT_FILE_UNREDACTED_TRACE_SUFFIX = ".perfetto-trace-unredacted";
+
+    private static final String QUEUED_RESULTS_SYSTEM_DIR = "system";
+    private static final String QUEUED_RESULTS_STORE_DIR = "profiling_queued_results_store";
+    private static final String QUEUED_RESULTS_INFO_FILE = "profiling_queued_results_info";
 
     private static final int TAG_MAX_CHARS_FOR_FILENAME = 20;
 
@@ -93,6 +102,8 @@ public class ProfilingService extends IProfilingService.Stub {
     // deliver it. After this amount of time the result will be discarded.
     @VisibleForTesting
     public static final int QUEUED_RESULT_MAX_RETAINED_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
+
+    private static final int PERSIST_QUEUE_TO_DISK_FREQUENCY_MS = 30 * 60 * 1000;
 
     private final Context mContext;
     private final Object mLock = new Object();
@@ -132,6 +143,25 @@ public class ProfilingService extends IProfilingService.Stub {
     @VisibleForTesting
     public SparseArray<List<TracingSession>> mQueuedTracingResults = new SparseArray<>();
 
+    private boolean mPersistQueueScheduled = false;
+    // Frequency of 0 would result in immediate persist.
+    @GuardedBy("mLock")
+    private AtomicInteger mPersistQueueFrequencyMs;
+    @GuardedBy("mLock")
+    private long mLastPersistedQueueTimestampMs = 0L;
+    private Runnable mPersistQueueRunnable = null;
+
+    /**
+     * The path to the directory which includes the queued results data file as specified in
+     * {@link #mPersistQueueFile}.
+     */
+    @VisibleForTesting
+    public File mPersistQueueStoreDir;
+
+    /** The queued results data file, persisted in the storage. */
+    @VisibleForTesting
+    public File mPersistQueueFile;
+
     /** To be disabled for testing only. */
     @GuardedBy("mLock")
     private boolean mKeepUnredactedTrace = false;
@@ -159,8 +189,7 @@ public class ProfilingService extends IProfilingService.Stub {
      * CLEANED_UP - Local only, not in any data structure.
      */
     public enum TracingState {
-        // Intentionally skipping 0 since proto, which willl be used for persist, treats it as
-        // unset.
+        // Intentionally skipping 0 since proto, which will be used for persist, treats it as unset.
         REQUESTED(1),
         APPROVED(2),
         PROFILING_STARTED(3),
@@ -171,9 +200,25 @@ public class ProfilingService extends IProfilingService.Stub {
         NOTIFIED_REQUESTER(8),
         CLEANED_UP(9);
 
+        /** Data structure for efficiently mapping int values back to their enum values. */
+        private static List<TracingState> sStatesList;
+
+        static {
+            sStatesList = Arrays.asList(TracingState.values());
+        }
+
         private final int mValue;
         TracingState(int value) {
             mValue = value;
+        }
+
+        /** Obtain TracingState from int value. */
+        public static TracingState of(int value) {
+            if (value < 1 || value >= sStatesList.size() + 1) {
+                return null;
+            }
+
+            return sStatesList.get(value - 1);
         }
 
         public int getValue() {
@@ -213,7 +258,6 @@ public class ProfilingService extends IProfilingService.Stub {
                 DeviceConfigHelper.REDACTION_MAX_RUNTIME_ALLOTTED_MS,
                 REDACTION_DEFAULT_MAX_RUNTIME_ALLOTTED_MS);
 
-
         mHandlerThread.start();
 
         // Get initial value for whether unredacted trace should be retained.
@@ -221,6 +265,10 @@ public class ProfilingService extends IProfilingService.Stub {
         synchronized (mLock) {
             mKeepUnredactedTrace = DeviceConfigHelper.getTestBoolean(
                     DeviceConfigHelper.DISABLE_DELETE_UNREDACTED_TRACE, false);
+
+            mPersistQueueFrequencyMs = new AtomicInteger(DeviceConfigHelper.getInt(
+                    DeviceConfigHelper.PERSIST_QUEUE_TO_DISK_FREQUENCY_MS,
+                    PERSIST_QUEUE_TO_DISK_FREQUENCY_MS));
         }
         // Now subscribe to updates on test config.
         DeviceConfig.addOnPropertiesChangedListener(DeviceConfigHelper.NAMESPACE_TESTING,
@@ -272,6 +320,10 @@ public class ProfilingService extends IProfilingService.Stub {
                             mRedactionMaxRuntimeAllottedMs = properties.getInt(
                                     DeviceConfigHelper.REDACTION_MAX_RUNTIME_ALLOTTED_MS,
                                     mRedactionMaxRuntimeAllottedMs);
+
+                            mPersistQueueFrequencyMs.set(properties.getInt(
+                                    DeviceConfigHelper.PERSIST_QUEUE_TO_DISK_FREQUENCY_MS,
+                                    mPersistQueueFrequencyMs.get()));
                         }
                     }
                 });
@@ -284,6 +336,132 @@ public class ProfilingService extends IProfilingService.Stub {
                 maybeCleanupTemporaryDirectory();
             }
         }, mClearTemporaryDirectoryBootDelayMs);
+
+        // Load the queue right away so we can start delivering results as apps register global
+        // listeners.
+        loadQueueFromPersistedData();
+    }
+
+    /**
+     * Load persisted queue entries. If any issue is encountered reading/parsing the file, delete it
+     * and return as failure to load queue does not block the feature.
+     */
+    @VisibleForTesting
+    public void loadQueueFromPersistedData() {
+        if (!Flags.persistQueue()) {
+            return;
+        }
+
+        // Setup persist files
+        try {
+            if (!setupPersistQueueFiles()) {
+                // If setting up the directory and file was unsuccessful then just return. Past and
+                // future queued results will be lost, but the feature as a whole still works.
+                if (DEBUG) Log.d(TAG, "Failed to setup queue persistence directory/files.");
+                return;
+            }
+        } catch (SecurityException e) {
+            // Can't access files.
+            if (DEBUG) Log.e(TAG, "Failed to setup queue persistence directory/files.", e);
+            return;
+        }
+
+        // Check if file exists
+        try {
+            if (!mPersistQueueFile.exists()) {
+                // No file, nothing to load. This is an expected state for before the feature has
+                // ever been used or if the queue was emptied.
+                if (DEBUG) {
+                    Log.d(TAG, "Queue persistence file does not exist, skipping load from disk.");
+                }
+                return;
+            }
+        } catch (SecurityException e) {
+            // Can't access file.
+            if (DEBUG) Log.e(TAG, "Exception accessing queue persistence file", e);
+            return;
+        }
+
+        // Read the file
+        AtomicFile persistFile = new AtomicFile(mPersistQueueFile);
+        byte[] bytes;
+        try {
+            bytes = persistFile.readFully();
+        } catch (IOException e) {
+            if (DEBUG) Log.e(TAG, "Exception reading queue persistence file", e);
+            // Failed to read the file. No reason to believe we'll have better luck next time,
+            // delete the file and return. Results in the queue will be lost.
+            deletePersistQueueFile();
+            return;
+        }
+        if (bytes.length == 0) {
+            if (DEBUG) Log.d(TAG, "Queue persistence file is empty, skipping load from disk.");
+            // Empty queue persist file. Delete the file and return.
+            deletePersistQueueFile();
+            return;
+        }
+
+        // Parse file bytes to proto
+        QueuedResultsWrapper wrapper;
+        try {
+            wrapper = QueuedResultsWrapper.parseFrom(bytes);
+        } catch (Exception e) {
+            if (DEBUG) Log.e(TAG, "Error parsing proto from persisted bytes", e);
+            // Failed to parse the file contents. No reason to believe we'll have better luck next
+            // time, delete the file and return. Results in the queue will be lost.
+            deletePersistQueueFile();
+            return;
+        }
+
+        // Populate in memory records store
+        for (int i = 0; i < wrapper.getSessionsCount(); i++) {
+            QueuedResultsWrapper.TracingSession sessionsProto = wrapper.getSessions(i);
+            TracingSession session = new TracingSession(sessionsProto);
+            // Since we're populating the in memory store from the persisted queue we don't want to
+            // trigger a persist, so pass param false. If we did trigger the persist from here, it
+            // would overwrite the file with the first record only and then queue the remaining
+            // records for later, thereby leaving the persisted queue with less data than it
+            // currently contains and potentially leading to lost data in event of shutdown before
+            // the scheduled persist occurs.
+            moveSessionToQueue(session, false);
+        }
+    }
+
+    /** Setup the directory and file for persisting queue. */
+    @VisibleForTesting
+    public boolean setupPersistQueueFiles() {
+        File dataDir = Environment.getDataDirectory();
+        File systemDir = new File(dataDir, QUEUED_RESULTS_SYSTEM_DIR);
+        mPersistQueueStoreDir = new File(systemDir, QUEUED_RESULTS_STORE_DIR);
+        if (createDir(mPersistQueueStoreDir)) {
+            mPersistQueueFile = new File(mPersistQueueStoreDir, QUEUED_RESULTS_INFO_FILE);
+            return true;
+        }
+        return false;
+    }
+
+    /** Delete the persist queue file. */
+    @VisibleForTesting
+    public void deletePersistQueueFile() {
+        try {
+            mPersistQueueFile.delete();
+            if (DEBUG) Log.d(TAG, "Deleted queue persist file.");
+        } catch (SecurityException e) {
+            // Can't delete file.
+            if (DEBUG) Log.d(TAG, "Failed to delete queue persist file", e);
+        }
+    }
+
+    private static boolean createDir(File dir) throws SecurityException {
+        if (dir.mkdir()) {
+            return true;
+        }
+
+        if (dir.exists()) {
+            return dir.isDirectory();
+        }
+
+        return false;
     }
 
     /**
@@ -368,10 +546,26 @@ public class ProfilingService extends IProfilingService.Stub {
                 // File has already been copied to app storage, proceed to callback.
                 session.setError(ProfilingResult.ERROR_NONE);
                 processTracingSessionResultCallback(session, true /* Continue advancing session */);
+
+                // This is a good place to persist the queue if possible because the processing work
+                // is complete and we tried to send a callback to the app. If the callback
+                // succeeded, then we will already have recursed on this method with new state of
+                // NOTIFIED_REQUESTER and the only potential remaining work to be repeated will be
+                // cleanup. If the callback failed, then we won't have recursed here and we'll pick
+                // back up this stage next time thereby minimizing repeated work.
+                maybePersistQueueToDisk();
                 break;
             case ERROR_OCCURRED:
                 // An error has occurred, proceed to callback.
                 processTracingSessionResultCallback(session, true /* Continue advancing session */);
+
+                // This is a good place to persist the queue if possible because the processing work
+                // is complete and we tried to send a callback to the app. If the callback
+                // succeeded, then we will already have recursed on this method with new state of
+                // NOTIFIED_REQUESTER and the only potential remaining work to be repeated will be
+                // cleanup. If the callback failed, then we won't have recursed here and we'll pick
+                // back up this stage next time thereby minimizing repeated work.
+                maybePersistQueueToDisk();
                 break;
             case NOTIFIED_REQUESTER:
                 // Callback has been completed successfully, start cleanup.
@@ -928,7 +1122,7 @@ public class ProfilingService extends IProfilingService.Stub {
             // Request couldn't be processed. This shouldn't happen.
             if (DEBUG) Log.d(TAG, "Request couldn't be processed", e);
             session.setError(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, e.getMessage());
-            moveSessionToQueue(session);
+            moveSessionToQueue(session, true);
             advanceTracingSession(session, TracingState.ERROR_OCCURRED);
             return;
 
@@ -960,7 +1154,7 @@ public class ProfilingService extends IProfilingService.Stub {
             // Catch all exceptions related to starting process as they'll all be handled similarly.
             if (DEBUG) Log.d(TAG, "Trace couldn't be started", e);
             session.setError(ProfilingResult.ERROR_FAILED_EXECUTING, "Trace couldn't be started");
-            moveSessionToQueue(session);
+            moveSessionToQueue(session, true);
             advanceTracingSession(session, TracingState.ERROR_OCCURRED);
             return;
         }
@@ -1002,7 +1196,7 @@ public class ProfilingService extends IProfilingService.Stub {
         } else {
             // complete, process results and deliver.
             session.setProcessResultRunnable(null);
-            moveSessionToQueue(session);
+            moveSessionToQueue(session, true);
             advanceTracingSession(session, TracingState.PROFILING_FINISHED);
         }
     }
@@ -1445,8 +1639,12 @@ public class ProfilingService extends IProfilingService.Stub {
      *
      * Sessions are expected to be in the queue when their states are between PROFILING_FINISHED and
      * NOTIFIED_REQUESTER, inclusive.
+     *
+     * @param session      the session to move to the queue
+     * @param maybePersist whether to persist the queue to disk if the queue is eligible to be
+     *          persisted
      */
-    private void moveSessionToQueue(TracingSession session) {
+    private void moveSessionToQueue(TracingSession session, boolean maybePersist) {
         List<TracingSession> queuedResults = mQueuedTracingResults.get(session.getUid());
         if (queuedResults == null) {
             queuedResults = new ArrayList<TracingSession>();
@@ -1454,6 +1652,10 @@ public class ProfilingService extends IProfilingService.Stub {
         }
         queuedResults.add(session);
         mActiveTracingSessions.remove(session.getKey());
+
+        if (maybePersist) {
+            maybePersistQueueToDisk();
+        }
     }
 
     private boolean needsRedaction(TracingSession session) {
@@ -1530,6 +1732,128 @@ public class ProfilingService extends IProfilingService.Stub {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Persist queued results to disk following the following rules:
+     * - If a persist is already scheduled, do nothing.
+     * - If a persist happened within the last {@link #mPersistQueueFrequencyMs} then schedule a
+     *      persist for {@link #mPersistQueueFrequencyMs} after the last persist.
+     * - If no persist has occurred yet or the most recent persist was more than
+     *      {@link #mPersistQueueFrequencyMs} ago, persist immediately.
+     */
+    @VisibleForTesting
+    public void maybePersistQueueToDisk() {
+        if (!Flags.persistQueue()) {
+            return;
+        }
+
+        synchronized (mLock) {
+            if (mPersistQueueScheduled) {
+                // We're already waiting on a scheduled persist job, do nothing.
+                return;
+            }
+
+            if (mPersistQueueFrequencyMs.get() != 0
+                    && (System.currentTimeMillis() - mLastPersistedQueueTimestampMs
+                    < mPersistQueueFrequencyMs.get())) {
+                // Schedule the persist job.
+                if (mPersistQueueRunnable == null) {
+                    mPersistQueueRunnable = new Runnable() {
+                        @Override
+                        public void run() {
+                            persistQueueToDisk();
+                            mPersistQueueScheduled = false;
+                        }
+                    };
+                }
+                mPersistQueueScheduled = true;
+                long persistDelay = mLastPersistedQueueTimestampMs + mPersistQueueFrequencyMs.get()
+                        - System.currentTimeMillis();
+                getHandler().postDelayed(mPersistQueueRunnable, persistDelay);
+                return;
+            }
+        }
+
+        // If we got here then either persist frequency is 0 or it has already been longer than
+        // persist frequency since the last persist. Persist immediately.
+        persistQueueToDisk();
+    }
+
+    /** Persist the current queue to disk after cleaning it up. */
+    @VisibleForTesting
+    public void persistQueueToDisk() {
+        if (!Flags.persistQueue()) {
+            return;
+        }
+
+        // Check if file exists
+        try {
+            if (mPersistQueueFile == null) {
+                // Try again to create the necessary files.
+                if (!setupPersistQueueFiles()) {
+                    // No file, nowhere to save.
+                    if (DEBUG) {
+                        Log.d(TAG, "Failed setting up queue persist files so nowhere to save to.");
+                    }
+                    return;
+                }
+            }
+
+            if (!mPersistQueueFile.exists()) {
+                // File doesn't exist, try to create it.
+                mPersistQueueFile.createNewFile();
+            }
+        } catch (Exception e) {
+            if (DEBUG) Log.e(TAG, "Exception accessing persisted records store.", e);
+            return;
+        }
+
+        // Clean up queue to reduce extraneous writes
+        maybeCleanupQueue();
+
+        // Generate proto for queue.
+        QueuedResultsWrapper.Builder builder = QueuedResultsWrapper.newBuilder();
+
+        boolean recordAdded = false;
+
+        for (int i = 0; i < mQueuedTracingResults.size(); i++) {
+            List<TracingSession> perUidSessions = mQueuedTracingResults.valueAt(i);
+            if (!perUidSessions.isEmpty()) {
+                for (int j = 0; j < perUidSessions.size(); j++) {
+                    builder.addSessions(perUidSessions.get(j).toProto());
+
+                    if (!recordAdded) {
+                        recordAdded = true;
+                    }
+                }
+            }
+        }
+
+        if (!recordAdded) {
+            // No results, nothing to persist, delete the file as it may contain results that are no
+            // longer meaningful and will just increase future work and then return.
+            deletePersistQueueFile();
+            return;
+        }
+
+        QueuedResultsWrapper queuedResultsWrapper = builder.build();
+
+        // Write to disk
+        byte[] protoBytes = queuedResultsWrapper.toByteArray();
+        AtomicFile persistFile = new AtomicFile(mPersistQueueFile);
+        FileOutputStream out = null;
+        try {
+            out = persistFile.startWrite();
+            out.write(protoBytes);
+            persistFile.finishWrite(out);
+            synchronized (mLock) {
+                mLastPersistedQueueTimestampMs = System.currentTimeMillis();
+            }
+        } catch (IOException e) {
+            if (DEBUG) Log.e(TAG, "Exception writing queued results", e);
+            persistFile.failWrite(out);
+        }
     }
 
     private class ProfilingDeathRecipient implements IBinder.DeathRecipient {
