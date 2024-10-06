@@ -20,3 +20,11 @@ flag {
         purpose: PURPOSE_BUGFIX
      }
 }
+
+flag {
+     name: "persist_queue"
+     namespace: "system_performance"
+     is_exported: true
+     description: "Enables profiling queue persist and restore."
+     bug: "342435438"
+}
