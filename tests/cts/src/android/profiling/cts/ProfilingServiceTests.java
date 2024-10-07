@@ -16,16 +16,20 @@
 
 package android.profiling.cts;
 
+import static android.os.profiling.ProfilingService.TracingState;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -42,8 +46,10 @@ import android.os.profiling.DeviceConfigHelper;
 import android.os.profiling.ProfilingService;
 import android.os.profiling.RateLimiter;
 import android.os.profiling.TracingSession;
+import android.platform.test.annotations.EnableFlags;
 import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
+import android.platform.test.flag.junit.SetFlagsRule;
 
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.platform.app.InstrumentationRegistry;
@@ -53,6 +59,7 @@ import com.android.compatibility.common.util.SystemUtil;
 
 import com.google.errorprone.annotations.FormatMethod;
 
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -80,6 +87,7 @@ public final class ProfilingServiceTests {
     private static final String REQUEST_TAG = "some unique string";
 
     private static final String OVERRIDE_DEVICE_CONFIG_INT = "device_config put %s %s %d";
+    private static final String GET_DEVICE_CONFIG = "device_config get %s %s";
 
     // Key most and least significant bits are used to generate a unique key specific to each
     // request. Key is used to pair request back to caller and callbacks so test to keep consistent.
@@ -90,6 +98,7 @@ public final class ProfilingServiceTests {
 
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
+    @Rule public final SetFlagsRule mSetFlagsRule = new SetFlagsRule();
 
     @Mock private Process mActiveTrace;
 
@@ -112,12 +121,32 @@ public final class ProfilingServiceTests {
         }));
         mProfilingService.mRateLimiter = mRateLimiter;
 
-        // Override the persist file/directory and instead point to our own file/directory in app
-        // storage, since the test app context can't access /data/system
+        // Override the persist file/directory, for both queue and rate limiter, and instead point
+        // to our own file/directory in app storage, since the test app context can't access
+        // /data/system
         doReturn(true).when(mRateLimiter).setupPersistFiles();
         mRateLimiter.mPersistStoreDir = new File(mContext.getFilesDir(), "testdir");
         mRateLimiter.mPersistStoreDir.mkdir();
         mRateLimiter.mPersistFile = new File(mRateLimiter.mPersistStoreDir, "testfile");
+
+        doReturn(true).when(mProfilingService).setupPersistQueueFiles();
+        mProfilingService.mPersistQueueStoreDir = new File(mContext.getFilesDir(), "testdir");
+        // Same dir for both, no need to create the 2nd time.
+        mProfilingService.mPersistQueueFile =
+                new File(mProfilingService.mPersistQueueStoreDir, "testfile");
+    }
+
+    @After
+    public void cleanup() {
+        // Delete any local persist files.
+        if (mRateLimiter.mPersistFile != null) {
+            mRateLimiter.mPersistFile.delete();
+        }
+        if (mProfilingService.mPersistQueueFile != null) {
+            // This doesn't really do anything as the 2 file objects point to the same actual file
+            // on disk, but just in case that changes try the delete here too.
+            mProfilingService.mPersistQueueFile.delete();
+        }
     }
 
     /** Test that registering binder callbacks works as expected. */
@@ -325,7 +354,7 @@ public final class ProfilingServiceTests {
     @Test
     public void testAreAnyTracesRunning_True() {
         // Ensure no active tracing sessions tracked.
-        mProfilingService.mTracingSessions.clear();
+        mProfilingService.mActiveTracingSessions.clear();
         assertFalse(mProfilingService.areAnyTracesRunning());
 
         // Create a tracing session.
@@ -338,7 +367,7 @@ public final class ProfilingServiceTests {
 
         // Add trace to session and session to ProfilingService tracked sessions.
         tracingSession.setActiveTrace(mActiveTrace);
-        mProfilingService.mTracingSessions.put(
+        mProfilingService.mActiveTracingSessions.put(
                 (new UUID(KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS)).toString(), tracingSession);
 
         // Confirm check returns that a trace is running.
@@ -348,14 +377,14 @@ public final class ProfilingServiceTests {
     /** Test that checking if any traces are running works when trace is not running. */
     @Test
     public void testAreAnyTracesRunning_False() {
-        mProfilingService.mTracingSessions.clear();
-        assertEquals(0, mProfilingService.mTracingSessions.size());
+        mProfilingService.mActiveTracingSessions.clear();
+        assertEquals(0, mProfilingService.mActiveTracingSessions.size());
         assertFalse(mProfilingService.areAnyTracesRunning());
 
         TracingSession tracingSession = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null, APP_FILE_PATH, 123,
                 APP_PACKAGE_NAME, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
-        mProfilingService.mTracingSessions.put(
+        mProfilingService.mActiveTracingSessions.put(
                 (new UUID(KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS)).toString(), tracingSession);
 
         // Confirm no traces are running because the 1 we added is not in a running state.
@@ -365,18 +394,18 @@ public final class ProfilingServiceTests {
     /** Test that cleaning up active traces list works correctly. */
     @Test
     public void testActiveTracesCleanup() {
-        mProfilingService.mTracingSessions.clear();
-        assertEquals(0, mProfilingService.mTracingSessions.size());
+        mProfilingService.mActiveTracingSessions.clear();
+        assertEquals(0, mProfilingService.mActiveTracingSessions.size());
         assertFalse(mProfilingService.areAnyTracesRunning());
 
         TracingSession tracingSession = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null, APP_FILE_PATH, 123,
                 APP_PACKAGE_NAME, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
-        mProfilingService.mTracingSessions.put(
+        mProfilingService.mActiveTracingSessions.put(
                 (new UUID(KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS)).toString(), tracingSession);
 
         // Confirm the session was added.
-        assertEquals(1, mProfilingService.mTracingSessions.size());
+        assertEquals(1, mProfilingService.mActiveTracingSessions.size());
 
         // Confirm no traces are running because the 1 we added is not in a running state.
         assertFalse(mProfilingService.areAnyTracesRunning());
@@ -385,14 +414,14 @@ public final class ProfilingServiceTests {
         mProfilingService.cleanupActiveTracingSessions();
 
         // Confirm the non running session was cleaned up.
-        assertEquals(0, mProfilingService.mTracingSessions.size());
+        assertEquals(0, mProfilingService.mActiveTracingSessions.size());
     }
 
     /** Test that request cancel trace does nothing if no trace is running. */
     @Test
     public void testRequestCancel_NotRunning() {
         // Ensure no active tracing sessions tracked.
-        mProfilingService.mTracingSessions.clear();
+        mProfilingService.mActiveTracingSessions.clear();
         assertFalse(mProfilingService.areAnyTracesRunning());
 
         // Register callback.
@@ -633,6 +662,380 @@ public final class ProfilingServiceTests {
 
     // TODO: b/333579817 - Add more rate limiter tests
 
+    /** Test that advancing state in forward direction works as expected. */
+    @Test
+    public void testSessionState_AdvanceForwardSucceeds() {
+        // Create a session with some state.
+        TracingSession session = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
+                new Bundle(),
+                mContext.getFilesDir().getPath(),
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                REQUEST_TAG,
+                KEY_LEAST_SIG_BITS,
+                KEY_MOST_SIG_BITS);
+        session.setState(TracingState.PROFILING_FINISHED);
+
+        // Trigger an advance to a subsequent state.
+        mProfilingService.advanceTracingSession(session, TracingState.ERROR_OCCURRED);
+
+        // Ensure it does try to advance.
+        verify(mProfilingService, times(1)).processTracingSessionResultCallback(any(), eq(true));
+    }
+
+    /** Test that advancing state in backwards direction does not work. */
+    @Test
+    public void testSessionState_AdvanceBackwardsFails() {
+        // Override cleanupTracingSession to do nothing or it will call through to
+        // advanceTracingSession after cleanup and we need to confirm that advanceTracingSession is
+        // not immediately called.
+        doNothing().when(mProfilingService).cleanupTracingSession(any());
+
+        // Create a session with some state.
+        TracingSession session = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
+                new Bundle(),
+                mContext.getFilesDir().getPath(),
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                REQUEST_TAG,
+                KEY_LEAST_SIG_BITS,
+                KEY_MOST_SIG_BITS);
+        session.setState(TracingState.APPROVED);
+
+        // Attempt to advance to earlier state.
+        mProfilingService.advanceTracingSession(session, TracingState.REQUESTED);
+
+        // Ensure service determines something is broken, does not try to advance, and triggers a
+        // cleanup.
+        verify(mProfilingService, times(1)).cleanupTracingSession(any());
+    }
+
+    /**
+     * Test that advancing state with a null new state and no retries (i.e. not from queue retry)
+     * does not work. */
+    @Test
+    public void testSessionState_AdvanceNullFails() {
+        // Override cleanupTracingSession to do nothing or it will call through to
+        // advanceTracingSession after cleanup and we need to confirm that advanceTracingSession is
+        // not immediately called.
+        doNothing().when(mProfilingService).cleanupTracingSession(any());
+
+        // Create a session with some state.
+        TracingSession session = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
+                new Bundle(),
+                mContext.getFilesDir().getPath(),
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                REQUEST_TAG,
+                KEY_LEAST_SIG_BITS,
+                KEY_MOST_SIG_BITS);
+        session.setState(TracingState.REQUESTED);
+
+        // Make sure retry count is 0 (default value).
+        assertEquals(0, session.getRetryCount());
+
+        // Attempt to advance with null new state.
+        mProfilingService.advanceTracingSession(session, null);
+
+        // Ensure service determines something is broken, does not try to advance, and triggers a
+        // cleanup.
+        verify(mProfilingService, times(1)).cleanupTracingSession(any());
+    }
+
+    /**
+     * Test that persisting the queue and then reloading it from disk works correctly, loading the
+     * previous queue and all persistable fields.
+     */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
+    public void testQueuePersist_PersistAndRestore() {
+        // Clear the queue.
+        mProfilingService.mQueuedTracingResults.clear();
+
+        // A 2nd fake uid so we can have records belonging to multiple uids.
+        int fakeUid2 = FAKE_UID + 1;
+
+        // Create 3 fake sessions with various fields set on each.
+        TracingSession session1 = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
+                new Bundle(),
+                mContext.getFilesDir().getPath(),
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                REQUEST_TAG,
+                KEY_LEAST_SIG_BITS,
+                KEY_MOST_SIG_BITS);
+        session1.setProfilingStartTimeMs(System.currentTimeMillis());
+        session1.setState(TracingState.PROFILING_FINISHED);
+
+        TracingSession session2 = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
+                new Bundle(),
+                mContext.getFilesDir().getPath(),
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                REQUEST_TAG,
+                KEY_LEAST_SIG_BITS,
+                KEY_MOST_SIG_BITS);
+        session2.setProfilingStartTimeMs(System.currentTimeMillis());
+        session2.setState(TracingState.ERROR_OCCURRED);
+        session2.setError(ProfilingResult.ERROR_FAILED_POST_PROCESSING, "some error message");
+
+        TracingSession session3 = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                new Bundle(),
+                mContext.getFilesDir().getPath(),
+                fakeUid2,
+                APP_PACKAGE_NAME,
+                REQUEST_TAG,
+                KEY_LEAST_SIG_BITS,
+                KEY_MOST_SIG_BITS);
+        session3.setProfilingStartTimeMs(System.currentTimeMillis());
+        session3.setState(TracingState.REDACTED);
+
+        // Create 2 session lists.
+        List<TracingSession> sessionListUid1 = new ArrayList<TracingSession>();
+        List<TracingSession> sessionListUid2 = new ArrayList<TracingSession>();
+
+        // Add 2 sessions to the first list and 1 to the second list.
+        sessionListUid1.add(session1);
+        sessionListUid1.add(session2);
+        sessionListUid2.add(session3);
+
+        // Add each of the lists to the queue.
+        mProfilingService.mQueuedTracingResults.put(FAKE_UID, sessionListUid1);
+        mProfilingService.mQueuedTracingResults.put(fakeUid2, sessionListUid2);
+
+        // Trigger a persist.
+        mProfilingService.persistQueueToDisk();
+
+        // Confirm file was written to
+        confirmNonEmptyFileExists(mProfilingService.mPersistQueueFile);
+
+        // Clear the queue so we can ensure it is reloaded properly.
+        mProfilingService.mQueuedTracingResults.clear();
+        assertEquals(0, mProfilingService.mQueuedTracingResults.size());
+
+        // Load the queue from disk.
+        mProfilingService.loadQueueFromPersistedData();
+
+        // Finally, verify the loaded contents match the ones that were persisted.
+        // First check that the queue contains 2 lists, as added above.
+        assertEquals(2, mProfilingService.mQueuedTracingResults.size());
+
+        // Now, confirm that there are 2 queued results belonging to the first uid, and 1 belonging
+        // to the 2nd uid, as defined above.
+        assertEquals(2, mProfilingService.mQueuedTracingResults.get(FAKE_UID).size());
+        assertEquals(1, mProfilingService.mQueuedTracingResults.get(fakeUid2).size());
+
+        // Lastly, check that each loaded session is equal its persisted counterpart.
+        confirmTracingSessionsEqual(session1,
+                mProfilingService.mQueuedTracingResults.get(FAKE_UID).get(0));
+        confirmTracingSessionsEqual(session2,
+                mProfilingService.mQueuedTracingResults.get(FAKE_UID).get(1));
+        confirmTracingSessionsEqual(session3,
+                mProfilingService.mQueuedTracingResults.get(fakeUid2).get(0));
+    }
+
+    /**
+     * Test that loading queue with no persist file works as intended with no records added and
+     * correct methods called.
+     */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
+    public void testQueuePersist_NoPersistFile() {
+        // Clear the queue.
+        mProfilingService.mQueuedTracingResults.clear();
+
+        // Ensure the file doesn't exist.
+        mProfilingService.mPersistQueueFile.delete();
+        assertFalse(mProfilingService.mPersistQueueFile.exists());
+
+        // Load the queue from disk.
+        mProfilingService.loadQueueFromPersistedData();
+
+        // Ensure queue still empty.
+        assertEquals(0, mProfilingService.mQueuedTracingResults.size());
+        verify(mProfilingService, times(0)).deletePersistQueueFile();
+    }
+
+    /**
+     * Test that loading queue with an empty persist file works as intended with no records added
+     * and correct methods called.
+     */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
+    public void testQueuePersist_EmptyPersistFile() throws Exception {
+        // Clear the queue.
+        mProfilingService.mQueuedTracingResults.clear();
+
+        // Ensure the file exists and is empty.
+        mProfilingService.mPersistQueueFile.delete();
+        assertFalse(mProfilingService.mPersistQueueFile.exists());
+        mProfilingService.mPersistQueueFile.createNewFile();
+        assertTrue(mProfilingService.mPersistQueueFile.exists());
+        assertEquals(0L, mProfilingService.mPersistQueueFile.length());
+
+        // Load the queue from disk.
+        mProfilingService.loadQueueFromPersistedData();
+
+        // Ensure that the queue is still empty and that a delete was attempted as expected for the
+        // bad file state.
+        assertEquals(0, mProfilingService.mQueuedTracingResults.size());
+        verify(mProfilingService, times(1)).deletePersistQueueFile();
+    }
+
+    /**
+     * Test that loading queue with a invalid persist file works as intended with no records added
+     * and correct methods called.
+     */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
+    public void testQueuePersist_BadPersistFile() throws Exception {
+        // Clear the queue.
+        mProfilingService.mQueuedTracingResults.clear();
+
+        // Ensure the file exists and is empty.
+        mProfilingService.mPersistQueueFile.delete();
+        mProfilingService.mPersistQueueFile.createNewFile();
+        FileOutputStream fileOutputStream = new FileOutputStream(
+                mProfilingService.mPersistQueueFile);
+        fileOutputStream.write("some text that is definitely not a proto".getBytes());
+        fileOutputStream.close();
+        confirmNonEmptyFileExists(mProfilingService.mPersistQueueFile);
+
+        // Load the queue from disk.
+        mProfilingService.loadQueueFromPersistedData();
+
+        // Ensure that the queue is still empty and that a delete was attempted as expected for the
+        // bad file state.
+        assertEquals(0, mProfilingService.mQueuedTracingResults.size());
+        verify(mProfilingService, times(1)).deletePersistQueueFile();
+    }
+
+    /**
+     * Test that persisting queue respects the frequency defined, allowing the persist on the first
+     * instance but rejecting the subsequent persist.
+     */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
+    public void testQueuePersist_RespectFrequency() throws Exception {
+        // Override persist frequency to something large.
+        updateDeviceConfigAndWaitForChange(DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.PERSIST_QUEUE_TO_DISK_FREQUENCY_MS, 60 * 60 * 1000);
+
+        // Clear the queue.
+        mProfilingService.mQueuedTracingResults.clear();
+
+        // Populate the queue.
+        List<TracingSession> sessionList = new ArrayList<TracingSession>();
+        TracingSession session1 = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
+                new Bundle(),
+                mContext.getFilesDir().getPath(),
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                REQUEST_TAG,
+                KEY_LEAST_SIG_BITS,
+                KEY_MOST_SIG_BITS);
+        session1.setProfilingStartTimeMs(System.currentTimeMillis());
+        session1.setState(TracingState.PROFILING_FINISHED);
+        TracingSession session2 = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
+                new Bundle(),
+                mContext.getFilesDir().getPath(),
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                REQUEST_TAG,
+                KEY_LEAST_SIG_BITS,
+                KEY_MOST_SIG_BITS);
+        session2.setProfilingStartTimeMs(System.currentTimeMillis());
+        session2.setState(TracingState.ERROR_OCCURRED);
+        session2.setError(ProfilingResult.ERROR_FAILED_POST_PROCESSING, "some error message");
+
+        sessionList.add(session1);
+        sessionList.add(session2);
+        mProfilingService.mQueuedTracingResults.put(FAKE_UID, sessionList);
+
+        // Trigger a persist.
+        mProfilingService.maybePersistQueueToDisk();
+
+        // Confirm that it actually persisted.
+        verify(mProfilingService, times(1)).persistQueueToDisk();
+        assertTrue(mProfilingService.mPersistQueueFile.exists());
+
+        // Delete the file so we can confirm the next call does nothing.
+        assertTrue(mProfilingService.mPersistQueueFile.delete());
+
+        // Finally, trigger another persist.
+        mProfilingService.maybePersistQueueToDisk();
+
+        // And confirm the persist did not immediately run.
+        assertFalse(mProfilingService.mPersistQueueFile.exists());
+        // Verify with same value as earlier so we know it didn't get triggered again.
+        verify(mProfilingService, times(1)).persistQueueToDisk();
+    }
+
+    /**
+     * Test that persists that are scheduled for the future due to a persist having recently
+     * occurred, occur at a future time as expected.
+     */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
+    public void testQueuePersist_Scheduling() throws Exception {
+        // Override persist frequency to 5 seconds that way we can confirm both that the persist did
+        // not happen immediately and that it did eventually happen. This is the time from the first
+        // call to maybePersistQueueToDisk until the next call to the same method for the scheduling
+        // of the next persist to occur as expected, rather than immediately persisting.
+        updateDeviceConfigAndWaitForChange(DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.PERSIST_QUEUE_TO_DISK_FREQUENCY_MS, 5 * 1000);
+
+        // Clear the queue.
+        mProfilingService.mQueuedTracingResults.clear();
+
+        // Populate the queue.
+        TracingSession session = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
+                new Bundle(),
+                mContext.getFilesDir().getPath(),
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                REQUEST_TAG,
+                KEY_LEAST_SIG_BITS,
+                KEY_MOST_SIG_BITS);
+        session.setProfilingStartTimeMs(System.currentTimeMillis());
+        session.setState(TracingState.PROFILING_FINISHED);
+
+        List<TracingSession> sessionList = new ArrayList<TracingSession>();
+        sessionList.add(session);
+        mProfilingService.mQueuedTracingResults.put(FAKE_UID, sessionList);
+
+        // Trigger a persist.
+        mProfilingService.maybePersistQueueToDisk();
+
+        // Confirm that it actually persisted.
+        assertTrue(mProfilingService.mPersistQueueFile.exists());
+
+        // Delete the file so that we can later use its existence to confirm whether the next
+        // persist occurred.
+        assertTrue(mProfilingService.mPersistQueueFile.delete());
+
+        // Trigger another persist.
+        mProfilingService.maybePersistQueueToDisk();
+
+        // And confirm the persist did not immediately run.
+        assertFalse(mProfilingService.mPersistQueueFile.exists());
+
+        // Wait 1 second longer than the configured delay to be sure the persist had time to finish.
+        sleep(6 * 1000);
+
+        // Finally, confirm that the file now exists.
+        assertTrue(mProfilingService.mPersistQueueFile.exists());
+    }
+
     /** Test that adding a specific listener does not trigger handling queued results. */
     @Test
     public void testQueuedResult_RequestSpecificListener() {
@@ -687,7 +1090,7 @@ public final class ProfilingServiceTests {
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
                 KEY_MOST_SIG_BITS);
-        session.setState(TracingSession.TracingState.PROFILING_STARTED);
+        session.setState(TracingState.PROFILING_STARTED);
         queue.add(session);
         mProfilingService.mQueuedTracingResults.put(FAKE_UID, queue);
 
@@ -726,7 +1129,7 @@ public final class ProfilingServiceTests {
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
                 KEY_MOST_SIG_BITS);
-        session.setState(TracingSession.TracingState.PROFILING_FINISHED);
+        session.setState(TracingState.PROFILING_FINISHED);
         session.setRetryCount(3);
         queue.add(session);
         mProfilingService.mQueuedTracingResults.put(FAKE_UID, queue);
@@ -764,7 +1167,7 @@ public final class ProfilingServiceTests {
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
                 KEY_MOST_SIG_BITS);
-        session.setState(TracingSession.TracingState.PROFILING_FINISHED);
+        session.setState(TracingState.PROFILING_FINISHED);
         queue.add(session);
         mProfilingService.mQueuedTracingResults.put(uid, queue);
 
@@ -778,7 +1181,7 @@ public final class ProfilingServiceTests {
         // Confirm that the correct path was called. Callback will be for failed post processing
         // because we cannot copy from this context.
         verify(mProfilingService, times(1)).beginMoveFileToAppStorage(any());
-        verify(mProfilingService, times(1)).finishProcessingResult(any(), eq(false));
+        verify(mProfilingService, times(1)).processTracingSessionResultCallback(any(), eq(false));
         assertTrue(callback.mFileRequested);
         assertTrue(callback.mResultSent);
         assertEquals(ProfilingResult.ERROR_FAILED_POST_PROCESSING, callback.mStatus);
@@ -803,7 +1206,7 @@ public final class ProfilingServiceTests {
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
                 KEY_MOST_SIG_BITS);
-        session.setState(TracingSession.TracingState.PROFILING_FINISHED);
+        session.setState(TracingState.PROFILING_FINISHED);
         queue.add(session);
         mProfilingService.mQueuedTracingResults.put(FAKE_UID, queue);
 
@@ -816,7 +1219,7 @@ public final class ProfilingServiceTests {
 
         // Confirm that the correct path was called. Callback will be for failed post processing
         // because we cannot copy from this context.
-        verify(mProfilingService, times(1)).handleTraceResult(any());
+        verify(mProfilingService, times(1)).handleRedactionRequiredResult(any());
         assertTrue(callback.mResultSent);
         assertEquals(ProfilingResult.ERROR_FAILED_POST_PROCESSING, callback.mStatus);
     }
@@ -841,7 +1244,7 @@ public final class ProfilingServiceTests {
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
                 KEY_MOST_SIG_BITS);
-        session.setState(TracingSession.TracingState.REDACTED);
+        session.setState(TracingState.REDACTED);
         session.setProfilingStartTimeMs(System.currentTimeMillis());
         queue.add(session);
         mProfilingService.mQueuedTracingResults.put(uid, queue);
@@ -855,7 +1258,7 @@ public final class ProfilingServiceTests {
 
         // Confirm that the correct path was called.
         verify(mProfilingService, times(1)).beginMoveFileToAppStorage(any());
-        verify(mProfilingService, times(1)).finishProcessingResult(any(), eq(false));
+        verify(mProfilingService, times(1)).processTracingSessionResultCallback(any(), eq(false));
         assertTrue(callback.mFileRequested);
         assertTrue(callback.mResultSent);
         assertEquals(ProfilingResult.ERROR_FAILED_POST_PROCESSING, callback.mStatus);
@@ -884,7 +1287,8 @@ public final class ProfilingServiceTests {
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
                 KEY_MOST_SIG_BITS);
-        session.setState(TracingSession.TracingState.COPIED_FILE);
+        session.setState(TracingState.COPIED_FILE);
+        session.setError(ProfilingResult.ERROR_NONE);
         queue.add(session);
         mProfilingService.mQueuedTracingResults.put(FAKE_UID, queue);
 
@@ -896,9 +1300,84 @@ public final class ProfilingServiceTests {
         mProfilingService.handleQueuedResults(FAKE_UID);
 
         // Confirm that the correct path was called that a success callback was received.
-        verify(mProfilingService, times(1)).finishProcessingResult(any(), eq(true));
-        assertEquals(ProfilingResult.ERROR_NONE, callback.mStatus);
+        verify(mProfilingService, times(1)).processTracingSessionResultCallback(any(), eq(true));
         assertFalse(mProfilingService.mQueuedTracingResults.contains(FAKE_UID));
+    }
+
+    /**
+     * Test that a queued result for a session with state of error occurred correctly progresses
+     * to next step of triggering callback.
+     */
+    @Test
+    public void testQueuedResult_ErrorOccurred() {
+        // Clear all existing queued results.
+        mProfilingService.mQueuedTracingResults.clear();
+
+        // Add a in progress session to queue with state error occurred
+        List<TracingSession> queue = new ArrayList<TracingSession>();
+        TracingSession session = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                new Bundle(),
+                mContext.getFilesDir().getPath(),
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                REQUEST_TAG,
+                KEY_LEAST_SIG_BITS,
+                KEY_MOST_SIG_BITS);
+        session.setState(TracingState.ERROR_OCCURRED);
+        session.setError(ProfilingResult.ERROR_UNKNOWN);
+        queue.add(session);
+        mProfilingService.mQueuedTracingResults.put(FAKE_UID, queue);
+
+        // Add a callback directly with fake uid
+        ProfilingResultCallback callback = new ProfilingResultCallback();
+        mProfilingService.mResultCallbacks.put(FAKE_UID, Arrays.asList(callback));
+
+        // Trigger handle queued results
+        mProfilingService.handleQueuedResults(FAKE_UID);
+
+        // Confirm that the correct path was called that an error callback was received.
+        verify(mProfilingService, times(1)).processTracingSessionResultCallback(any(), eq(true));
+        assertTrue(callback.mResultSent);
+        assertEquals(ProfilingResult.ERROR_UNKNOWN, callback.mStatus);
+    }
+
+    /**
+     * Test that a queued result for a session with state of notified requester correctly progresses
+     * to next step of cleaning up and does not trigger any further callbacks.
+     */
+    @Test
+    public void testQueuedResult_NotifiedRequester() {
+        // Clear all existing queued results.
+        mProfilingService.mQueuedTracingResults.clear();
+
+        // Add a in progress session to queue with state notified requester
+        List<TracingSession> queue = new ArrayList<TracingSession>();
+        TracingSession session = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                new Bundle(),
+                mContext.getFilesDir().getPath(),
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                REQUEST_TAG,
+                KEY_LEAST_SIG_BITS,
+                KEY_MOST_SIG_BITS);
+        session.setState(TracingState.NOTIFIED_REQUESTER);
+        session.setError(ProfilingResult.ERROR_NONE);
+        queue.add(session);
+        mProfilingService.mQueuedTracingResults.put(FAKE_UID, queue);
+
+        // Add a callback directly with fake uid
+        ProfilingResultCallback callback = new ProfilingResultCallback();
+        mProfilingService.mResultCallbacks.put(FAKE_UID, Arrays.asList(callback));
+
+        // Trigger handle queued results
+        mProfilingService.handleQueuedResults(FAKE_UID);
+
+        // Confirm that the correct path was called.
+        verify(mProfilingService, times(1)).cleanupTracingSession(any());
+        assertFalse(mProfilingService.mQueuedTracingResults.contains(FAKE_UID));
+        assertFalse(callback.mResultSent);
     }
 
     /**
@@ -921,7 +1400,7 @@ public final class ProfilingServiceTests {
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
                 KEY_MOST_SIG_BITS);
-        session.setState(TracingSession.TracingState.COPIED_FILE);
+        session.setState(TracingState.COPIED_FILE);
         session.setProfilingStartTimeMs(System.currentTimeMillis() - 1000
                 - ProfilingService.QUEUED_RESULT_MAX_RETAINED_DURATION_MS);
         queue.add(session);
@@ -966,8 +1445,8 @@ public final class ProfilingServiceTests {
                 KEY_LEAST_SIG_BITS,
                 KEY_MOST_SIG_BITS);
         session.setFileName(trackedFile.getName());
-        mProfilingService.mTracingSessions.put(session.getKey(), session);
-        assertEquals(1, mProfilingService.mTracingSessions.size());
+        mProfilingService.mActiveTracingSessions.put(session.getKey(), session);
+        assertEquals(1, mProfilingService.mActiveTracingSessions.size());
 
         // Now trigger the cleanup
         mProfilingService.cleanupTemporaryDirectoryLocked(directory.getPath());
@@ -1151,6 +1630,24 @@ public final class ProfilingServiceTests {
         }
     }
 
+    // LINT.IfChange(equals)
+    private void confirmTracingSessionsEqual(TracingSession s1, TracingSession s2) {
+        assertEquals(s1.getProfilingType(), s2.getProfilingType());
+        assertEquals(s1.getAppFilePath(), s2.getAppFilePath());
+        assertEquals(s1.getUid(), s2.getUid());
+        assertEquals(s1.getPackageName(), s2.getPackageName());
+        assertEquals(s1.getTag(), s2.getTag());
+        assertEquals(s1.getKeyMostSigBits(), s2.getKeyMostSigBits());
+        assertEquals(s1.getKeyLeastSigBits(), s2.getKeyLeastSigBits());
+        assertEquals(s1.getFileName(), s2.getFileName());
+        assertEquals(s1.getRedactedFileName(), s2.getRedactedFileName());
+        assertEquals(s1.getState().getValue(), s2.getState().getValue());
+        assertEquals(s1.getRetryCount(), s2.getRetryCount());
+        assertEquals(s1.getErrorMessage(), s2.getErrorMessage());
+        assertEquals(s1.getErrorStatus(), s2.getErrorStatus());
+    }
+    // LINT.ThenChange(/service/proto/android/os/queue.proto:proto)
+
     /** Confirm that all fields returned by callback match expectation. */
     private void confirmResultCallback(ProfilingResultCallback callback, String resultFile,
             long keyMostSigBits, long keyLeastSigBits, int status, String tag,
@@ -1164,6 +1661,36 @@ public final class ProfilingServiceTests {
             assertNotNull(callback.mError);
         } else {
             assertNull(callback.mError);
+        }
+    }
+
+    /**
+     * Update the provided device config value and wait for up to 2 seconds, checking every 100ms,
+     * for the value change to take effect.
+     */
+    private void updateDeviceConfigAndWaitForChange(String namespace, String config, int newValue)
+            throws Exception {
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, namespace, config, newValue);
+        for (int i = 0; i < 20; i++) {
+            sleep(100);
+            String s = executeShellCmd(GET_DEVICE_CONFIG, namespace, config);
+            try {
+                int val = Integer.parseInt(s.trim());
+                if (val == newValue) {
+                    return;
+                }
+            } catch (NumberFormatException e) {
+                // Ignore and continue.
+            }
+        }
+        fail("DeviceConfig value never updated to match expected value.");
+    }
+
+    private static void sleep(long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            // Do nothing.
         }
     }
 

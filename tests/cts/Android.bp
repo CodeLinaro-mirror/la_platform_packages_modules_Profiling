@@ -19,9 +19,9 @@ android_test {
         "testng",
     ],
     libs: [
-        "android.test.runner",
-        "android.test.base",
-        "android.test.mock",
+        "android.test.runner.stubs.system",
+        "android.test.base.stubs.system",
+        "android.test.mock.stubs.system",
         "junit",
     ],
     // include both the 32 and 64 bit versions
@@ -36,6 +36,8 @@ android_test {
     test_suites: [
         "cts",
         "general-tests",
+        "mts-profiling",
+        "mcts-profiling",
     ],
     min_sdk_version: "35",
     sdk_version: "module_current",
