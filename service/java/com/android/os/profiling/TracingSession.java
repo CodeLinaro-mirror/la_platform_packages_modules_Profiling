@@ -34,7 +34,6 @@ public final class TracingSession {
     // LINT.IfChange(persisted_params)
     // Persisted params
     private final int mProfilingType;
-    private final String mAppFilePath;
     private final int mUid;
     private final String mPackageName;
     private final String mTag;
@@ -60,11 +59,10 @@ public final class TracingSession {
     private long mProfilingStartTimeMs;
     private int mMaxProfilingTimeAllowedMs = 0;
 
-    public TracingSession(int profilingType, Bundle params, String appFilePath, int uid,
-                String packageName, String tag, long keyMostSigBits, long keyLeastSigBits) {
+    public TracingSession(int profilingType, Bundle params, int uid, String packageName, String tag,
+            long keyMostSigBits, long keyLeastSigBits) {
         mProfilingType = profilingType;
         mParams = params;
-        mAppFilePath = appFilePath;
         mUid = uid;
         mPackageName = packageName;
         mTag = tag;
@@ -73,11 +71,9 @@ public final class TracingSession {
         mState = TracingState.REQUESTED;
     }
 
-
     // LINT.IfChange(from_proto)
     public TracingSession(QueuedResultsWrapper.TracingSession sessionProto) {
         mProfilingType = sessionProto.getProfilingType();
-        mAppFilePath = sessionProto.getAppFilePath();
         mUid = sessionProto.getUid();
         mPackageName = sessionProto.getPackageName();
         mTag = sessionProto.getTag();
@@ -218,10 +214,6 @@ public final class TracingSession {
         return mProfilingType;
     }
 
-    public String getAppFilePath() {
-        return mAppFilePath;
-    }
-
     public int getUid() {
         return mUid;
     }
@@ -261,16 +253,17 @@ public final class TracingSession {
     }
 
     /**
-     * Returns the full path including name of the file being returned to the client.
+     * Returns the relative path starting from apps storage dir including name of the file being
+     * returned to the client.
      * @param appRelativePath relative path to app storage.
-     * @return full file path and name of file.
+     * @return relative file path and name of file.
      */
     public String getDestinationFileName(String appRelativePath) {
         if (mFileName == null) {
             return null;
         }
         if (mDestinationFileName == null) {
-            mDestinationFileName = mAppFilePath + appRelativePath
+            mDestinationFileName = appRelativePath
                     + ((this.getRedactedFileName() == null) ? mFileName : mRedactedFileName);
         }
         return mDestinationFileName;
@@ -299,9 +292,6 @@ public final class TracingSession {
                 QueuedResultsWrapper.TracingSession.newBuilder();
 
         tracingSessionBuilder.setProfilingType(mProfilingType);
-        if (mAppFilePath != null) {
-            tracingSessionBuilder.setAppFilePath(mAppFilePath);
-        }
         tracingSessionBuilder.setUid(mUid);
         tracingSessionBuilder.setPackageName(mPackageName);
         if (mTag != null) {

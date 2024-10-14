@@ -82,7 +82,6 @@ import java.util.UUID;
 @RunWith(AndroidJUnit4.class)
 public final class ProfilingServiceTests {
 
-    private static final String APP_FILE_PATH = "/data/user/0/com.android.profiling.tests/files";
     private static final String APP_PACKAGE_NAME = "com.android.profiling.tests";
     private static final String REQUEST_TAG = "some unique string";
 
@@ -186,8 +185,7 @@ public final class ProfilingServiceTests {
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
-                APP_PACKAGE_NAME);
+                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, APP_PACKAGE_NAME);
 
         // Confirm callbacks was triggered for callback registered to this process.
         assertTrue(callback.mResultSent);
@@ -217,8 +215,7 @@ public final class ProfilingServiceTests {
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
-                APP_PACKAGE_NAME);
+                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, APP_PACKAGE_NAME);
 
         // Confirm callbacks was triggered for callback registered to this process.
         assertTrue(callbackOne.mResultSent);
@@ -240,8 +237,7 @@ public final class ProfilingServiceTests {
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
-                APP_PACKAGE_NAME);
+                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, APP_PACKAGE_NAME);
 
         // Confirm result matches failure expectation.
         confirmResultCallback(callback, null, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
@@ -262,8 +258,8 @@ public final class ProfilingServiceTests {
         mProfilingService.registerResultsCallback(false, callback);
 
         // Kick off request.
-        mProfilingService.requestProfiling(-1, null, APP_FILE_PATH, REQUEST_TAG,
-                KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, APP_PACKAGE_NAME);
+        mProfilingService.requestProfiling(-1, null, REQUEST_TAG, KEY_MOST_SIG_BITS,
+                KEY_LEAST_SIG_BITS, APP_PACKAGE_NAME);
 
         // Confirm result matches failure expectation.
         confirmResultCallback(callback, null, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
@@ -279,8 +275,7 @@ public final class ProfilingServiceTests {
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
-                null);
+                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, null);
 
         // Confirm result matches failure expectation.
         confirmResultCallback(callback, null, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
@@ -296,8 +291,7 @@ public final class ProfilingServiceTests {
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
-                "not.my.application");
+                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, "not.my.application");
 
         // Confirm result matches failure expectation.
         confirmResultCallback(callback, null, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
@@ -320,8 +314,7 @@ public final class ProfilingServiceTests {
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
-                APP_PACKAGE_NAME);
+                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, APP_PACKAGE_NAME);
 
         // Confirm result matches failure expectation.
         confirmResultCallback(callback, null, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
@@ -341,8 +334,7 @@ public final class ProfilingServiceTests {
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
-                APP_PACKAGE_NAME);
+                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, APP_PACKAGE_NAME);
 
         // Perfetto cannot be run from this context, ensure it was attempted and failed permissions.
         confirmResultCallback(callback, null, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
@@ -359,8 +351,8 @@ public final class ProfilingServiceTests {
 
         // Create a tracing session.
         TracingSession tracingSession = new TracingSession(
-                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null, APP_FILE_PATH, 123,
-                APP_PACKAGE_NAME, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null, 123, APP_PACKAGE_NAME,
+                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
 
         // Mock tracing session to be running.
         doReturn(true).when(mActiveTrace).isAlive();
@@ -382,8 +374,8 @@ public final class ProfilingServiceTests {
         assertFalse(mProfilingService.areAnyTracesRunning());
 
         TracingSession tracingSession = new TracingSession(
-                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null, APP_FILE_PATH, 123,
-                APP_PACKAGE_NAME, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null, 123, APP_PACKAGE_NAME,
+                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
         mProfilingService.mActiveTracingSessions.put(
                 (new UUID(KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS)).toString(), tracingSession);
 
@@ -399,8 +391,8 @@ public final class ProfilingServiceTests {
         assertFalse(mProfilingService.areAnyTracesRunning());
 
         TracingSession tracingSession = new TracingSession(
-                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null, APP_FILE_PATH, 123,
-                APP_PACKAGE_NAME, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null, 123, APP_PACKAGE_NAME,
+                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
         mProfilingService.mActiveTracingSessions.put(
                 (new UUID(KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS)).toString(), tracingSession);
 
@@ -669,7 +661,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -696,7 +687,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -726,7 +716,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -762,7 +751,6 @@ public final class ProfilingServiceTests {
         TracingSession session1 = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -774,7 +762,6 @@ public final class ProfilingServiceTests {
         TracingSession session2 = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -787,7 +774,6 @@ public final class ProfilingServiceTests {
         TracingSession session3 = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 fakeUid2,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -935,7 +921,6 @@ public final class ProfilingServiceTests {
         TracingSession session1 = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -946,7 +931,6 @@ public final class ProfilingServiceTests {
         TracingSession session2 = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1000,7 +984,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1084,7 +1067,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1123,7 +1105,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1161,7 +1142,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 uid,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1200,7 +1180,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1238,7 +1217,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 uid,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1281,7 +1259,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1318,7 +1295,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1356,7 +1332,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1394,7 +1369,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1438,7 +1412,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1481,7 +1454,6 @@ public final class ProfilingServiceTests {
         TracingSession session1 = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1491,7 +1463,6 @@ public final class ProfilingServiceTests {
         TracingSession session2 = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 fakeUid2,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1501,7 +1472,6 @@ public final class ProfilingServiceTests {
         TracingSession session3 = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 fakeUid2,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1633,7 +1603,6 @@ public final class ProfilingServiceTests {
     // LINT.IfChange(equals)
     private void confirmTracingSessionsEqual(TracingSession s1, TracingSession s2) {
         assertEquals(s1.getProfilingType(), s2.getProfilingType());
-        assertEquals(s1.getAppFilePath(), s2.getAppFilePath());
         assertEquals(s1.getUid(), s2.getUid());
         assertEquals(s1.getPackageName(), s2.getPackageName());
         assertEquals(s1.getTag(), s2.getTag());
