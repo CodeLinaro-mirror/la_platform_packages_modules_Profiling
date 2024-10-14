@@ -102,6 +102,14 @@ public final class DeviceConfigHelper {
     public static final String STACK_SAMPLING_FREQUENCY_MIN = "stack_sampling_frequency_min";
     public static final String STACK_SAMPLING_FREQUENCY_MAX = "stack_sampling_frequency_max";
 
+    // System Triggered System Trace
+    public static final String SYSTEM_TRIGGERED_SYSTEM_TRACE_DURATION_MS =
+            "system_triggered_system_trace_duration_ms";
+    public static final String SYSTEM_TRIGGERED_SYSTEM_TRACE_DISCARD_BUFFER_SIZE_KB =
+            "system_triggered_system_trace_discard_buffer_size_kb";
+    public static final String SYSTEM_TRIGGERED_SYSTEM_TRACE_RING_BUFFER_SIZE_KB =
+            "system_triggered_system_trace_ring_buffer_size_kb";
+
     // Rate limiter configs
     public static final String PERSIST_TO_DISK_FREQUENCY_MS = "persist_to_disk_frequency_ms";
     public static final String MAX_COST_SYSTEM_1_HOUR = "max_cost_system_1_hour";
@@ -227,6 +235,14 @@ public final class DeviceConfigHelper {
                 SYSTEM_TRACE_SIZE_KB_DEFAULT,
                 SYSTEM_TRACE_SIZE_KB_MIN,
                 SYSTEM_TRACE_SIZE_KB_MAX);
+    }
+
+    /** Get all properties related to System Triggered System Trace configuration. */
+    public static DeviceConfig.Properties getAllSystemTriggeredSystemTraceProperties() {
+        return DeviceConfig.getProperties(NAMESPACE,
+                SYSTEM_TRIGGERED_SYSTEM_TRACE_DURATION_MS,
+                SYSTEM_TRIGGERED_SYSTEM_TRACE_DISCARD_BUFFER_SIZE_KB,
+                SYSTEM_TRIGGERED_SYSTEM_TRACE_RING_BUFFER_SIZE_KB);
     }
 
     /** Get all properties related to rate limiter. */

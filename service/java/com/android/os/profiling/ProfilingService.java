@@ -76,10 +76,15 @@ public class ProfilingService extends IProfilingService.Stub {
     private static final String OUTPUT_FILE_STACK_SAMPLING_SUFFIX = ".perfetto-stack-sample";
     private static final String OUTPUT_FILE_TRACE_SUFFIX = ".perfetto-trace";
     private static final String OUTPUT_FILE_UNREDACTED_TRACE_SUFFIX = ".perfetto-trace-unredacted";
+    private static final String OUTPUT_FILE_TRIGGER = "trigger";
+    private static final String OUTPUT_FILE_IN_PROGRESS = "in-progress";
 
     private static final String QUEUED_RESULTS_SYSTEM_DIR = "system";
     private static final String QUEUED_RESULTS_STORE_DIR = "profiling_queued_results_store";
     private static final String QUEUED_RESULTS_INFO_FILE = "profiling_queued_results_info";
+
+    // Used for unique session name only, not filename.
+    private static final String SYSTEM_TRIGGERED_SESSION_NAME_PREFIX = "system_triggered_session_";
 
     private static final int TAG_MAX_CHARS_FOR_FILENAME = 20;
 
@@ -137,6 +142,13 @@ public class ProfilingService extends IProfilingService.Stub {
     // is supported at a time, but this will be used in future to support multiple.
     @VisibleForTesting
     public ArrayMap<String, TracingSession> mActiveTracingSessions = new ArrayMap<>();
+
+    // System triggered trace is another actively running profiling session, but not included in
+    // the active sessions above as it's not associated with a TracingSession until it has been
+    // cloned.
+    private Process mSystemTriggeredTraceProcess = null;
+    private String mSystemTriggeredTraceUniqueSessionName = null;
+    private long mLastStartedSystemTriggeredTraceMs = 0;
 
     // uid indexed storage of completed tracing sessions that have not yet successfully handled the
     // result.
@@ -1142,19 +1154,15 @@ public class ProfilingService extends IProfilingService.Stub {
 
         session.setFileName(baseFileName + suffix);
 
-        try {
-            ProcessBuilder pb = new ProcessBuilder("/system/bin/perfetto", "-o",
-                    TEMP_TRACE_PATH + session.getFileName(), "-c", "-");
-            Process activeTrace = pb.start();
-            activeTrace.getOutputStream().write(config);
-            activeTrace.getOutputStream().close();
-            // If we made it this far the trace is running, save the session.
-            session.setActiveTrace(activeTrace);
+        Process activeProfiling = startProfilingProcess(config,
+                TEMP_TRACE_PATH + session.getFileName());
+
+        if (activeProfiling != null) {
+            // Profiling is running, save the session.
+            session.setActiveTrace(activeProfiling);
             session.setProfilingStartTimeMs(System.currentTimeMillis());
             mActiveTracingSessions.put(session.getKey(), session);
-        } catch (Exception e) {
-            // Catch all exceptions related to starting process as they'll all be handled similarly.
-            if (DEBUG) Log.d(TAG, "Trace couldn't be started", e);
+        } else {
             session.setError(ProfilingResult.ERROR_FAILED_EXECUTING, "Trace couldn't be started");
             moveSessionToQueue(session, true);
             advanceTracingSession(session, TracingState.ERROR_OCCURRED);
@@ -1172,6 +1180,135 @@ public class ProfilingService extends IProfilingService.Stub {
         getHandler().postDelayed(session.getProcessResultRunnable(), postProcessingInitialDelayMs);
 
         advanceTracingSession(session, TracingState.PROFILING_STARTED);
+    }
+
+    /** Start a trace to be used for system triggered profiling. */
+    private void startSystemTriggeredTrace() {
+        if (!android.os.profiling.Flags.systemTriggeredProfiling()) {
+            // Flag disabled.
+            return;
+        }
+
+        // TODO: b/373461116 - update to actual package names once data store exists.
+        String[] packageNames = new String[0];
+        if (packageNames.length == 0) {
+            // No apps have registered interest in system triggered profiling, so don't bother to
+            // start a trace for it.
+            if (DEBUG) {
+                Log.d(TAG,
+                        "System triggered trace not started due to no apps registering interest");
+            }
+            return;
+        }
+
+        String uniqueSessionName = SYSTEM_TRIGGERED_SESSION_NAME_PREFIX
+                + System.currentTimeMillis();
+
+        byte[] config = Configs.generateSystemTriggeredTraceConfig(uniqueSessionName, packageNames);
+        String outputFile = TEMP_TRACE_PATH + SYSTEM_TRIGGERED_SESSION_NAME_PREFIX
+                + OUTPUT_FILE_IN_PROGRESS + OUTPUT_FILE_UNREDACTED_TRACE_SUFFIX;
+
+        Process activeTrace = startProfilingProcess(config, outputFile);
+
+        if (activeTrace != null) {
+            mSystemTriggeredTraceProcess = activeTrace;
+            mSystemTriggeredTraceUniqueSessionName = uniqueSessionName;
+            mLastStartedSystemTriggeredTraceMs = System.currentTimeMillis();
+        }
+    }
+
+    /**
+     * Start the actual profiling process with necessary config details.
+     *
+     * @return the started process if it started successfully, or null if it failed to start.
+     */
+    @Nullable
+    private Process startProfilingProcess(byte[] config, String outputFile) {
+        try {
+            ProcessBuilder processBuilder = new ProcessBuilder("/system/bin/perfetto", "-o",
+                    outputFile, "-c", "-");
+            Process activeProfiling = processBuilder.start();
+            activeProfiling.getOutputStream().write(config);
+            activeProfiling.getOutputStream().close();
+            return activeProfiling;
+        } catch (Exception e) {
+            // Catch all exceptions related to starting process as they'll all be handled similarly.
+            if (DEBUG) Log.d(TAG, "Profiling couldn't be started", e);
+            return null;
+        }
+    }
+
+    /**
+     * Process a trigger for a uid + package name + trigger combination. This is done by verifying
+     * that a trace is active, the app has registered interest in this combo, and that both system
+     * and app provided rate limiting allow for it. If confirmed, it will proceed to clone the
+     * active profiling and continue processing the result.
+     *
+     * Cloning will fork the running trace, stop the new forked trace, and output the result to a
+     * separate file. This leaves the original trace running.
+     */
+    @VisibleForTesting
+    public void processTrigger(int uid, @NonNull String packageName, int triggerType) {
+        if (!android.os.profiling.Flags.systemTriggeredProfiling()) {
+            // Flag disabled.
+            return;
+        }
+
+        if (mSystemTriggeredTraceUniqueSessionName == null) {
+            // If we don't have the session name then we don't know how to clone the trace so stop
+            // it if it's still running and then return.
+            if (mSystemTriggeredTraceProcess != null && mSystemTriggeredTraceProcess.isAlive()) {
+                mSystemTriggeredTraceProcess.destroyForcibly();
+                mSystemTriggeredTraceProcess = null;
+            }
+
+            // There is no active system triggered trace so there's nothing to clone. Return.
+            if (DEBUG) {
+                Log.d(TAG, "Requested clone system triggered trace but we don't have the session "
+                        + "name.");
+            }
+            return;
+        }
+
+        if (mSystemTriggeredTraceProcess == null || !mSystemTriggeredTraceProcess.isAlive()) {
+            // If we make it to this path then session name wasn't set to null but can't be used
+            // anymore as its associated trace is not running, so set to null now.
+            mSystemTriggeredTraceUniqueSessionName = null;
+
+            // There is no active system triggered trace so there's nothing to clone. Return.
+            if (DEBUG) Log.d(TAG, "Requested clone system triggered trace but no trace active.");
+            return;
+        }
+
+        String baseFileName = OUTPUT_FILE_PREFIX
+                + OUTPUT_FILE_SECTION_SEPARATOR + OUTPUT_FILE_TRIGGER
+                + OUTPUT_FILE_SECTION_SEPARATOR + triggerType
+                + OUTPUT_FILE_SECTION_SEPARATOR + getFormattedDate();
+        String unredactedFullName = baseFileName + OUTPUT_FILE_UNREDACTED_TRACE_SUFFIX;
+
+        try {
+            // Try to clone the running trace.
+            Runtime.getRuntime().exec(new String[] {
+                    "/system/bin/perfetto",
+                    "--clone-by-name",
+                    mSystemTriggeredTraceUniqueSessionName,
+                    "--out",
+                    TEMP_TRACE_PATH + unredactedFullName});
+        } catch (IOException e) {
+            // Failed. There's nothing to clean up as we haven't created a session for this clone
+            // yet so just fail quietly. The result for this trigger instance combo will be lost.
+            if (DEBUG) Log.d(TAG, "Failed to clone running system triggered trace.", e);
+            return;
+        }
+
+        // If we get here the clone was successful. Create a new TracingSession to track this and
+        // continue moving it along the processing process.
+        TracingSession session = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE, uid, packageName, triggerType);
+        session.setRedactedFileName(baseFileName + OUTPUT_FILE_TRACE_SUFFIX);
+        session.setFileName(unredactedFullName);
+        moveSessionToQueue(session, true);
+        advanceTracingSession(session, TracingState.PROFILING_FINISHED);
     }
 
     /**
