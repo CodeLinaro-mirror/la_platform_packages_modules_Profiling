@@ -58,6 +58,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -146,9 +147,15 @@ public class ProfilingService extends IProfilingService.Stub {
     // System triggered trace is another actively running profiling session, but not included in
     // the active sessions above as it's not associated with a TracingSession until it has been
     // cloned.
-    private Process mSystemTriggeredTraceProcess = null;
-    private String mSystemTriggeredTraceUniqueSessionName = null;
+    @VisibleForTesting
+    public Process mSystemTriggeredTraceProcess = null;
+    @VisibleForTesting
+    public String mSystemTriggeredTraceUniqueSessionName = null;
     private long mLastStartedSystemTriggeredTraceMs = 0;
+
+    // Map of uid + package name to a sparse array of trigger objects.
+    @VisibleForTesting
+    public ProcessMap<SparseArray<ProfilingTrigger>> mAppTriggers = new ProcessMap<>();
 
     // uid indexed storage of completed tracing sessions that have not yet successfully handled the
     // result.
@@ -1189,8 +1196,7 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
 
-        // TODO: b/373461116 - update to actual package names once data store exists.
-        String[] packageNames = new String[0];
+        String[] packageNames = getActiveTriggerPackageNames();
         if (packageNames.length == 0) {
             // No apps have registered interest in system triggered profiling, so don't bother to
             // start a trace for it.
@@ -1280,6 +1286,46 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
 
+        // Then check if the app has registered interest in this combo.
+        SparseArray<ProfilingTrigger> perProcessTriggers = mAppTriggers.get(packageName, uid);
+        if (perProcessTriggers == null) {
+            // This uid hasn't registered any triggers.
+            if (DEBUG) {
+                Log.d(TAG, String.format("Profiling triggered for uid %d with no registered "
+                        + "triggers", uid));
+            }
+            return;
+        }
+
+        ProfilingTrigger trigger = perProcessTriggers.get(triggerType);
+        if (trigger == null) {
+            // This uid hasn't registered a trigger for this type.
+            if (DEBUG) {
+                Log.d(TAG, String.format("Profiling triggered for uid %d and trigger %d, but "
+                        + "app has not registered for this trigger type.", uid, triggerType));
+            }
+            return;
+        }
+
+        // Now apply system and app provided rate limiting.
+        if (System.currentTimeMillis() - trigger.getLastTriggeredTimeMs()
+                < trigger.getRateLimitingPeriodHours() * 60L * 60L * 1000L) {
+            // App provided rate limiting doesn't allow for this run, return.
+            if (DEBUG) {
+                Log.d(TAG, String.format("Profiling triggered for uid %d and trigger %d but blocked"
+                        + " by app provided rate limiting ", uid, triggerType));
+            }
+            return;
+        }
+        // TODO: b/373461116 - system rate limiting
+
+        // Now that it's approved by both rate limiters, update their values.
+        trigger.setLastTriggeredTimeMs(System.currentTimeMillis());
+
+        // If we made it this far, a trace is running, the app has registered interest in this
+        // trigger, and rate limiting allows for capturing the result.
+
+        // Create the file names
         String baseFileName = OUTPUT_FILE_PREFIX
                 + OUTPUT_FILE_SECTION_SEPARATOR + OUTPUT_FILE_TRIGGER
                 + OUTPUT_FILE_SECTION_SEPARATOR + triggerType
@@ -1309,6 +1355,40 @@ public class ProfilingService extends IProfilingService.Stub {
         session.setFileName(unredactedFullName);
         moveSessionToQueue(session, true);
         advanceTracingSession(session, TracingState.PROFILING_FINISHED);
+    }
+
+    /** Add a profiling trigger to the supporting data structure. */
+    @VisibleForTesting
+    public void addTrigger(int uid, @NonNull String packageName, int triggerType,
+            int rateLimitingPeriodHours) {
+        if (!android.os.profiling.Flags.systemTriggeredProfiling()) {
+            // Flag disabled.
+            return;
+        }
+
+        ProfilingTrigger trigger = new ProfilingTrigger(
+                uid, packageName, triggerType, rateLimitingPeriodHours);
+
+        SparseArray<ProfilingTrigger> perProcessTriggers = mAppTriggers.get(packageName, uid);
+
+        if (perProcessTriggers == null) {
+            perProcessTriggers = new SparseArray<ProfilingTrigger>();
+            mAppTriggers.put(packageName, uid, perProcessTriggers);
+        }
+
+        // Only 1 trigger is allowed per uid + trigger type so this will override any previous
+        // triggers of this type registered for this uid.
+        perProcessTriggers.put(triggerType, trigger);
+    }
+
+    /** Get a list of all package names which have registered profiling triggers. */
+    private String[] getActiveTriggerPackageNames() {
+        // Since only system trace is supported for triggers, we can simply grab the key set of the
+        // backing map for the ProcessMap which will contain all the package names. Once other
+        // profiling types are supported, we'll need to filter these more intentionally to just the
+        // ones that have an associated trace trigger.
+        Set<String> packageNamesSet = mAppTriggers.getMap().keySet();
+        return packageNamesSet.toArray(new String[packageNamesSet.size()]);
     }
 
     /**
