@@ -27,4 +27,12 @@ flag {
      is_exported: true
      description: "Enables profiling queue persist and restore."
      bug: "342435438"
+     }
+
+flag {
+     name: "system_triggered_profiling"
+     namespace: "system_performance"
+     is_exported: true
+     description: "Enables system triggered profiling apis and functionality."
+     bug: "373461116"
 }
