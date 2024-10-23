@@ -82,8 +82,7 @@ public final class ProfilingTrigger {
          * @throws IllegalArgumentException if the trigger type is not valid.
          */
         public Builder(@TriggerType int triggerType) {
-            if (triggerType < TRIGGER_TYPE_APP_COLD_START_ACTIVITY
-                    || triggerType > TRIGGER_TYPE_ANR) {
+            if (!isValidRequestTriggerType(triggerType)) {
                 throw new IllegalArgumentException("Invalid trigger type.");
             }
 
@@ -139,4 +138,30 @@ public final class ProfilingTrigger {
     public int getRateLimitingPeriodHours() {
         return mRateLimitingPeriodHours;
     }
+
+    /**
+     * Convert to value parcel. Used for binder.
+     *
+     * @hide
+     */
+    public ProfilingTriggerValueParcel toValueParcel() {
+        ProfilingTriggerValueParcel valueParcel = new ProfilingTriggerValueParcel();
+
+        valueParcel.triggerType = mTriggerType;
+        valueParcel.rateLimitingPeriodHours = mRateLimitingPeriodHours;
+
+        return valueParcel;
+    }
+
+    /**
+     * Check whether the trigger type is valid for request use. Note that this means that a value of
+     * {@link TRIGGER_TYPE_NONE} will return false.
+     *
+     * @hide
+     */
+    public static boolean isValidRequestTriggerType(int triggerType) {
+        return triggerType == TRIGGER_TYPE_APP_COLD_START_ACTIVITY
+                || triggerType == TRIGGER_TYPE_ANR;
+    }
+
 }

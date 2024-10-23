@@ -22,6 +22,7 @@ import android.annotation.Nullable;
 import android.annotation.SystemApi;
 import android.annotation.SystemApi.Client;
 import android.os.profiling.Flags;
+import android.util.Log;
 
 import com.android.internal.annotations.GuardedBy;
 
@@ -42,25 +43,51 @@ public class ProfilingServiceHelper {
     @GuardedBy("sLock")
     private static ProfilingServiceHelper sInstance;
 
-    private ProfilingServiceHelper() {}
+    private final Object mLock = new Object();
 
-    /** Returns an instance of {@link ProfilingServiceHelper}. */
+    @NonNull
+    @GuardedBy("mLock")
+    private final IProfilingService mProfilingService;
+
+    private ProfilingServiceHelper(@NonNull IProfilingService service) {
+        mProfilingService = service;
+    }
+
+    /**
+     * Returns an instance of {@link ProfilingServiceHelper}.
+     *
+     * @throws IllegalStateException if called before ProfilingService is set up.
+     */
     @NonNull
     public static ProfilingServiceHelper getInstance() {
-        if (sInstance != null) {
-            return sInstance;
-        }
-
         synchronized (sLock) {
-            if (sInstance == null) {
-                sInstance = new ProfilingServiceHelper();
+            if (sInstance != null) {
+                return sInstance;
             }
+
+            IProfilingService service = Flags.telemetryApis() ? IProfilingService.Stub.asInterface(
+                    ProfilingFrameworkInitializer.getProfilingServiceManager()
+                            .getProfilingServiceRegisterer().get()) : null;
+
+            if (service == null) {
+                throw new IllegalStateException("ProfilingService not yet set up.");
+            }
+
+            sInstance = new ProfilingServiceHelper(service);
+
             return sInstance;
         }
     }
 
     /** Send a trigger to {@link ProfilingService}. */
     public void onProfilingTriggerOccurred(int uid, @NonNull String packageName, int triggerType) {
-
+        synchronized (mLock) {
+            try {
+                mProfilingService.processTrigger(uid, packageName, triggerType);
+            } catch (RemoteException e) {
+                // Exception sending trigger to service. Nothing to do here, trigger will be lost.
+                if (DEBUG) Log.e(TAG, "Exception sending trigger", e);
+            }
+        }
     }
 }

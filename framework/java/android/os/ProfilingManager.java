@@ -422,19 +422,129 @@ public final class ProfilingManager {
      */
     @FlaggedApi(Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void addProfilingTriggers(@NonNull List<ProfilingTrigger> triggers) {
+        synchronized (mLock) {
+            if (triggers.isEmpty()) {
+                // No triggers are being added, nothing to do.
+                if (DEBUG) Log.d(TAG, "Trying to add an empty list of triggers.");
+                return;
+            }
 
+            final IProfilingService service = getOrCreateIProfilingServiceLocked(false);
+            if (service == null) {
+                // If we can't access service then we can't do anything. Return.
+                if (DEBUG) Log.d(TAG, "ProfilingService is not available, triggers will be lost.");
+                return;
+            }
+
+            String packageName = mContext.getPackageName();
+            if (packageName == null) {
+                if (DEBUG) Log.d(TAG, "Failed to resolve package name.");
+                return;
+            }
+
+            try {
+                service.addProfilingTriggers(toValueParcelList(triggers), packageName);
+            } catch (RemoteException e) {
+                if (DEBUG) Log.d(TAG, "Binder exception processing request", e);
+                throw new RuntimeException("Unable to add profiling triggers.");
+            }
+        }
+    }
+
+    @FlaggedApi(Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    private List<ProfilingTriggerValueParcel> toValueParcelList(
+            List<ProfilingTrigger> triggerList) {
+        List<ProfilingTriggerValueParcel> triggerValueParcelList =
+                new ArrayList<ProfilingTriggerValueParcel>();
+
+        for (int i = 0; i < triggerList.size(); i++) {
+            triggerValueParcelList.add(triggerList.get(i).toValueParcel());
+        }
+
+        return triggerValueParcelList;
     }
 
     /** Remove the provided list of triggers for this process. */
     @FlaggedApi(Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void removeProfilingTriggers(@NonNull List<Integer> triggers) {
+        synchronized (mLock) {
+            if (triggers.isEmpty()) {
+                // No triggers are being removed, nothing to do.
+                if (DEBUG) Log.d(TAG, "Trying to remove an empty list of triggers.");
+                return;
+            }
 
+            final IProfilingService service = getOrCreateIProfilingServiceLocked(false);
+            if (service == null) {
+                // If we can't access service then we can't do anything. Return.
+                if (DEBUG) {
+                    Log.d(TAG, "ProfilingService is not available, triggers will not be removed.");
+                }
+                return;
+            }
+
+            String packageName = mContext.getPackageName();
+            if (packageName == null) {
+                if (DEBUG) Log.d(TAG, "Failed to resolve package name.");
+                return;
+            }
+
+            // First filter for valid triggers only.
+            ArrayList<Integer> validTriggers = new ArrayList<Integer>();
+            for (int i = 0; i < triggers.size(); i++) {
+                int trigger = triggers.get(i).intValue();
+                if (ProfilingTrigger.isValidRequestTriggerType(trigger)) {
+                    validTriggers.add(trigger);
+                }
+            }
+
+            if (validTriggers.isEmpty()) {
+                // No valid triggers are being removed, nothing to do.
+                if (DEBUG) Log.d(TAG, "Trying to remove a list of invalid triggers only.");
+                return;
+            }
+
+            // Move to array for binder.
+            int[] arr = new int[validTriggers.size()];
+            for (int i = 0; i < validTriggers.size(); i++) {
+                arr[i] = validTriggers.get(i).intValue();
+            }
+
+            try {
+                service.removeProfilingTriggers(arr, packageName);
+            } catch (RemoteException e) {
+                if (DEBUG) Log.d(TAG, "Binder exception processing request", e);
+                throw new RuntimeException("Unable to remove profiling triggers.");
+            }
+        }
     }
 
     /** Remove all triggers for this process. */
     @FlaggedApi(Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void clearProfilingTriggers() {
+        synchronized (mLock) {
+            final IProfilingService service = getOrCreateIProfilingServiceLocked(false);
+            if (service == null) {
+                // If we can't access service then we can't do anything. Return.
+                if (DEBUG) {
+                    Log.d(TAG, "ProfilingService is not available, triggers will not be removed.");
+                }
+                return;
+            }
 
+            String packageName = mContext.getPackageName();
+            if (packageName == null) {
+                if (DEBUG) Log.d(TAG, "Failed to resolve package name.");
+                return;
+            }
+
+            try {
+                service.clearProfilingTriggers(packageName);
+            } catch (RemoteException e) {
+                if (DEBUG) Log.d(TAG, "Binder exception processing request", e);
+                throw new RuntimeException("Unable to clear profiling triggers.");
+            }
+        }
     }
 
     /** @hide */
