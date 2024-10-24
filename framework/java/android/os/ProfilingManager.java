@@ -38,7 +38,39 @@ import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 
 /**
- * API for apps to request and listen for app specific profiling.
+ * <p>
+ * This class allows the caller to request profiling and listen for results. Profiling types
+ * supported are: system traces, java heap dumps, heap profiles, and stack traces.
+ * </p>
+ *
+ * <p>
+ * The {@link #requestProfiling} API can be used to begin profiling. Profiling may be ended manually
+ * using the CancellationSignal provided in the request, or as a result of a timeout. The timeout
+ * may be either the system default or caller defined in the parameter bundle for select types.
+ * </p>
+ *
+ * <p>
+ * The profiling results are delivered to the requesting app's data directory and a pointer to the
+ * file will be received using the app provided listeners.
+ * </p>
+ *
+ * <p>
+ * Apps can provide listeners in one or both of two ways:
+ * - A request-specific listener included with the request. This will trigger only with a result
+ *     from the request it was provided with.
+ * - A global listener provided by {@link #registerForAllProfilingResults}. This will be triggered
+ *     for all results belonging to your app.
+ * </p>
+ *
+ * <p>
+ * Requests are rate limited and not guaranteed to be filled. Rate limiting can be disabled for
+ * local testing using the shell command
+ * {@code device_config put profiling_testing rate_limiter.disabled true}
+ * </p>
+ *
+ * <p>
+ * Results are redacted and contain specific information about the requesting process only.
+ * </p>
  */
 @FlaggedApi(Flags.FLAG_TELEMETRY_APIS)
 public final class ProfilingManager {
@@ -156,7 +188,7 @@ public final class ProfilingManager {
      * <p>
      *   Both a listener and an executor must be set at the time of the request for the request to
      *   be considered for fulfillment. Listener/executor pairs can be set in this method, with
-     *   {@link registerForAllProfilingResults}, or both. The listener and executor must be set
+     *   {@link #registerForAllProfilingResults}, or both. The listener and executor must be set
      *   together, in the same call. If no listener and executor combination is set, the request
      *   will be discarded and no callback will be received.
      * </p>
@@ -168,7 +200,7 @@ public final class ProfilingManager {
      * <p>
      *   There might be a delay before profiling begins.
      *   For continuous profiling types (system tracing, stack sampling, and heap profiling),
-     *   we recommend starting the collection early and stopping it with {@link cancellationSignal}
+     *   we recommend starting the collection early and stopping it with {@code cancellationSignal}
      *   immediately after the area of interest to ensure that the section you want profiled is
      *   captured.
      *   For heap dumps, we recommend testing locally to ensure that the heap dump is collected at
@@ -178,9 +210,9 @@ public final class ProfilingManager {
      * @param profilingType Type of profiling to collect.
      * @param parameters Bundle of request related parameters. If the bundle contains any
      *                  unrecognized parameters, the request will be fail with
-     *                  {@link #ProfilingResult#ERROR_FAILED_INVALID_REQUEST}. If the values for
-     *                  the parameters are out of supported range, the closest possible in range
-     *                  value will be chosen.
+     *                  {@link android.os.ProfilingResult#ERROR_FAILED_INVALID_REQUEST}. If the
+     *                  values for the parameters are out of supported range, the closest possible
+     *                  in range value will be chosen.
      *                  Use of androidx wrappers is recommended over generating this directly.
      * @param tag Caller defined data to help identify the output.
      *                  The first 20 alphanumeric characters, plus dashes, will be lowercased
@@ -240,8 +272,7 @@ public final class ProfilingManager {
 
                 // For key, use most and least significant bits so we can create an identical UUID
                 // after passing over binder.
-                service.requestProfiling(profilingType, parameters,
-                        mContext.getFilesDir().getPath(), tag,
+                service.requestProfiling(profilingType, parameters, tag,
                         key.getMostSignificantBits(), key.getLeastSignificantBits(),
                         packageName);
                 if (cancellationSignal != null) {
@@ -429,7 +460,7 @@ public final class ProfilingManager {
                                     wrapper.mExecutor.execute(() -> wrapper.mListener.accept(
                                             new ProfilingResult(overrideStatusToError
                                                     ? ProfilingResult.ERROR_UNKNOWN : status,
-                                                    resultFile, tag, error)));
+                                                    getAppFileDir() + resultFile, tag, error)));
                                 }
 
                                 // Remove the single listener that was tied to the request, if
@@ -452,9 +483,10 @@ public final class ProfilingManager {
                          * write to the generated file.
                          */
                         @Override
-                        public void generateFile(String filePathAbsolute, String fileName,
+                        public void generateFile(String filePathRelative, String fileName,
                                 long keyMostSigBits, long keyLeastSigBits) {
                             synchronized (mLock) {
+                                String filePathAbsolute = getAppFileDir() + filePathRelative;
                                 try {
                                     // Ensure the profiling directory exists. Create it if it
                                     // doesn't.
@@ -542,12 +574,16 @@ public final class ProfilingManager {
                          * Delete a file. To be used only for files created by {@link generateFile}.
                          */
                         @Override
-                        public void deleteFile(String filePathAndName) {
+                        public void deleteFile(String relativeFilePathAndName) {
                             try {
-                                Files.delete(Path.of(filePathAndName));
+                                Files.delete(Path.of(getAppFileDir() + relativeFilePathAndName));
                             } catch (Exception exception) {
                                 if (DEBUG) Log.e(TAG, "Failed to delete file.", exception);
                             }
+                        }
+
+                        private String getAppFileDir() {
+                            return mContext.getFilesDir().getPath();
                         }
                     });
         } catch (RemoteException e) {
