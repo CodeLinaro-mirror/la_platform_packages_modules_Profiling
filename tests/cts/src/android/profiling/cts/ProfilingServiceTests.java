@@ -309,7 +309,7 @@ public final class ProfilingServiceTests {
 
         // Mock rate limiter result to simulate failure case.
         doReturn(RateLimiter.RATE_LIMIT_RESULT_BLOCKED_PROCESS).when(mRateLimiter)
-              .isProfilingRequestAllowed(anyInt(), anyInt(), any());
+              .isProfilingRequestAllowed(anyInt(), anyInt(), eq(false), any());
 
         // Register callback.
         ProfilingResultCallback callback = new ProfilingResultCallback();
@@ -1584,6 +1584,10 @@ public final class ProfilingServiceTests {
         // First, clear the data structure.
         mProfilingService.mAppTriggers.getMap().clear();
 
+        // Override the system rate limiter to always pass, we're not testing that here.
+        doReturn(RateLimiter.RATE_LIMIT_RESULT_ALLOWED).when(mRateLimiter)
+                .isProfilingRequestAllowed(anyInt(), anyInt(), eq(true), any());
+
         // And setup some mocks.
         mProfilingService.mSystemTriggeredTraceUniqueSessionName = "something_non_null";
         doReturn(true).when(mActiveTrace).isAlive();
@@ -1622,6 +1626,10 @@ public final class ProfilingServiceTests {
         // First, clear the data structure.
         mProfilingService.mAppTriggers.getMap().clear();
 
+        // Override the system rate limiter to always pass, we're not testing that here.
+        doReturn(RateLimiter.RATE_LIMIT_RESULT_ALLOWED).when(mRateLimiter)
+                .isProfilingRequestAllowed(anyInt(), anyInt(), eq(true), any());
+
         // And setup some mocks.
         mProfilingService.mSystemTriggeredTraceUniqueSessionName = "something_non_null";
         doReturn(true).when(mActiveTrace).isAlive();
@@ -1654,6 +1662,78 @@ public final class ProfilingServiceTests {
         assertEquals(fakeLastTriggerTimeMs, newTriggerTime);
     }
 
+    /** Test that system level rate limiting works correctly in the allow case. */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING)
+    public void testProcessTrigger_systemLevelRateLimit_allow() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // First, clear the data structure.
+        mProfilingService.mAppTriggers.getMap().clear();
+
+        // And setup some mocks.
+        mProfilingService.mSystemTriggeredTraceUniqueSessionName = "something_non_null";
+        doReturn(true).when(mActiveTrace).isAlive();
+        mProfilingService.mSystemTriggeredTraceProcess = mActiveTrace;
+
+        // TODO: b/373461116 - update hardcoded trigger to api value
+        int fakeTrigger = 1;
+
+        // Set app level rate limiting to 0, we're not testing that here.
+        int rateLimitingPeriodHours = 0;
+
+        // Add the trigger we'll use.
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger,
+                rateLimitingPeriodHours);
+
+        // Now process the trigger.
+        mProfilingService.processTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
+
+        // Get the new trigger time and make sure it's later than 0, indicating it ran.
+        long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
+                .get(fakeTrigger).getLastTriggeredTimeMs();
+        assertTrue(newTriggerTime > 0);
+    }
+
+    /** Test that system level rate limiting works correctly in the deny case. */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING)
+    public void testProcessTrigger_systemLevelRateLimit_deny() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // First, clear the data structure.
+        mProfilingService.mAppTriggers.getMap().clear();
+
+        // And setup some mocks.
+        mProfilingService.mSystemTriggeredTraceUniqueSessionName = "something_non_null";
+        doReturn(true).when(mActiveTrace).isAlive();
+        mProfilingService.mSystemTriggeredTraceProcess = mActiveTrace;
+
+        // Add record with high cost to rate limiter so that it won't allow future runs.
+        mRateLimiter.mPastRunsHour.add(FAKE_UID, 1000, System.currentTimeMillis());
+
+        // Wait 1 ms to ensure time has ticked and avoid potential flake.
+        sleep(1);
+
+        // TODO: b/373461116 - update hardcoded trigger to api value
+        int fakeTrigger = 1;
+
+        // Set app level rate limiting to 0, we're not testing that here.
+        int rateLimitingPeriodHours = 0;
+
+        // Add the trigger we'll use,
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger,
+                rateLimitingPeriodHours);
+
+        // Now process the trigger.
+        mProfilingService.processTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
+
+        // Get the new trigger time and make sure it's equal to 0, indicating it did not run.
+        long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
+                .get(fakeTrigger).getLastTriggeredTimeMs();
+        assertEquals(0, newTriggerTime);
+    }
+
     private File createAndConfirmFileExists(File directory, String fileName) throws Exception {
         File file = new File(directory, fileName);
         file.createNewFile();
@@ -1672,12 +1752,13 @@ public final class ProfilingServiceTests {
     private void overrideRateLimiterDefaults() throws Exception {
         // Update DeviceConfig defaults to general high enough limits, cost of 1, and persist
         // frequency 0.
-        overrideRateLimiterDefaults(5, 10, 20, 50, 50, 100, 1, 1, 1, 1, 0);
+        overrideRateLimiterDefaults(5, 10, 20, 50, 50, 100, 1, 1, 1, 1, 1, 0);
     }
 
     private void overrideRateLimiterDefaults(int systemHour, int processHour, int systemDay,
             int processDay, int systemWeek, int processWeek, int costHeapDump, int costHeapProfile,
-            int costStackSampling, int costSystemTrace, int persistToDiskFrequency)
+            int costStackSampling, int costSystemTrace, int costSystemTriggeredSystemProfiling,
+            int persistToDiskFrequency)
             throws Exception {
         executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, systemHour);
@@ -1699,6 +1780,9 @@ public final class ProfilingServiceTests {
                 DeviceConfigHelper.COST_STACK_SAMPLING, costStackSampling);
         executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.COST_SYSTEM_TRACE, costSystemTrace);
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.COST_SYSTEM_TRIGGERED_SYSTEM_TRACE,
+                costSystemTriggeredSystemProfiling);
         executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS, persistToDiskFrequency);
     }

@@ -103,6 +103,8 @@ public final class DeviceConfigHelper {
     public static final String STACK_SAMPLING_FREQUENCY_MAX = "stack_sampling_frequency_max";
 
     // System Triggered System Trace
+    public static final String COST_SYSTEM_TRIGGERED_SYSTEM_TRACE =
+            "cost_system_triggered_system_trace";
     public static final String SYSTEM_TRIGGERED_SYSTEM_TRACE_DURATION_MS =
             "system_triggered_system_trace_duration_ms";
     public static final String SYSTEM_TRIGGERED_SYSTEM_TRACE_DISCARD_BUFFER_SIZE_KB =
@@ -258,6 +260,7 @@ public final class DeviceConfigHelper {
                 COST_HEAP_PROFILE,
                 COST_STACK_SAMPLING,
                 COST_SYSTEM_TRACE,
+                COST_SYSTEM_TRIGGERED_SYSTEM_TRACE,
                 PERSIST_TO_DISK_FREQUENCY_MS);
     }
 

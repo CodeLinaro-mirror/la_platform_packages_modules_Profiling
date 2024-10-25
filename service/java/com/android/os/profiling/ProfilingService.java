@@ -780,7 +780,7 @@ public class ProfilingService extends IProfilingService.Stub {
 
         // Check with rate limiter if this request is allowed.
         final int status = getRateLimiter().isProfilingRequestAllowed(Binder.getCallingUid(),
-                profilingType, params);
+                profilingType, false, params);
         if (DEBUG) Log.d(TAG, "Rate limiter status: " + status);
         if (status == RateLimiter.RATE_LIMIT_RESULT_ALLOWED) {
             // Rate limiter approved, try to start the request.
@@ -1317,7 +1317,19 @@ public class ProfilingService extends IProfilingService.Stub {
             }
             return;
         }
-        // TODO: b/373461116 - system rate limiting
+
+        int systemRateLimiterResult = getRateLimiter().isProfilingRequestAllowed(uid,
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE, true, null);
+        if (systemRateLimiterResult != RateLimiter.RATE_LIMIT_RESULT_ALLOWED) {
+            // Blocked by system rate limiter, return. Since this is system triggered there is no
+            // callback and therefore no need to distinguish between per app and system denials
+            // within the system rate limiter.
+            if (DEBUG) {
+                Log.d(TAG, String.format("Profiling triggered for uid %d and trigger %d but blocked"
+                        + " by system rate limiting ", uid, triggerType));
+            }
+            return;
+        }
 
         // Now that it's approved by both rate limiters, update their values.
         trigger.setLastTriggeredTimeMs(System.currentTimeMillis());
