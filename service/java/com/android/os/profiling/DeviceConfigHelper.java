@@ -130,8 +130,6 @@ public final class DeviceConfigHelper {
             "clear_temporary_directory_frequency_ms";
     public static final String CLEAR_TEMPORARY_DIRECTORY_BOOT_DELAY_MS =
             "clear_temporary_directory_boot_delay_ms";
-    public static final String PERSIST_QUEUE_TO_DISK_FREQUENCY_MS =
-            "persist_queue_to_disk_frequency_ms";
 
     // Post Processing Configs
     public static final String PROFILING_RECHECK_DELAY_MS = "profiling_recheck_delay_ms";

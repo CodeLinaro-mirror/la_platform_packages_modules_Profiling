@@ -34,6 +34,7 @@ import android.os.IProfilingService;
 import android.os.ParcelFileDescriptor;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
+import android.os.ProfilingTriggersWrapper;
 import android.os.QueuedResultsWrapper;
 import android.os.RemoteException;
 import android.provider.DeviceConfig;
@@ -62,6 +63,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 public class ProfilingService extends IProfilingService.Stub {
     private static final String TAG = ProfilingService.class.getSimpleName();
@@ -80,9 +82,10 @@ public class ProfilingService extends IProfilingService.Stub {
     private static final String OUTPUT_FILE_TRIGGER = "trigger";
     private static final String OUTPUT_FILE_IN_PROGRESS = "in-progress";
 
-    private static final String QUEUED_RESULTS_SYSTEM_DIR = "system";
-    private static final String QUEUED_RESULTS_STORE_DIR = "profiling_queued_results_store";
+    private static final String PERSIST_SYSTEM_DIR = "system";
+    private static final String PERSIST_STORE_DIR = "profiling_service_data";
     private static final String QUEUED_RESULTS_INFO_FILE = "profiling_queued_results_info";
+    private static final String APP_TRIGGERS_INFO_FILE = "profiling_app_triggers_info";
 
     // Used for unique session name only, not filename.
     private static final String SYSTEM_TRIGGERED_SESSION_NAME_PREFIX = "system_triggered_session_";
@@ -109,7 +112,7 @@ public class ProfilingService extends IProfilingService.Stub {
     @VisibleForTesting
     public static final int QUEUED_RESULT_MAX_RETAINED_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 
-    private static final int PERSIST_QUEUE_TO_DISK_FREQUENCY_MS = 30 * 60 * 1000;
+    private static final int PERSIST_TO_DISK_DEFAULT_FREQUENCY_MS = 30 * 60 * 1000;
 
     private final Context mContext;
     private final Object mLock = new Object();
@@ -156,30 +159,33 @@ public class ProfilingService extends IProfilingService.Stub {
     // Map of uid + package name to a sparse array of trigger objects.
     @VisibleForTesting
     public ProcessMap<SparseArray<ProfilingTrigger>> mAppTriggers = new ProcessMap<>();
+    @VisibleForTesting
+    public boolean mAppTriggersLoaded = false;
 
     // uid indexed storage of completed tracing sessions that have not yet successfully handled the
     // result.
     @VisibleForTesting
     public SparseArray<List<TracingSession>> mQueuedTracingResults = new SparseArray<>();
 
-    private boolean mPersistQueueScheduled = false;
+    private boolean mPersistScheduled = false;
     // Frequency of 0 would result in immediate persist.
     @GuardedBy("mLock")
-    private AtomicInteger mPersistQueueFrequencyMs;
+    private AtomicInteger mPersistFrequencyMs;
     @GuardedBy("mLock")
-    private long mLastPersistedQueueTimestampMs = 0L;
-    private Runnable mPersistQueueRunnable = null;
+    private long mLastPersistedTimestampMs = 0L;
+    private Runnable mPersistRunnable = null;
 
-    /**
-     * The path to the directory which includes the queued results data file as specified in
-     * {@link #mPersistQueueFile}.
-     */
+    /** The path to the directory which includes all persisted results from this class. */
     @VisibleForTesting
-    public File mPersistQueueStoreDir;
+    public File mPersistStoreDir = null;
 
     /** The queued results data file, persisted in the storage. */
     @VisibleForTesting
-    public File mPersistQueueFile;
+    public File mPersistQueueFile = null;
+
+    /** The app triggers results data file, persisted in the storage. */
+    @VisibleForTesting
+    public File mPersistAppTriggersFile = null;
 
     /** To be disabled for testing only. */
     @GuardedBy("mLock")
@@ -285,9 +291,9 @@ public class ProfilingService extends IProfilingService.Stub {
             mKeepUnredactedTrace = DeviceConfigHelper.getTestBoolean(
                     DeviceConfigHelper.DISABLE_DELETE_UNREDACTED_TRACE, false);
 
-            mPersistQueueFrequencyMs = new AtomicInteger(DeviceConfigHelper.getInt(
-                    DeviceConfigHelper.PERSIST_QUEUE_TO_DISK_FREQUENCY_MS,
-                    PERSIST_QUEUE_TO_DISK_FREQUENCY_MS));
+            mPersistFrequencyMs = new AtomicInteger(DeviceConfigHelper.getInt(
+                    DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS,
+                    PERSIST_TO_DISK_DEFAULT_FREQUENCY_MS));
         }
         // Now subscribe to updates on test config.
         DeviceConfig.addOnPropertiesChangedListener(DeviceConfigHelper.NAMESPACE_TESTING,
@@ -340,9 +346,9 @@ public class ProfilingService extends IProfilingService.Stub {
                                     DeviceConfigHelper.REDACTION_MAX_RUNTIME_ALLOTTED_MS,
                                     mRedactionMaxRuntimeAllottedMs);
 
-                            mPersistQueueFrequencyMs.set(properties.getInt(
-                                    DeviceConfigHelper.PERSIST_QUEUE_TO_DISK_FREQUENCY_MS,
-                                    mPersistQueueFrequencyMs.get()));
+                            mPersistFrequencyMs.set(properties.getInt(
+                                    DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS,
+                                    mPersistFrequencyMs.get()));
                         }
                     }
                 });
@@ -356,9 +362,9 @@ public class ProfilingService extends IProfilingService.Stub {
             }
         }, mClearTemporaryDirectoryBootDelayMs);
 
-        // Load the queue right away so we can start delivering results as apps register global
-        // listeners.
+        // Load the queue and triggers right away.
         loadQueueFromPersistedData();
+        loadAppTriggersFromPersistedData();
     }
 
     /**
@@ -446,17 +452,122 @@ public class ProfilingService extends IProfilingService.Stub {
         }
     }
 
+    /**
+     * Load persisted app triggers from disk.
+     *
+     * If any issue is encountered during loading, mark as completed and delete the file. Persisted
+     * app triggers will be lost.
+     */
+    @VisibleForTesting
+    public void loadAppTriggersFromPersistedData() {
+        // Setup persist files
+        try {
+            if (!setupPersistAppTriggerFiles()) {
+                // If setting up the directory and file was unsuccessful then just return without
+                // marking loaded so it can be tried again.
+                if (DEBUG) Log.d(TAG, "Failed to setup app trigger persistence directory/files.");
+                return;
+            }
+        } catch (SecurityException e) {
+            // Can't access files.
+            Log.w(TAG, "Failed to setup app trigger persistence directory/files.", e);
+            return;
+        }
+
+        // Check if file exists
+        try {
+            if (!mPersistAppTriggersFile.exists()) {
+                // No file, nothing to load. This is an expected state for before the feature has
+                // ever been used or if the triggers were empty.
+                if (DEBUG) {
+                    Log.d(TAG, "App trigger persistence file does not exist, skipping load from "
+                            + "disk.");
+                }
+                mAppTriggersLoaded = true;
+                return;
+            }
+        } catch (SecurityException e) {
+            // Can't access file.
+            if (DEBUG) Log.e(TAG, "Exception accessing app triggers persistence file", e);
+            return;
+        }
+
+        // Read the file
+        AtomicFile persistFile = new AtomicFile(mPersistAppTriggersFile);
+        byte[] bytes;
+        try {
+            bytes = persistFile.readFully();
+        } catch (IOException e) {
+            Log.w(TAG, "Exception reading app triggers persistence file", e);
+            // Failed to read the file. No reason to believe we'll have better luck next time,
+            // delete the file and return. Persisted triggers will be lost until the app re-adds
+            // them.
+            deletePersistAppTriggersFile();
+            mAppTriggersLoaded = true;
+            return;
+        }
+        if (bytes.length == 0) {
+            if (DEBUG) Log.d(TAG, "App triggers persistence file empty, skipping load from disk.");
+            // Empty app triggers persist file. Delete the file, mark loaded, and return.
+            deletePersistAppTriggersFile();
+            mAppTriggersLoaded = true;
+            return;
+        }
+
+        // Parse file bytes to proto
+        ProfilingTriggersWrapper wrapper;
+        try {
+            wrapper = ProfilingTriggersWrapper.parseFrom(bytes);
+        } catch (Exception e) {
+            Log.w(TAG, "Error parsing proto from persisted bytes", e);
+            // Failed to parse the file contents. No reason to believe we'll have better luck next
+            // time, delete the file, mark loaded, and return. Persisted app triggers will be lost
+            // until re-added by the app.
+            deletePersistAppTriggersFile();
+            mAppTriggersLoaded = true;
+            return;
+        }
+
+        // Populate in memory app triggers store
+        for (int i = 0; i < wrapper.getTriggersCount(); i++) {
+            ProfilingTriggersWrapper.ProfilingTrigger triggerProto = wrapper.getTriggers(i);
+            addTrigger(new ProfilingTrigger(triggerProto), false);
+        }
+
+        mAppTriggersLoaded = true;
+    }
+
     /** Setup the directory and file for persisting queue. */
     @VisibleForTesting
     public boolean setupPersistQueueFiles() {
-        File dataDir = Environment.getDataDirectory();
-        File systemDir = new File(dataDir, QUEUED_RESULTS_SYSTEM_DIR);
-        mPersistQueueStoreDir = new File(systemDir, QUEUED_RESULTS_STORE_DIR);
-        if (createDir(mPersistQueueStoreDir)) {
-            mPersistQueueFile = new File(mPersistQueueStoreDir, QUEUED_RESULTS_INFO_FILE);
-            return true;
+        if (mPersistStoreDir == null) {
+            if (!setupPersistDir()) {
+                return false;
+            }
         }
-        return false;
+        mPersistQueueFile = new File(mPersistStoreDir, QUEUED_RESULTS_INFO_FILE);
+        return true;
+    }
+
+    /** Setup the directory and file for persisting app triggers. */
+    @VisibleForTesting
+    public boolean setupPersistAppTriggerFiles() {
+        if (mPersistStoreDir == null) {
+            if (!setupPersistDir()) {
+                return false;
+            }
+        }
+        mPersistAppTriggersFile = new File(mPersistStoreDir, APP_TRIGGERS_INFO_FILE);
+        return true;
+    }
+
+    /** Setup the directory and file for persisting. */
+    @VisibleForTesting
+    public boolean setupPersistDir() {
+        File dataDir = Environment.getDataDirectory();
+        File systemDir = new File(dataDir, PERSIST_SYSTEM_DIR);
+        mPersistStoreDir = new File(systemDir, PERSIST_STORE_DIR);
+        return createDir(mPersistStoreDir);
     }
 
     /** Delete the persist queue file. */
@@ -468,6 +579,18 @@ public class ProfilingService extends IProfilingService.Stub {
         } catch (SecurityException e) {
             // Can't delete file.
             if (DEBUG) Log.d(TAG, "Failed to delete queue persist file", e);
+        }
+    }
+
+    /** Delete the persist app triggers file. */
+    @VisibleForTesting
+    public void deletePersistAppTriggersFile() {
+        try {
+            mPersistAppTriggersFile.delete();
+            if (DEBUG) Log.d(TAG, "Deleted app triggers persist file.");
+        } catch (SecurityException e) {
+            // Can't delete file.
+            if (DEBUG) Log.d(TAG, "Failed to delete app triggers persist file", e);
         }
     }
 
@@ -572,7 +695,7 @@ public class ProfilingService extends IProfilingService.Stub {
                 // NOTIFIED_REQUESTER and the only potential remaining work to be repeated will be
                 // cleanup. If the callback failed, then we won't have recursed here and we'll pick
                 // back up this stage next time thereby minimizing repeated work.
-                maybePersistQueueToDisk();
+                maybePersistToDisk();
                 break;
             case ERROR_OCCURRED:
                 // An error has occurred, proceed to callback.
@@ -584,7 +707,7 @@ public class ProfilingService extends IProfilingService.Stub {
                 // NOTIFIED_REQUESTER and the only potential remaining work to be repeated will be
                 // cleanup. If the callback failed, then we won't have recursed here and we'll pick
                 // back up this stage next time thereby minimizing repeated work.
-                maybePersistQueueToDisk();
+                maybePersistToDisk();
                 break;
             case NOTIFIED_REQUESTER:
                 // Callback has been completed successfully, start cleanup.
@@ -1196,6 +1319,14 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
 
+        if (!mAppTriggersLoaded) {
+            // Until the triggers are loaded we can't create a proper config so just return.
+            if (DEBUG) {
+                Log.d(TAG, "System triggered trace not started due to app triggers not loaded.");
+            }
+            return;
+        }
+
         String[] packageNames = getActiveTriggerPackageNames();
         if (packageNames.length == 0) {
             // No apps have registered interest in system triggered profiling, so don't bother to
@@ -1367,30 +1498,47 @@ public class ProfilingService extends IProfilingService.Stub {
         session.setFileName(unredactedFullName);
         moveSessionToQueue(session, true);
         advanceTracingSession(session, TracingState.PROFILING_FINISHED);
+
+        maybePersistToDisk();
     }
 
     /** Add a profiling trigger to the supporting data structure. */
     @VisibleForTesting
     public void addTrigger(int uid, @NonNull String packageName, int triggerType,
             int rateLimitingPeriodHours) {
+        addTrigger(new ProfilingTrigger(uid, packageName, triggerType, rateLimitingPeriodHours),
+                true);
+    }
+
+    /**
+     * Add a profiling trigger to the supporting data structure.
+     *
+     * @param trigger       The trigger to add.
+     * @param maybePersist  Whether to persist to disk, if eligible based on frequency. This is
+     *                          intended to be set to false only when loading triggers from disk.
+     */
+    @VisibleForTesting
+    public void addTrigger(ProfilingTrigger trigger, boolean maybePersist) {
         if (!android.os.profiling.Flags.systemTriggeredProfiling()) {
             // Flag disabled.
             return;
         }
 
-        ProfilingTrigger trigger = new ProfilingTrigger(
-                uid, packageName, triggerType, rateLimitingPeriodHours);
-
-        SparseArray<ProfilingTrigger> perProcessTriggers = mAppTriggers.get(packageName, uid);
+        SparseArray<ProfilingTrigger> perProcessTriggers = mAppTriggers.get(
+                trigger.getPackageName(), trigger.getUid());
 
         if (perProcessTriggers == null) {
             perProcessTriggers = new SparseArray<ProfilingTrigger>();
-            mAppTriggers.put(packageName, uid, perProcessTriggers);
+            mAppTriggers.put(trigger.getPackageName(), trigger.getUid(), perProcessTriggers);
         }
 
         // Only 1 trigger is allowed per uid + trigger type so this will override any previous
         // triggers of this type registered for this uid.
-        perProcessTriggers.put(triggerType, trigger);
+        perProcessTriggers.put(trigger.getTriggerType(), trigger);
+
+        if (maybePersist) {
+            maybePersistToDisk();
+        }
     }
 
     /** Get a list of all package names which have registered profiling triggers. */
@@ -1883,7 +2031,7 @@ public class ProfilingService extends IProfilingService.Stub {
         mActiveTracingSessions.remove(session.getKey());
 
         if (maybePersist) {
-            maybePersistQueueToDisk();
+            maybePersistToDisk();
         }
     }
 
@@ -1964,49 +2112,60 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     /**
-     * Persist queued results to disk following the following rules:
+     * Persist service data to disk following the following rules:
      * - If a persist is already scheduled, do nothing.
-     * - If a persist happened within the last {@link #mPersistQueueFrequencyMs} then schedule a
-     *      persist for {@link #mPersistQueueFrequencyMs} after the last persist.
+     * - If a persist happened within the last {@link #mPersistFrequencyMs} then schedule a
+     *      persist for {@link #mPersistFrequencyMs} after the last persist.
      * - If no persist has occurred yet or the most recent persist was more than
-     *      {@link #mPersistQueueFrequencyMs} ago, persist immediately.
+     *      {@link #mPersistFrequencyMs} ago, persist immediately.
      */
     @VisibleForTesting
-    public void maybePersistQueueToDisk() {
-        if (!Flags.persistQueue()) {
+    public void maybePersistToDisk() {
+        if (!Flags.persistQueue() && !Flags.systemTriggeredProfiling()) {
+            // No persisting is enabled.
             return;
         }
 
         synchronized (mLock) {
-            if (mPersistQueueScheduled) {
+            if (mPersistScheduled) {
                 // We're already waiting on a scheduled persist job, do nothing.
                 return;
             }
 
-            if (mPersistQueueFrequencyMs.get() != 0
-                    && (System.currentTimeMillis() - mLastPersistedQueueTimestampMs
-                    < mPersistQueueFrequencyMs.get())) {
+            if (mPersistFrequencyMs.get() != 0
+                    && (System.currentTimeMillis() - mLastPersistedTimestampMs
+                    < mPersistFrequencyMs.get())) {
                 // Schedule the persist job.
-                if (mPersistQueueRunnable == null) {
-                    mPersistQueueRunnable = new Runnable() {
+                if (mPersistRunnable == null) {
+                    mPersistRunnable = new Runnable() {
                         @Override
                         public void run() {
-                            persistQueueToDisk();
-                            mPersistQueueScheduled = false;
+                            if (Flags.persistQueue()) {
+                                persistQueueToDisk();
+                            }
+                            if (Flags.systemTriggeredProfiling()) {
+                                persistAppTriggersToDisk();
+                            }
+                            mPersistScheduled = false;
                         }
                     };
                 }
-                mPersistQueueScheduled = true;
-                long persistDelay = mLastPersistedQueueTimestampMs + mPersistQueueFrequencyMs.get()
+                mPersistScheduled = true;
+                long persistDelay = mLastPersistedTimestampMs + mPersistFrequencyMs.get()
                         - System.currentTimeMillis();
-                getHandler().postDelayed(mPersistQueueRunnable, persistDelay);
+                getHandler().postDelayed(mPersistRunnable, persistDelay);
                 return;
             }
         }
 
         // If we got here then either persist frequency is 0 or it has already been longer than
         // persist frequency since the last persist. Persist immediately.
-        persistQueueToDisk();
+        if (Flags.persistQueue()) {
+            persistQueueToDisk();
+        }
+        if (Flags.systemTriggeredProfiling()) {
+            persistAppTriggersToDisk();
+        }
     }
 
     /** Persist the current queue to disk after cleaning it up. */
@@ -2077,11 +2236,87 @@ public class ProfilingService extends IProfilingService.Stub {
             out.write(protoBytes);
             persistFile.finishWrite(out);
             synchronized (mLock) {
-                mLastPersistedQueueTimestampMs = System.currentTimeMillis();
+                mLastPersistedTimestampMs = System.currentTimeMillis();
             }
         } catch (IOException e) {
             if (DEBUG) Log.e(TAG, "Exception writing queued results", e);
             persistFile.failWrite(out);
+        }
+    }
+
+    /** Persist the current app triggers to disk. */
+    @VisibleForTesting
+    public void persistAppTriggersToDisk() {
+        // Check if file exists
+        try {
+            if (mPersistAppTriggersFile == null) {
+                // Try again to create the necessary files.
+                if (!setupPersistAppTriggerFiles()) {
+                    // No file, nowhere to save.
+                    if (DEBUG) {
+                        Log.d(TAG, "Failed setting up app triggers persist files so nowhere to save"
+                                + " to.");
+                    }
+                    return;
+                }
+            }
+
+            if (!mPersistAppTriggersFile.exists()) {
+                // File doesn't exist, try to create it.
+                mPersistAppTriggersFile.createNewFile();
+            }
+        } catch (Exception e) {
+            if (DEBUG) Log.e(TAG, "Exception accessing persisted app triggers store.", e);
+            return;
+        }
+
+        // Generate proto for queue.
+        ProfilingTriggersWrapper.Builder builder = ProfilingTriggersWrapper.newBuilder();
+
+        forEachTrigger(mAppTriggers.getMap(), (trigger) -> builder.addTriggers(trigger.toProto()));
+
+        ProfilingTriggersWrapper queuedTriggersWrapper = builder.build();
+
+        // Write to disk
+        byte[] protoBytes = queuedTriggersWrapper.toByteArray();
+        AtomicFile persistFile = new AtomicFile(mPersistAppTriggersFile);
+        FileOutputStream out = null;
+        try {
+            out = persistFile.startWrite();
+            out.write(protoBytes);
+            persistFile.finishWrite(out);
+            synchronized (mLock) {
+                mLastPersistedTimestampMs = System.currentTimeMillis();
+            }
+        } catch (IOException e) {
+            if (DEBUG) Log.e(TAG, "Exception writing app triggers", e);
+            persistFile.failWrite(out);
+        }
+    }
+
+    /** Receive a callback with each of the tracked profiling triggers. */
+    private void forEachTrigger(
+            ArrayMap<String, SparseArray<SparseArray<ProfilingTrigger>>> triggersOuterMap,
+            Consumer<ProfilingTrigger> callback) {
+
+        for (int i = 0; i < triggersOuterMap.size(); i++) {
+            SparseArray<SparseArray<ProfilingTrigger>> triggerUidList = triggersOuterMap.valueAt(i);
+
+            for (int j = 0; j < triggerUidList.size(); j++) {
+                int uidKey = triggerUidList.keyAt(j);
+                SparseArray<ProfilingTrigger> triggersList = triggerUidList.get(uidKey);
+
+                if (triggersList != null) {
+                    for (int k = 0; k < triggersList.size(); k++) {
+                        int triggerTypeKey = triggersList.keyAt(k);
+                        ProfilingTrigger trigger = triggersList.get(triggerTypeKey);
+
+                        if (trigger != null) {
+                            callback.accept(trigger);
+                        }
+                    }
+                }
+            }
         }
     }
 
