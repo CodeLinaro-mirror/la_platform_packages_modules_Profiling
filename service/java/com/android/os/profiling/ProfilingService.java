@@ -192,6 +192,21 @@ public class ProfilingService extends IProfilingService.Stub {
     private boolean mKeepUnredactedTrace = false;
 
     /**
+     * Package name of app being tested, or null if no app is being tested. To be used both for
+     * automated testing and developer manual testing.
+     *
+     * Setting this package name will:
+     * - Ensure a system triggered trace is always running.
+     * - Allow all triggers for the specified package name to be executed.
+     *
+     * This is not intended to be set directly. Instead, set this package name by using
+     * device_config commands described at {@link ProfilingManager}.
+     *
+     * There is no time limit on how long this can be left enabled for.
+     */
+    private String mTestPackageName = null;
+
+    /**
      * State the {@link TracingSession} is in.
      *
      * State represents the most recently confirmed completed step in the process. Steps represent
@@ -304,6 +319,10 @@ public class ProfilingService extends IProfilingService.Stub {
                             mKeepUnredactedTrace = properties.getBoolean(
                                     DeviceConfigHelper.DISABLE_DELETE_UNREDACTED_TRACE, false);
                             getRateLimiter().maybeUpdateRateLimiterDisabled(properties);
+
+                            String newTestPackageName = properties.getString(
+                                    DeviceConfigHelper.SYSTEM_TRIGGERED_TEST_PACKAGE_NAME, null);
+                            handleTestPackageChangeLocked(newTestPackageName);
                         }
                     }
                 });
@@ -1341,7 +1360,8 @@ public class ProfilingService extends IProfilingService.Stub {
         String uniqueSessionName = SYSTEM_TRIGGERED_SESSION_NAME_PREFIX
                 + System.currentTimeMillis();
 
-        byte[] config = Configs.generateSystemTriggeredTraceConfig(uniqueSessionName, packageNames);
+        byte[] config = Configs.generateSystemTriggeredTraceConfig(uniqueSessionName, packageNames,
+                mTestPackageName != null);
         String outputFile = TEMP_TRACE_PATH + SYSTEM_TRIGGERED_SESSION_NAME_PREFIX
                 + OUTPUT_FILE_IN_PROGRESS + OUTPUT_FILE_UNREDACTED_TRACE_SUFFIX;
 
@@ -1394,10 +1414,7 @@ public class ProfilingService extends IProfilingService.Stub {
         if (mSystemTriggeredTraceUniqueSessionName == null) {
             // If we don't have the session name then we don't know how to clone the trace so stop
             // it if it's still running and then return.
-            if (mSystemTriggeredTraceProcess != null && mSystemTriggeredTraceProcess.isAlive()) {
-                mSystemTriggeredTraceProcess.destroyForcibly();
-                mSystemTriggeredTraceProcess = null;
-            }
+            stopSystemTriggeredTrace();
 
             // There is no active system triggered trace so there's nothing to clone. Return.
             if (DEBUG) {
@@ -1449,17 +1466,20 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
 
-        int systemRateLimiterResult = getRateLimiter().isProfilingRequestAllowed(uid,
-                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE, true, null);
-        if (systemRateLimiterResult != RateLimiter.RATE_LIMIT_RESULT_ALLOWED) {
-            // Blocked by system rate limiter, return. Since this is system triggered there is no
-            // callback and therefore no need to distinguish between per app and system denials
-            // within the system rate limiter.
-            if (DEBUG) {
-                Log.d(TAG, String.format("Profiling triggered for uid %d and trigger %d but blocked"
-                        + " by system rate limiting ", uid, triggerType));
+        // If this is from the test package, skip system rate limiting.
+        if (!packageName.equals(mTestPackageName)) {
+            int systemRateLimiterResult = getRateLimiter().isProfilingRequestAllowed(uid,
+                    ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE, true, null);
+            if (systemRateLimiterResult != RateLimiter.RATE_LIMIT_RESULT_ALLOWED) {
+                // Blocked by system rate limiter, return. Since this is system triggered there is
+                // no callback and therefore no need to distinguish between per app and system
+                // denials within the system rate limiter.
+                if (DEBUG) {
+                    Log.d(TAG, String.format("Profiling triggered for uid %d and trigger %d but "
+                            + "blocked by system rate limiting ", uid, triggerType));
+                }
+                return;
             }
-            return;
         }
 
         // Now that it's approved by both rate limiters, update their values.
@@ -2318,6 +2338,49 @@ public class ProfilingService extends IProfilingService.Stub {
                 }
             }
         }
+    }
+
+    /** Handle updates to test package config value. */
+    @GuardedBy("mLock")
+    private void handleTestPackageChangeLocked(String newTestPackageName) {
+        if (newTestPackageName == null) {
+
+            // Test package has been set to null, check whether it was null previously.
+            if (mTestPackageName != null) {
+
+                // New null state is a changed from previous state, disable test mode.
+                mTestPackageName = null;
+                stopSystemTriggeredTrace();
+            }
+            // If new state is unchanged from previous null state, do nothing.
+        } else {
+
+            // Test package has been set with a value. Stop running system triggered trace if
+            // applicable so we can start a new one that will have most up to date package names.
+            // This should not be called when the new test package name matches the old one as
+            // device config should not be sending an update for a value change when the value
+            // remains the same, but no need to check as the best experience for caller is to always
+            // stop the current trace and start a new one for most up to date package list.
+            stopSystemTriggeredTrace();
+
+            // Now update the test package name and start the system triggered trace.
+            mTestPackageName = newTestPackageName;
+            startSystemTriggeredTrace();
+        }
+    }
+
+    /** Stop the system triggered trace. */
+    private void stopSystemTriggeredTrace() {
+        // If the trace is alive, stop it.
+        if (mSystemTriggeredTraceProcess != null) {
+            if (mSystemTriggeredTraceProcess.isAlive()) {
+                mSystemTriggeredTraceProcess.destroyForcibly();
+            }
+            mSystemTriggeredTraceProcess = null;
+        }
+
+        // Set session name to null.
+        mSystemTriggeredTraceUniqueSessionName = null;
     }
 
     private class ProfilingDeathRecipient implements IBinder.DeathRecipient {

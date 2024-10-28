@@ -33,6 +33,8 @@ public final class DeviceConfigHelper {
     public static final String RATE_LIMITER_DISABLE_PROPERTY = "rate_limiter.disabled";
     public static final String DISABLE_DELETE_UNREDACTED_TRACE =
             "delete_unredacted_trace.disabled";
+    public static final String SYSTEM_TRIGGERED_TEST_PACKAGE_NAME =
+            "system_triggered_profiling.testing_package_name";
 
     // End section: Testing specific constants
 
