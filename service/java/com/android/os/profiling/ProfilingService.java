@@ -695,7 +695,7 @@ public class ProfilingService extends IProfilingService.Stub {
      * This method validates the request, arguments, whether the app is allowed to profile now,
      * and if so, starts the profiling.
      */
-    public void requestProfiling(int profilingType, Bundle params, String filePath, String tag,
+    public void requestProfiling(int profilingType, Bundle params, String tag,
             long keyMostSigBits, long keyLeastSigBits, String packageName) {
         int uid = Binder.getCallingUid();
 
@@ -766,7 +766,7 @@ public class ProfilingService extends IProfilingService.Stub {
         if (status == RateLimiter.RATE_LIMIT_RESULT_ALLOWED) {
             // Rate limiter approved, try to start the request.
             try {
-                TracingSession session = new TracingSession(profilingType, params, filePath, uid,
+                TracingSession session = new TracingSession(profilingType, params, uid,
                         packageName, tag, keyMostSigBits, keyLeastSigBits);
                 advanceTracingSession(session, TracingState.APPROVED);
                 return;
@@ -1066,7 +1066,8 @@ public class ProfilingService extends IProfilingService.Stub {
      * @return whether at least one callback was successfully sent to the app.
      */
     private boolean processResultCallback(int uid, long keyMostSigBits, long keyLeastSigBits,
-            int status, @Nullable String filePath, @Nullable String tag, @Nullable String error) {
+            int status, @Nullable String fileResultPathAndName, @Nullable String tag,
+            @Nullable String error) {
         List<IProfilingResultCallback> perUidCallbacks = mResultCallbacks.get(uid);
         if (perUidCallbacks == null || perUidCallbacks.isEmpty()) {
             // No callbacks, nowhere to notify with result or failure.
@@ -1079,7 +1080,8 @@ public class ProfilingService extends IProfilingService.Stub {
             try {
                 if (status == ProfilingResult.ERROR_NONE) {
                     perUidCallbacks.get(i).sendResult(
-                            filePath, keyMostSigBits, keyLeastSigBits, status, tag, error);
+                            fileResultPathAndName, keyMostSigBits, keyLeastSigBits, status, tag,
+                            error);
                 } else {
                     perUidCallbacks.get(i).sendResult(
                             null, keyMostSigBits, keyLeastSigBits, status, tag, error);
@@ -1360,8 +1362,7 @@ public class ProfilingService extends IProfilingService.Stub {
                         ? session.getRedactedFileName() : session.getFileName();
                 IProfilingResultCallback callback = perUidCallbacks.get(i);
                 if (callback.asBinder().isBinderAlive()) {
-                    callback.deleteFile(
-                            session.getAppFilePath() + OUTPUT_FILE_RELATIVE_PATH + fileName);
+                    callback.deleteFile(OUTPUT_FILE_RELATIVE_PATH + fileName);
                     // Only need one delete call, return.
                     return;
                 }
@@ -1384,7 +1385,6 @@ public class ProfilingService extends IProfilingService.Stub {
     @Nullable
     private void requestFileForResult(
             @NonNull List<IProfilingResultCallback> perUidCallbacks, TracingSession session) {
-        String filePath = session.getAppFilePath() + OUTPUT_FILE_RELATIVE_PATH;
         String fileName = session.getProfilingType() == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE
                 ? session.getRedactedFileName()
                 : session.getFileName();
@@ -1393,7 +1393,7 @@ public class ProfilingService extends IProfilingService.Stub {
                 IProfilingResultCallback callback = perUidCallbacks.get(i);
                 if (callback.asBinder().isBinderAlive()) {
                     // Great, this one works! Call it and exit if we don't hit an exception.
-                    perUidCallbacks.get(i).generateFile(filePath, fileName,
+                    perUidCallbacks.get(i).generateFile(OUTPUT_FILE_RELATIVE_PATH, fileName,
                             session.getKeyMostSigBits(), session.getKeyLeastSigBits());
                     return;
                 }
