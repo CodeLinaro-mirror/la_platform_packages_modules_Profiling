@@ -39,10 +39,17 @@ public final class Configs {
     // value is used to calculate max profiling time.
     private static final int MAX_PROFILING_TIME_BUFFER_MS = 10 * 1000;
 
+    private static final int FOUR_MB = 4096;
+
+    private static boolean sSystemTriggeredSystemTraceConfigsInitialized = false;
     private static boolean sSystemTraceConfigsInitialized = false;
     private static boolean sHeapProfileConfigsInitialized = false;
     private static boolean sJavaHeapDumpConfigsInitialized = false;
     private static boolean sStackSamplingConfigsInitialized = false;
+
+    private static int sSystemTriggeredSystemTraceDurationMs;
+    private static int sSystemTriggeredSystemTraceDiscardBufferSizeKb;
+    private static int sSystemTriggeredSystemTraceRingBufferSizeKb;
 
     private static boolean sKillswitchSystemTrace;
     private static int sSystemTraceDurationMsDefault;
@@ -83,6 +90,29 @@ public final class Configs {
     private static int sStackSamplingSamplingFrequencyDefault;
     private static int sStackSamplingSamplingFrequencyMin;
     private static int sStackSamplingSamplingFrequencyMax;
+
+    /**
+     * Initialize System Triggered System Trace related DeviceConfig values if they have not been
+     * yet.
+     */
+    private static void initializeSystemTriggeredSystemTraceConfigsIfNecessary() {
+        if (sSystemTriggeredSystemTraceConfigsInitialized) {
+            return;
+        }
+
+        DeviceConfig.Properties properties =
+                DeviceConfigHelper.getAllSystemTriggeredSystemTraceProperties();
+
+        sSystemTriggeredSystemTraceDurationMs = properties.getInt(
+                DeviceConfigHelper.SYSTEM_TRIGGERED_SYSTEM_TRACE_DURATION_MS,
+                30 * 60 * 1000 /* 30 minutes */);
+        sSystemTriggeredSystemTraceDiscardBufferSizeKb = properties.getInt(
+                DeviceConfigHelper.SYSTEM_TRIGGERED_SYSTEM_TRACE_DISCARD_BUFFER_SIZE_KB, FOUR_MB);
+        sSystemTriggeredSystemTraceRingBufferSizeKb = properties.getInt(
+                DeviceConfigHelper.SYSTEM_TRIGGERED_SYSTEM_TRACE_RING_BUFFER_SIZE_KB, 32768);
+
+        sSystemTriggeredSystemTraceConfigsInitialized = true;
+    }
 
     /** Initialize System Trace related DeviceConfig set values if they have not been yet. */
     private static void initializeSystemTraceConfigsIfNecessary() {
@@ -730,16 +760,52 @@ public final class Configs {
             int durationMs, TraceConfig.BufferConfig.FillPolicy bufferFillPolicy) {
         TraceConfig.Builder builder = TraceConfig.newBuilder();
 
-        // Add 2 buffers, discard for data sources dumped at beginning and ring for contiuously
-        // updated data sources.
+        addSystemTraceGeneralConfigs(
+                builder,
+                new String[] {packageName},
+                FOUR_MB,
+                bufferSizeKb,
+                durationMs,
+                bufferFillPolicy);
+
+        return builder.build().toByteArray();
+    }
+
+    /** Generate config for system triggered background system trace. */
+    public static byte[] generateSystemTriggeredTraceConfig(String uniqueSessionName,
+            String[] packageNames) {
+        // Make sure we have our config values set. This is the only config specific method which is
+        // called directly and therefore needs to verify the config value initialization directly.
+        initializeSystemTriggeredSystemTraceConfigsIfNecessary();
+
+        TraceConfig.Builder builder = TraceConfig.newBuilder();
+
+        addSystemTraceGeneralConfigs(
+                builder,
+                packageNames,
+                sSystemTriggeredSystemTraceDiscardBufferSizeKb,
+                sSystemTriggeredSystemTraceRingBufferSizeKb,
+                sSystemTriggeredSystemTraceDurationMs,
+                TraceConfig.BufferConfig.FillPolicy.RING_BUFFER);
+
+        builder.setUniqueSessionName(uniqueSessionName);
+
+        return builder.build().toByteArray();
+    }
+
+    private static void addSystemTraceGeneralConfigs(TraceConfig.Builder builder,
+            String[] packageNames, int bufferOneSizeKb, int bufferTwoSizeKb, int durationMs,
+            TraceConfig.BufferConfig.FillPolicy bufferTwoFillPolicy) {
+        // Add 2 buffers, discard for data sources dumped at beginning and caller set for all other
+        // data sources.
         TraceConfig.BufferConfig buffer0 = TraceConfig.BufferConfig.newBuilder()
-                .setSizeKb(4096)
+                .setSizeKb(bufferOneSizeKb)
                 .setFillPolicy(TraceConfig.BufferConfig.FillPolicy.DISCARD)
                 .build();
         builder.addBuffers(buffer0);
         TraceConfig.BufferConfig buffer1 = TraceConfig.BufferConfig.newBuilder()
-                .setSizeKb(bufferSizeKb)
-                .setFillPolicy(bufferFillPolicy)
+                .setSizeKb(bufferTwoSizeKb)
+                .setFillPolicy(bufferTwoFillPolicy)
                 .build();
         builder.addBuffers(buffer1);
 
@@ -759,14 +825,27 @@ public final class Configs {
                 .build();
         builder.addDataSources(dataSourceProcessStats);
 
-        // Dump details about the requesting package to buffer 0
-        PackagesListConfig packagesListConfig = PackagesListConfig.newBuilder()
-                .addPackageNameFilter(packageName)
-                .build();
+        // Initialize the builders that require package names so we only need to iterate through the
+        // list once. These will be used in the following two sections.
+        PackagesListConfig.Builder packagesListConfigBuilder = PackagesListConfig.newBuilder();
+        FtraceConfig.Builder ftraceConfigBuilder = FtraceConfig.newBuilder();
+
+        for (int i = 0; i < packageNames.length; i++) {
+            String packageName = packageNames[i];
+
+            // Enable atrace events for each app.
+            ftraceConfigBuilder.addAtraceApps(packageName);
+
+            // Add to package list config so data is kept by filter.
+            packagesListConfigBuilder.addPackageNameFilter(packageName);
+        }
+
+        // Dump details about all listed packages to buffer 0. Redactor will filter out the ones
+        // that should not end up in the finished output.
         DataSourceConfig dataSourceConfigPackagesList = DataSourceConfig.newBuilder()
                 .setName("android.packages_list")
                 .setTargetBuffer(0)
-                .setPackagesListConfig(packagesListConfig)
+                .setPackagesListConfig(packagesListConfigBuilder.build())
                 .build();
         TraceConfig.DataSource dataSourcePackagesList = TraceConfig.DataSource.newBuilder()
                 .setConfig(dataSourceConfigPackagesList)
@@ -778,7 +857,7 @@ public final class Configs {
                 .newBuilder()
                 .setEnabled(true)
                 .build();
-        FtraceConfig ftraceConfig = FtraceConfig.newBuilder()
+        ftraceConfigBuilder
                 .setThrottleRssStat(true)
                 .setDisableGenericEvents(true)
                 .setCompactSched(compactSchedConfig)
@@ -812,14 +891,12 @@ public final class Configs {
                 // Input:
                 .addAtraceCategories("input")
                 // Graphics:
-                .addAtraceCategories("gfx")
-                // Enable events for requesting app only:
-                .addAtraceApps(packageName)
-                .build();
+                .addAtraceCategories("gfx");
+
         DataSourceConfig dataSourceConfigFtrace = DataSourceConfig.newBuilder()
                 .setName("linux.ftrace")
                 .setTargetBuffer(1)
-                .setFtraceConfig(ftraceConfig)
+                .setFtraceConfig(ftraceConfigBuilder.build())
                 .build();
         TraceConfig.DataSource dataSourceFtrace = TraceConfig.DataSource.newBuilder()
                 .setConfig(dataSourceConfigFtrace)
@@ -845,8 +922,6 @@ public final class Configs {
 
         // Add duration
         builder.setDurationMs(durationMs);
-
-        return builder.build().toByteArray();
     }
 
 }
