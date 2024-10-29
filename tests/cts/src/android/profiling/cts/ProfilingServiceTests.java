@@ -44,12 +44,14 @@ import android.os.ProfilingManager;
 import android.os.ProfilingResult;
 import android.os.profiling.DeviceConfigHelper;
 import android.os.profiling.ProfilingService;
+import android.os.profiling.ProfilingTrigger;
 import android.os.profiling.RateLimiter;
 import android.os.profiling.TracingSession;
 import android.platform.test.annotations.EnableFlags;
 import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
 import android.platform.test.flag.junit.SetFlagsRule;
+import android.util.SparseArray;
 
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.platform.app.InstrumentationRegistry;
@@ -94,6 +96,7 @@ public final class ProfilingServiceTests {
     private static final long KEY_LEAST_SIG_BITS = 123l;
 
     private static final int FAKE_UID = 12345;
+    private static final int FAKE_UID_2 = 12346;
 
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
@@ -306,7 +309,7 @@ public final class ProfilingServiceTests {
 
         // Mock rate limiter result to simulate failure case.
         doReturn(RateLimiter.RATE_LIMIT_RESULT_BLOCKED_PROCESS).when(mRateLimiter)
-              .isProfilingRequestAllowed(anyInt(), anyInt(), any());
+              .isProfilingRequestAllowed(anyInt(), anyInt(), eq(false), any());
 
         // Register callback.
         ProfilingResultCallback callback = new ProfilingResultCallback();
@@ -1535,6 +1538,202 @@ public final class ProfilingServiceTests {
         assertEquals(2, mProfilingService.mResultCallbacks.get(Binder.getCallingUid()).size());
     }
 
+    /**
+     * Test that adding triggers adds to the correct process and overwrites with new results when
+     * the same trigger, uid, and process name are used.
+     */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING)
+    public void testAddTriggers() throws Exception {
+        // First, clear the data structure.
+        mProfilingService.mAppTriggers.getMap().clear();
+
+        // Now add several triggers:
+        // First add 2 different triggers to the same uid/package
+        // TODO: b/373461116 - update hardcoded triggers to api value
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, 1, 0);
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, 2, 0);
+        // And add one to another uid with the same package name.
+        mProfilingService.addTrigger(FAKE_UID_2, APP_PACKAGE_NAME, 2, 0);
+
+        // Grab the per process arrays.
+        SparseArray<ProfilingTrigger> uid1Triggers =
+                mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID);
+        SparseArray<ProfilingTrigger> uid2Triggers =
+                mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID_2);
+
+        // Confirm they are represented correctly.
+        assertEquals(2, uid1Triggers.size());
+        assertEquals(1, uid2Triggers.size());
+        confirmProfilingTriggerEquals(uid1Triggers.get(1), FAKE_UID, APP_PACKAGE_NAME, 1, 0);
+        confirmProfilingTriggerEquals(uid1Triggers.get(2), FAKE_UID, APP_PACKAGE_NAME, 2, 0);
+        confirmProfilingTriggerEquals(uid2Triggers.get(2), FAKE_UID_2, APP_PACKAGE_NAME, 2, 0);
+
+        // Now add a repeated trigger with 1 field changed.
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, 2, 100);
+
+        // Confirm the new value is set.
+        assertEquals(100, mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID).get(2)
+                .getRateLimitingPeriodHours());
+    }
+
+    /** Test that app level rate limiting works correctly in the allow case. */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING)
+    public void testProcessTrigger_appLevelRateLimit_allow() throws Exception {
+        // First, clear the data structure.
+        mProfilingService.mAppTriggers.getMap().clear();
+
+        // Override the system rate limiter to always pass, we're not testing that here.
+        doReturn(RateLimiter.RATE_LIMIT_RESULT_ALLOWED).when(mRateLimiter)
+                .isProfilingRequestAllowed(anyInt(), anyInt(), eq(true), any());
+
+        // And setup some mocks.
+        mProfilingService.mSystemTriggeredTraceUniqueSessionName = "something_non_null";
+        doReturn(true).when(mActiveTrace).isAlive();
+        mProfilingService.mSystemTriggeredTraceProcess = mActiveTrace;
+
+        // TODO: b/373461116 - update hardcoded trigger to api value
+        int fakeTrigger = 1;
+
+        // Setup some rate limiting values. Since this is an allow test, set the last run to be 1
+        // hour more than the rate limiting period.
+        int rateLimitingPeriodHours = 10;
+        long fakeLastTriggerTimeMs = System.currentTimeMillis()
+                - ((rateLimitingPeriodHours + 1) * 60L * 60L * 1000L);
+
+        // Add the trigger we'll use.
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger,
+                rateLimitingPeriodHours);
+
+        // Set the last run time.
+        mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID).get(fakeTrigger)
+                .setLastTriggeredTimeMs(fakeLastTriggerTimeMs);
+
+        // Now process the trigger.
+        mProfilingService.processTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
+
+        // Get the new trigger time and make sure it's later than the fake one, indicating it ran.
+        long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
+                .get(fakeTrigger).getLastTriggeredTimeMs();
+        assertTrue(newTriggerTime > fakeLastTriggerTimeMs);
+    }
+
+    /** Test that app level rate limiting works correctly in the deny case. */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING)
+    public void testProcessTrigger_appLevelRateLimit_deny() throws Exception {
+        // First, clear the data structure.
+        mProfilingService.mAppTriggers.getMap().clear();
+
+        // Override the system rate limiter to always pass, we're not testing that here.
+        doReturn(RateLimiter.RATE_LIMIT_RESULT_ALLOWED).when(mRateLimiter)
+                .isProfilingRequestAllowed(anyInt(), anyInt(), eq(true), any());
+
+        // And setup some mocks.
+        mProfilingService.mSystemTriggeredTraceUniqueSessionName = "something_non_null";
+        doReturn(true).when(mActiveTrace).isAlive();
+        mProfilingService.mSystemTriggeredTraceProcess = mActiveTrace;
+
+        // TODO: b/373461116 - update hardcoded trigger to api value
+        int fakeTrigger = 1;
+
+        // Setup some rate limiting values. Since this is a deny test, set the last run to be 1 hour
+        // less than the rate limiting period.
+        int rateLimitingPeriodHours = 10;
+        long fakeLastTriggerTimeMs = System.currentTimeMillis()
+                - ((rateLimitingPeriodHours - 1) * 60L * 60L * 1000L);
+
+        // Add the trigger we'll use,
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger,
+                rateLimitingPeriodHours);
+
+        // Set the last run time.
+        mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID).get(fakeTrigger)
+                .setLastTriggeredTimeMs(fakeLastTriggerTimeMs);
+
+        // Now process the trigger.
+        mProfilingService.processTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
+
+        // Get the new trigger time and make sure it's equal to the fake one, indicating it did not
+        // run.
+        long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
+                .get(fakeTrigger).getLastTriggeredTimeMs();
+        assertEquals(fakeLastTriggerTimeMs, newTriggerTime);
+    }
+
+    /** Test that system level rate limiting works correctly in the allow case. */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING)
+    public void testProcessTrigger_systemLevelRateLimit_allow() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // First, clear the data structure.
+        mProfilingService.mAppTriggers.getMap().clear();
+
+        // And setup some mocks.
+        mProfilingService.mSystemTriggeredTraceUniqueSessionName = "something_non_null";
+        doReturn(true).when(mActiveTrace).isAlive();
+        mProfilingService.mSystemTriggeredTraceProcess = mActiveTrace;
+
+        // TODO: b/373461116 - update hardcoded trigger to api value
+        int fakeTrigger = 1;
+
+        // Set app level rate limiting to 0, we're not testing that here.
+        int rateLimitingPeriodHours = 0;
+
+        // Add the trigger we'll use.
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger,
+                rateLimitingPeriodHours);
+
+        // Now process the trigger.
+        mProfilingService.processTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
+
+        // Get the new trigger time and make sure it's later than 0, indicating it ran.
+        long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
+                .get(fakeTrigger).getLastTriggeredTimeMs();
+        assertTrue(newTriggerTime > 0);
+    }
+
+    /** Test that system level rate limiting works correctly in the deny case. */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING)
+    public void testProcessTrigger_systemLevelRateLimit_deny() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // First, clear the data structure.
+        mProfilingService.mAppTriggers.getMap().clear();
+
+        // And setup some mocks.
+        mProfilingService.mSystemTriggeredTraceUniqueSessionName = "something_non_null";
+        doReturn(true).when(mActiveTrace).isAlive();
+        mProfilingService.mSystemTriggeredTraceProcess = mActiveTrace;
+
+        // Add record with high cost to rate limiter so that it won't allow future runs.
+        mRateLimiter.mPastRunsHour.add(FAKE_UID, 1000, System.currentTimeMillis());
+
+        // Wait 1 ms to ensure time has ticked and avoid potential flake.
+        sleep(1);
+
+        // TODO: b/373461116 - update hardcoded trigger to api value
+        int fakeTrigger = 1;
+
+        // Set app level rate limiting to 0, we're not testing that here.
+        int rateLimitingPeriodHours = 0;
+
+        // Add the trigger we'll use,
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger,
+                rateLimitingPeriodHours);
+
+        // Now process the trigger.
+        mProfilingService.processTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
+
+        // Get the new trigger time and make sure it's equal to 0, indicating it did not run.
+        long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
+                .get(fakeTrigger).getLastTriggeredTimeMs();
+        assertEquals(0, newTriggerTime);
+    }
+
     private File createAndConfirmFileExists(File directory, String fileName) throws Exception {
         File file = new File(directory, fileName);
         file.createNewFile();
@@ -1553,12 +1752,13 @@ public final class ProfilingServiceTests {
     private void overrideRateLimiterDefaults() throws Exception {
         // Update DeviceConfig defaults to general high enough limits, cost of 1, and persist
         // frequency 0.
-        overrideRateLimiterDefaults(5, 10, 20, 50, 50, 100, 1, 1, 1, 1, 0);
+        overrideRateLimiterDefaults(5, 10, 20, 50, 50, 100, 1, 1, 1, 1, 1, 0);
     }
 
     private void overrideRateLimiterDefaults(int systemHour, int processHour, int systemDay,
             int processDay, int systemWeek, int processWeek, int costHeapDump, int costHeapProfile,
-            int costStackSampling, int costSystemTrace, int persistToDiskFrequency)
+            int costStackSampling, int costSystemTrace, int costSystemTriggeredSystemProfiling,
+            int persistToDiskFrequency)
             throws Exception {
         executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, systemHour);
@@ -1580,6 +1780,9 @@ public final class ProfilingServiceTests {
                 DeviceConfigHelper.COST_STACK_SAMPLING, costStackSampling);
         executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.COST_SYSTEM_TRACE, costSystemTrace);
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.COST_SYSTEM_TRIGGERED_SYSTEM_TRACE,
+                costSystemTriggeredSystemProfiling);
         executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS, persistToDiskFrequency);
     }
@@ -1614,9 +1817,25 @@ public final class ProfilingServiceTests {
         assertEquals(s1.getRetryCount(), s2.getRetryCount());
         assertEquals(s1.getErrorMessage(), s2.getErrorMessage());
         assertEquals(s1.getErrorStatus(), s2.getErrorStatus());
-        assertEquals(s1.getTrigger(), s2.getTrigger());
+        assertEquals(s1.getTriggerType(), s2.getTriggerType());
     }
     // LINT.ThenChange(/service/proto/android/os/queue.proto:proto)
+
+    // LINT.IfChange(trigger_equals)
+    private void confirmProfilingTriggerEquals(ProfilingTrigger t1, int uid, String packageName,
+            int triggerType, int rateLimitingPeriodHours) {
+        confirmProfilingTriggerEquals(t1,
+                new ProfilingTrigger(uid, packageName, triggerType, rateLimitingPeriodHours));
+    }
+
+    private void confirmProfilingTriggerEquals(ProfilingTrigger t1, ProfilingTrigger t2) {
+        assertEquals(t1.getUid(), t2.getUid());
+        assertEquals(t1.getPackageName(), t2.getPackageName());
+        assertEquals(t1.getTriggerType(), t2.getTriggerType());
+        assertEquals(t1.getRateLimitingPeriodHours(), t2.getRateLimitingPeriodHours());
+        assertEquals(t1.getLastTriggeredTimeMs(), t2.getLastTriggeredTimeMs());
+    }
+    // LINT.ThenChange(/service/proto/android/os/trigger.proto:proto)
 
     /** Confirm that all fields returned by callback match expectation. */
     private void confirmResultCallback(ProfilingResultCallback callback, String resultFile,
