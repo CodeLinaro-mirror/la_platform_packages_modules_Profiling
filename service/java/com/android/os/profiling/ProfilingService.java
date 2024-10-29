@@ -1333,7 +1333,7 @@ public class ProfilingService extends IProfilingService.Stub {
 
     /** Start a trace to be used for system triggered profiling. */
     private void startSystemTriggeredTrace() {
-        if (!android.os.profiling.Flags.systemTriggeredProfiling()) {
+        if (!Flags.systemTriggeredProfilingNew()) {
             // Flag disabled.
             return;
         }
@@ -1406,7 +1406,7 @@ public class ProfilingService extends IProfilingService.Stub {
      */
     @VisibleForTesting
     public void processTrigger(int uid, @NonNull String packageName, int triggerType) {
-        if (!android.os.profiling.Flags.systemTriggeredProfiling()) {
+        if (!Flags.systemTriggeredProfilingNew()) {
             // Flag disabled.
             return;
         }
@@ -1539,7 +1539,7 @@ public class ProfilingService extends IProfilingService.Stub {
      */
     @VisibleForTesting
     public void addTrigger(ProfilingTrigger trigger, boolean maybePersist) {
-        if (!android.os.profiling.Flags.systemTriggeredProfiling()) {
+        if (!Flags.systemTriggeredProfilingNew()) {
             // Flag disabled.
             return;
         }
@@ -2141,7 +2141,7 @@ public class ProfilingService extends IProfilingService.Stub {
      */
     @VisibleForTesting
     public void maybePersistToDisk() {
-        if (!Flags.persistQueue() && !Flags.systemTriggeredProfiling()) {
+        if (!Flags.persistQueue() && !Flags.systemTriggeredProfilingNew()) {
             // No persisting is enabled.
             return;
         }
@@ -2163,7 +2163,7 @@ public class ProfilingService extends IProfilingService.Stub {
                             if (Flags.persistQueue()) {
                                 persistQueueToDisk();
                             }
-                            if (Flags.systemTriggeredProfiling()) {
+                            if (Flags.systemTriggeredProfilingNew()) {
                                 persistAppTriggersToDisk();
                             }
                             mPersistScheduled = false;
@@ -2183,7 +2183,7 @@ public class ProfilingService extends IProfilingService.Stub {
         if (Flags.persistQueue()) {
             persistQueueToDisk();
         }
-        if (Flags.systemTriggeredProfiling()) {
+        if (Flags.systemTriggeredProfilingNew()) {
             persistAppTriggersToDisk();
         }
     }

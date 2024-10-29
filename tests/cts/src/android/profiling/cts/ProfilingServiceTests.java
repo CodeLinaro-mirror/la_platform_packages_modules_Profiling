@@ -1041,7 +1041,7 @@ public final class ProfilingServiceTests {
      * all previous triggers.
      */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING)
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void testAppTriggersPersist_PersistAndRestore() {
         // First, clear the data structure.
         mProfilingService.mAppTriggers.getMap().clear();
@@ -1092,7 +1092,7 @@ public final class ProfilingServiceTests {
      * loaded set to true, and correct methods called.
      */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING)
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void testAppTriggersPersist_NoPersistFile() {
         // First, clear the data structure.
         mProfilingService.mAppTriggers.getMap().clear();
@@ -1688,7 +1688,7 @@ public final class ProfilingServiceTests {
      * the same trigger, uid, and process name are used.
      */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING)
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void testAddTriggers() throws Exception {
         // First, clear the data structure.
         mProfilingService.mAppTriggers.getMap().clear();
@@ -1724,7 +1724,7 @@ public final class ProfilingServiceTests {
 
     /** Test that app level rate limiting works correctly in the allow case. */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING)
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void testProcessTrigger_appLevelRateLimit_allow() throws Exception {
         // First, clear the data structure.
         mProfilingService.mAppTriggers.getMap().clear();
@@ -1766,7 +1766,7 @@ public final class ProfilingServiceTests {
 
     /** Test that app level rate limiting works correctly in the deny case. */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING)
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void testProcessTrigger_appLevelRateLimit_deny() throws Exception {
         // First, clear the data structure.
         mProfilingService.mAppTriggers.getMap().clear();
@@ -1809,7 +1809,7 @@ public final class ProfilingServiceTests {
 
     /** Test that system level rate limiting works correctly in the allow case. */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING)
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void testProcessTrigger_systemLevelRateLimit_allow() throws Exception {
         overrideRateLimiterDefaults();
 
@@ -1842,7 +1842,7 @@ public final class ProfilingServiceTests {
 
     /** Test that system level rate limiting works correctly in the deny case. */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING)
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void testProcessTrigger_systemLevelRateLimit_deny() throws Exception {
         overrideRateLimiterDefaults();
 
