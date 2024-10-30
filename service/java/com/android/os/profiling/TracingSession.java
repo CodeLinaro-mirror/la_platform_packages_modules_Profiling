@@ -35,7 +35,7 @@ public final class TracingSession {
     // LINT.IfChange(persisted_params)
     // Persisted params
     private final int mProfilingType;
-    private final int mTrigger;
+    private final int mTriggerType;
     private final int mUid;
     @NonNull private final String mPackageName;
     @Nullable private final String mTag;
@@ -61,10 +61,35 @@ public final class TracingSession {
     private long mProfilingStartTimeMs;
     private int mMaxProfilingTimeAllowedMs = 0;
 
+    public TracingSession(int profilingType,  int uid, String packageName, int triggerType) {
+        this(
+                profilingType,
+                null,
+                uid,
+                packageName,
+                null,
+                0L,
+                0L,
+                triggerType);
+    }
+
     public TracingSession(int profilingType, Bundle params, int uid, String packageName, String tag,
             long keyMostSigBits, long keyLeastSigBits) {
+        this(
+                profilingType,
+                params,
+                uid,
+                packageName,
+                tag,
+                keyMostSigBits,
+                keyLeastSigBits,
+                -1); // TODO: b/373461116 - set to NONE after API is published.
+    }
+
+    public TracingSession(int profilingType, Bundle params, int uid, String packageName, String tag,
+            long keyMostSigBits, long keyLeastSigBits, int triggerType) {
         mProfilingType = profilingType;
-        mTrigger = -1; // TODO: b/373461116 - set to NONE after API is published.
+        mTriggerType = triggerType;
         mParams = params;
         mUid = uid;
         mPackageName = packageName;
@@ -94,7 +119,7 @@ public final class TracingSession {
             mErrorMessage = sessionProto.getErrorMessage();
         }
         mErrorStatus = sessionProto.getErrorStatus();
-        mTrigger = sessionProto.getTrigger();
+        mTriggerType = sessionProto.getTriggerType();
 
         // params is not persisted because we cannot guarantee that it does not contain some large
         // store of data, and because we don't need it anymore once the request has gotten to the
@@ -300,8 +325,8 @@ public final class TracingSession {
         return mErrorStatus;
     }
 
-    public int getTrigger() {
-        return mTrigger;
+    public int getTriggerType() {
+        return mTriggerType;
     }
 
     // LINT.IfChange(to_proto)
@@ -330,7 +355,7 @@ public final class TracingSession {
             tracingSessionBuilder.setErrorMessage(mErrorMessage);
         }
         tracingSessionBuilder.setErrorStatus(mErrorStatus);
-        tracingSessionBuilder.setTrigger(mTrigger);
+        tracingSessionBuilder.setTriggerType(mTriggerType);
 
         return tracingSessionBuilder.build();
     }
