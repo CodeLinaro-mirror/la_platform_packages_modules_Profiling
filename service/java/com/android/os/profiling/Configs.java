@@ -41,6 +41,8 @@ public final class Configs {
 
     private static final int FOUR_MB = 4096;
 
+    private static final int ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
     private static boolean sSystemTriggeredSystemTraceConfigsInitialized = false;
     private static boolean sSystemTraceConfigsInitialized = false;
     private static boolean sHeapProfileConfigsInitialized = false;
@@ -771,9 +773,13 @@ public final class Configs {
         return builder.build().toByteArray();
     }
 
-    /** Generate config for system triggered background system trace. */
+    /**
+     * Generate config for system triggered background system trace.
+     *
+     * @param extraLong should only be set to true for testing.
+     */
     public static byte[] generateSystemTriggeredTraceConfig(String uniqueSessionName,
-            String[] packageNames) {
+            String[] packageNames, boolean extraLong) {
         // Make sure we have our config values set. This is the only config specific method which is
         // called directly and therefore needs to verify the config value initialization directly.
         initializeSystemTriggeredSystemTraceConfigsIfNecessary();
@@ -785,7 +791,9 @@ public final class Configs {
                 packageNames,
                 sSystemTriggeredSystemTraceDiscardBufferSizeKb,
                 sSystemTriggeredSystemTraceRingBufferSizeKb,
-                sSystemTriggeredSystemTraceDurationMs,
+                extraLong
+                        ? ONE_DAY_MS
+                        : sSystemTriggeredSystemTraceDurationMs,
                 TraceConfig.BufferConfig.FillPolicy.RING_BUFFER);
 
         builder.setUniqueSessionName(uniqueSessionName);
