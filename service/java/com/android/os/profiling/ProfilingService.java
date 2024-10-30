@@ -1497,13 +1497,30 @@ public class ProfilingService extends IProfilingService.Stub {
 
         try {
             // Try to clone the running trace.
-            Runtime.getRuntime().exec(new String[] {
+            Process clone = Runtime.getRuntime().exec(new String[] {
                     "/system/bin/perfetto",
                     "--clone-by-name",
                     mSystemTriggeredTraceUniqueSessionName,
                     "--out",
                     TEMP_TRACE_PATH + unredactedFullName});
-        } catch (IOException e) {
+
+            // Wait for cloned process to stop.
+            if (!clone.waitFor(mPerfettoDestroyTimeoutMs, TimeUnit.MILLISECONDS)) {
+                // Cloned process did not stop, try to stop it forcibly.
+                if (DEBUG) {
+                    Log.d(TAG, "Cloned system triggered trace didn't stop on its own, trying to "
+                            + "stop it forcibly.");
+                }
+                clone.destroyForcibly();
+
+                // Wait again to see if it stops now.
+                if (!clone.waitFor(mPerfettoDestroyTimeoutMs, TimeUnit.MILLISECONDS)) {
+                    // Nothing more to do, result won't be ready so return.
+                    if (DEBUG) Log.d(TAG, "Cloned system triggered trace timed out.");
+                    return;
+                }
+            }
+        } catch (IOException | InterruptedException e) {
             // Failed. There's nothing to clean up as we haven't created a session for this clone
             // yet so just fail quietly. The result for this trigger instance combo will be lost.
             if (DEBUG) Log.d(TAG, "Failed to clone running system triggered trace.", e);
