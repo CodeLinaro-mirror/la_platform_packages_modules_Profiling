@@ -1446,13 +1446,26 @@ public class ProfilingService extends IProfilingService.Stub {
      * Cloning will fork the running trace, stop the new forked trace, and output the result to a
      * separate file. This leaves the original trace running.
      */
-    @VisibleForTesting
     public void processTrigger(int uid, @NonNull String packageName, int triggerType) {
         if (!Flags.systemTriggeredProfilingNew()) {
             // Flag disabled.
             return;
         }
 
+        // Don't block the calling thread.
+        getHandler().post(new Runnable() {
+            @Override
+            public void run() {
+                processTriggerInternal(uid, packageName, triggerType);
+            }
+        });
+    }
+
+    /**
+     * Internal call to process trigger, not to be called on the thread that passed the trigger in.
+     */
+    @VisibleForTesting
+    public void processTriggerInternal(int uid, @NonNull String packageName, int triggerType) {
         if (mSystemTriggeredTraceUniqueSessionName == null) {
             // If we don't have the session name then we don't know how to clone the trace so stop
             // it if it's still running and then return.
