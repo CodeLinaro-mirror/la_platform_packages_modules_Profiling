@@ -33,6 +33,8 @@ public final class DeviceConfigHelper {
     public static final String RATE_LIMITER_DISABLE_PROPERTY = "rate_limiter.disabled";
     public static final String DISABLE_DELETE_UNREDACTED_TRACE =
             "delete_unredacted_trace.disabled";
+    public static final String SYSTEM_TRIGGERED_TEST_PACKAGE_NAME =
+            "system_triggered_profiling.testing_package_name";
 
     // End section: Testing specific constants
 
@@ -101,6 +103,16 @@ public final class DeviceConfigHelper {
             "stack_sampling_frequency_default";
     public static final String STACK_SAMPLING_FREQUENCY_MIN = "stack_sampling_frequency_min";
     public static final String STACK_SAMPLING_FREQUENCY_MAX = "stack_sampling_frequency_max";
+
+    // System Triggered System Trace
+    public static final String COST_SYSTEM_TRIGGERED_SYSTEM_TRACE =
+            "cost_system_triggered_system_trace";
+    public static final String SYSTEM_TRIGGERED_SYSTEM_TRACE_DURATION_MS =
+            "system_triggered_system_trace_duration_ms";
+    public static final String SYSTEM_TRIGGERED_SYSTEM_TRACE_DISCARD_BUFFER_SIZE_KB =
+            "system_triggered_system_trace_discard_buffer_size_kb";
+    public static final String SYSTEM_TRIGGERED_SYSTEM_TRACE_RING_BUFFER_SIZE_KB =
+            "system_triggered_system_trace_ring_buffer_size_kb";
 
     // Rate limiter configs
     public static final String PERSIST_TO_DISK_FREQUENCY_MS = "persist_to_disk_frequency_ms";
@@ -227,6 +239,14 @@ public final class DeviceConfigHelper {
                 SYSTEM_TRACE_SIZE_KB_MAX);
     }
 
+    /** Get all properties related to System Triggered System Trace configuration. */
+    public static DeviceConfig.Properties getAllSystemTriggeredSystemTraceProperties() {
+        return DeviceConfig.getProperties(NAMESPACE,
+                SYSTEM_TRIGGERED_SYSTEM_TRACE_DURATION_MS,
+                SYSTEM_TRIGGERED_SYSTEM_TRACE_DISCARD_BUFFER_SIZE_KB,
+                SYSTEM_TRIGGERED_SYSTEM_TRACE_RING_BUFFER_SIZE_KB);
+    }
+
     /** Get all properties related to rate limiter. */
     public static DeviceConfig.Properties getAllRateLimiterProperties() {
         return DeviceConfig.getProperties(NAMESPACE,
@@ -240,6 +260,7 @@ public final class DeviceConfigHelper {
                 COST_HEAP_PROFILE,
                 COST_STACK_SAMPLING,
                 COST_SYSTEM_TRACE,
+                COST_SYSTEM_TRIGGERED_SYSTEM_TRACE,
                 PERSIST_TO_DISK_FREQUENCY_MS);
     }
 
