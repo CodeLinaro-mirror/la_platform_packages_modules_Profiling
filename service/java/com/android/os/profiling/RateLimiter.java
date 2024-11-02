@@ -177,8 +177,9 @@ public class RateLimiter {
     public @RateLimitResult int isProfilingRequestAllowed(int uid,
             int profilingType, boolean isTriggered, @Nullable Bundle params) {
         synchronized (mLock) {
-            if (mRateLimiterDisabled) {
+            if (mRateLimiterDisabled && !isTriggered) {
                 // Rate limiter is disabled for testing, approve request and don't store cost.
+                // This mechanism applies only to direct requests, not system triggered ones.
                 Log.w(TAG, "Rate limiter disabled, request allowed.");
                 return RATE_LIMIT_RESULT_ALLOWED;
             }

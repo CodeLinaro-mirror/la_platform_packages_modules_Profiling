@@ -90,6 +90,9 @@ public final class ProfilingServiceTests {
     private static final String OVERRIDE_DEVICE_CONFIG_INT = "device_config put %s %s %d";
     private static final String GET_DEVICE_CONFIG = "device_config get %s %s";
 
+    private static final String PERSIST_TEST_DIR = "testdir";
+    private static final String PERSIST_TEST_FILE = "testfile";
+
     // Key most and least significant bits are used to generate a unique key specific to each
     // request. Key is used to pair request back to caller and callbacks so test to keep consistent.
     private static final long KEY_MOST_SIG_BITS = 456l;
@@ -127,15 +130,20 @@ public final class ProfilingServiceTests {
         // to our own file/directory in app storage, since the test app context can't access
         // /data/system
         doReturn(true).when(mRateLimiter).setupPersistFiles();
-        mRateLimiter.mPersistStoreDir = new File(mContext.getFilesDir(), "testdir");
+        mRateLimiter.mPersistStoreDir = new File(mContext.getFilesDir(), PERSIST_TEST_DIR);
         mRateLimiter.mPersistStoreDir.mkdir();
-        mRateLimiter.mPersistFile = new File(mRateLimiter.mPersistStoreDir, "testfile");
+        mRateLimiter.mPersistFile = new File(mRateLimiter.mPersistStoreDir, PERSIST_TEST_FILE);
 
         doReturn(true).when(mProfilingService).setupPersistQueueFiles();
-        mProfilingService.mPersistQueueStoreDir = new File(mContext.getFilesDir(), "testdir");
+        mProfilingService.mPersistStoreDir =
+                new File(mContext.getFilesDir(), PERSIST_TEST_DIR);
         // Same dir for both, no need to create the 2nd time.
         mProfilingService.mPersistQueueFile =
-                new File(mProfilingService.mPersistQueueStoreDir, "testfile");
+                new File(mProfilingService.mPersistStoreDir, PERSIST_TEST_FILE);
+
+        doReturn(true).when(mProfilingService).setupPersistAppTriggerFiles();
+        mProfilingService.mPersistAppTriggersFile =
+                new File(mProfilingService.mPersistStoreDir, PERSIST_TEST_FILE);
     }
 
     @After
@@ -908,13 +916,16 @@ public final class ProfilingServiceTests {
     /**
      * Test that persisting queue respects the frequency defined, allowing the persist on the first
      * instance but rejecting the subsequent persist.
+     *
+     * While this test focuses on queue persist, the logic for respect frequency is shared with
+     * triggers so this test covers both.
      */
     @Test
     @EnableFlags(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
     public void testQueuePersist_RespectFrequency() throws Exception {
         // Override persist frequency to something large.
         updateDeviceConfigAndWaitForChange(DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.PERSIST_QUEUE_TO_DISK_FREQUENCY_MS, 60 * 60 * 1000);
+                DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS, 60 * 60 * 1000);
 
         // Clear the queue.
         mProfilingService.mQueuedTracingResults.clear();
@@ -948,7 +959,7 @@ public final class ProfilingServiceTests {
         mProfilingService.mQueuedTracingResults.put(FAKE_UID, sessionList);
 
         // Trigger a persist.
-        mProfilingService.maybePersistQueueToDisk();
+        mProfilingService.maybePersistToDisk();
 
         // Confirm that it actually persisted.
         verify(mProfilingService, times(1)).persistQueueToDisk();
@@ -958,7 +969,7 @@ public final class ProfilingServiceTests {
         assertTrue(mProfilingService.mPersistQueueFile.delete());
 
         // Finally, trigger another persist.
-        mProfilingService.maybePersistQueueToDisk();
+        mProfilingService.maybePersistToDisk();
 
         // And confirm the persist did not immediately run.
         assertFalse(mProfilingService.mPersistQueueFile.exists());
@@ -969,16 +980,19 @@ public final class ProfilingServiceTests {
     /**
      * Test that persists that are scheduled for the future due to a persist having recently
      * occurred, occur at a future time as expected.
+     *
+     * While this test focuses on queue persist, the logic for scheduling is shared with triggers so
+     * this test covers both.
      */
     @Test
     @EnableFlags(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
     public void testQueuePersist_Scheduling() throws Exception {
         // Override persist frequency to 5 seconds that way we can confirm both that the persist did
         // not happen immediately and that it did eventually happen. This is the time from the first
-        // call to maybePersistQueueToDisk until the next call to the same method for the scheduling
+        // call to maybePersistToDisk until the next call to the same method for the scheduling
         // of the next persist to occur as expected, rather than immediately persisting.
         updateDeviceConfigAndWaitForChange(DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.PERSIST_QUEUE_TO_DISK_FREQUENCY_MS, 5 * 1000);
+                DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS, 5 * 1000);
 
         // Clear the queue.
         mProfilingService.mQueuedTracingResults.clear();
@@ -1000,7 +1014,7 @@ public final class ProfilingServiceTests {
         mProfilingService.mQueuedTracingResults.put(FAKE_UID, sessionList);
 
         // Trigger a persist.
-        mProfilingService.maybePersistQueueToDisk();
+        mProfilingService.maybePersistToDisk();
 
         // Confirm that it actually persisted.
         assertTrue(mProfilingService.mPersistQueueFile.exists());
@@ -1010,7 +1024,7 @@ public final class ProfilingServiceTests {
         assertTrue(mProfilingService.mPersistQueueFile.delete());
 
         // Trigger another persist.
-        mProfilingService.maybePersistQueueToDisk();
+        mProfilingService.maybePersistToDisk();
 
         // And confirm the persist did not immediately run.
         assertFalse(mProfilingService.mPersistQueueFile.exists());
@@ -1020,6 +1034,137 @@ public final class ProfilingServiceTests {
 
         // Finally, confirm that the file now exists.
         assertTrue(mProfilingService.mPersistQueueFile.exists());
+    }
+
+    /**
+     * Test that persisting app triggers and then reloading them from disk works correctly, loading
+     * all previous triggers.
+     */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    public void testAppTriggersPersist_PersistAndRestore() {
+        // First, clear the data structure.
+        mProfilingService.mAppTriggers.getMap().clear();
+
+        // Create 3 triggers belonging to 2 uids. Add a last triggered time to one of them.
+        ProfilingTrigger trigger1 = new ProfilingTrigger(FAKE_UID, APP_PACKAGE_NAME, 1, 0);
+
+        ProfilingTrigger trigger2 = new ProfilingTrigger(FAKE_UID, APP_PACKAGE_NAME, 2, 1);
+        trigger2.setLastTriggeredTimeMs(123L);
+
+        ProfilingTrigger trigger3 = new ProfilingTrigger(FAKE_UID_2, APP_PACKAGE_NAME, 1, 2);
+
+        // Group into sparse arrays by uid.
+        SparseArray<ProfilingTrigger> triggerArray1 = new SparseArray<ProfilingTrigger>();
+        triggerArray1.put(1, trigger1);
+        triggerArray1.put(2, trigger2);
+
+        SparseArray<ProfilingTrigger> triggerArray2 = new SparseArray<ProfilingTrigger>();
+        triggerArray2.put(1, trigger3);
+
+        mProfilingService.mAppTriggers.put(APP_PACKAGE_NAME, FAKE_UID, triggerArray1);
+        mProfilingService.mAppTriggers.put(APP_PACKAGE_NAME, FAKE_UID_2, triggerArray2);
+
+        // Trigger a persist.
+        mProfilingService.persistAppTriggersToDisk();
+
+        // Confirm file was written to
+        confirmNonEmptyFileExists(mProfilingService.mPersistAppTriggersFile);
+
+        // Clear app triggers so we can ensure it is reloaded properly.
+        mProfilingService.mAppTriggers.getMap().clear();
+        assertEquals(0, mProfilingService.mAppTriggers.getMap().size());
+
+        // Load app triggers from disk.
+        mProfilingService.loadAppTriggersFromPersistedData();
+
+        // Finally, verify the loaded contents match the ones that were persisted.
+        confirmProfilingTriggerEquals(trigger1,
+                mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID).get(1));
+        confirmProfilingTriggerEquals(trigger2,
+                mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID).get(2));
+        confirmProfilingTriggerEquals(trigger3,
+                mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID_2).get(1));
+    }
+
+    /**
+     * Test that loading app triggers with no persist file works as intended with no triggers added,
+     * loaded set to true, and correct methods called.
+     */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    public void testAppTriggersPersist_NoPersistFile() {
+        // First, clear the data structure.
+        mProfilingService.mAppTriggers.getMap().clear();
+
+        // Ensure the file doesn't exist.
+        mProfilingService.mPersistAppTriggersFile.delete();
+        assertFalse(mProfilingService.mPersistAppTriggersFile.exists());
+
+        // Load app triggers from disk.
+        mProfilingService.loadAppTriggersFromPersistedData();
+
+        // Ensure that the triggers are still empty, that loaded was set to true, and that a delete
+        // was not attempted as there was no file to delete.
+        assertEquals(0, mProfilingService.mAppTriggers.getMap().size());
+        assertTrue(mProfilingService.mAppTriggersLoaded);
+        verify(mProfilingService, times(0)).deletePersistAppTriggersFile();
+    }
+
+    /**
+     * Test that loading app triggers with an empty persist file works as intended with no triggers
+     * added, loaded set to true, and correct methods called.
+     */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
+    public void testAppTriggersPersist_EmptyPersistFile() throws Exception {
+        // First, clear the data structure.
+        mProfilingService.mAppTriggers.getMap().clear();
+
+        // Ensure the file exists and is empty.
+        mProfilingService.mPersistAppTriggersFile.delete();
+        assertFalse(mProfilingService.mPersistAppTriggersFile.exists());
+        mProfilingService.mPersistAppTriggersFile.createNewFile();
+        assertTrue(mProfilingService.mPersistAppTriggersFile.exists());
+        assertEquals(0L, mProfilingService.mPersistAppTriggersFile.length());
+
+        // Load app triggers from disk.
+        mProfilingService.loadAppTriggersFromPersistedData();
+
+        // Ensure that the triggers are still empty, that loaded was set to true, and that a delete
+        // was attempted as expected for the bad file state.
+        assertEquals(0, mProfilingService.mAppTriggers.getMap().size());
+        assertTrue(mProfilingService.mAppTriggersLoaded);
+        verify(mProfilingService, times(1)).deletePersistAppTriggersFile();
+    }
+
+    /**
+     * Test that loading app triggers with an invalid persist file works as intended with no
+     * triggers added, loaded set to true, and correct methods called.
+     */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
+    public void testAppTriggersPersist_BadPersistFile() throws Exception {
+        // First, clear the data structure.
+        mProfilingService.mAppTriggers.getMap().clear();
+
+        // Ensure the file exists and contains some non proto contents.
+        mProfilingService.mPersistAppTriggersFile.delete();
+        mProfilingService.mPersistAppTriggersFile.createNewFile();
+        FileOutputStream fileOutputStream = new FileOutputStream(
+                mProfilingService.mPersistAppTriggersFile);
+        fileOutputStream.write("some text that is definitely not a proto".getBytes());
+        fileOutputStream.close();
+        confirmNonEmptyFileExists(mProfilingService.mPersistAppTriggersFile);
+
+        // Load app triggers from disk.
+        mProfilingService.loadAppTriggersFromPersistedData();
+
+        // Ensure that the triggers are still empty, that loaded was set to true, and that a delete
+        // was attempted as expected for the bad file state.
+        assertEquals(0, mProfilingService.mAppTriggers.getMap().size());
+        assertTrue(mProfilingService.mAppTriggersLoaded);
+        verify(mProfilingService, times(1)).deletePersistAppTriggersFile();
     }
 
     /** Test that adding a specific listener does not trigger handling queued results. */
@@ -1543,7 +1688,7 @@ public final class ProfilingServiceTests {
      * the same trigger, uid, and process name are used.
      */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING)
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void testAddTriggers() throws Exception {
         // First, clear the data structure.
         mProfilingService.mAppTriggers.getMap().clear();
@@ -1579,7 +1724,7 @@ public final class ProfilingServiceTests {
 
     /** Test that app level rate limiting works correctly in the allow case. */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING)
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void testProcessTrigger_appLevelRateLimit_allow() throws Exception {
         // First, clear the data structure.
         mProfilingService.mAppTriggers.getMap().clear();
@@ -1621,7 +1766,7 @@ public final class ProfilingServiceTests {
 
     /** Test that app level rate limiting works correctly in the deny case. */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING)
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void testProcessTrigger_appLevelRateLimit_deny() throws Exception {
         // First, clear the data structure.
         mProfilingService.mAppTriggers.getMap().clear();
@@ -1664,7 +1809,7 @@ public final class ProfilingServiceTests {
 
     /** Test that system level rate limiting works correctly in the allow case. */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING)
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void testProcessTrigger_systemLevelRateLimit_allow() throws Exception {
         overrideRateLimiterDefaults();
 
@@ -1697,7 +1842,7 @@ public final class ProfilingServiceTests {
 
     /** Test that system level rate limiting works correctly in the deny case. */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING)
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void testProcessTrigger_systemLevelRateLimit_deny() throws Exception {
         overrideRateLimiterDefaults();
 
