@@ -272,8 +272,7 @@ public final class ProfilingManager {
 
                 // For key, use most and least significant bits so we can create an identical UUID
                 // after passing over binder.
-                service.requestProfiling(profilingType, parameters,
-                        mContext.getFilesDir().getPath(), tag,
+                service.requestProfiling(profilingType, parameters, tag,
                         key.getMostSignificantBits(), key.getLeastSignificantBits(),
                         packageName);
                 if (cancellationSignal != null) {
@@ -461,7 +460,7 @@ public final class ProfilingManager {
                                     wrapper.mExecutor.execute(() -> wrapper.mListener.accept(
                                             new ProfilingResult(overrideStatusToError
                                                     ? ProfilingResult.ERROR_UNKNOWN : status,
-                                                    resultFile, tag, error)));
+                                                    getAppFileDir() + resultFile, tag, error)));
                                 }
 
                                 // Remove the single listener that was tied to the request, if
@@ -484,9 +483,10 @@ public final class ProfilingManager {
                          * write to the generated file.
                          */
                         @Override
-                        public void generateFile(String filePathAbsolute, String fileName,
+                        public void generateFile(String filePathRelative, String fileName,
                                 long keyMostSigBits, long keyLeastSigBits) {
                             synchronized (mLock) {
+                                String filePathAbsolute = getAppFileDir() + filePathRelative;
                                 try {
                                     // Ensure the profiling directory exists. Create it if it
                                     // doesn't.
@@ -574,12 +574,16 @@ public final class ProfilingManager {
                          * Delete a file. To be used only for files created by {@link generateFile}.
                          */
                         @Override
-                        public void deleteFile(String filePathAndName) {
+                        public void deleteFile(String relativeFilePathAndName) {
                             try {
-                                Files.delete(Path.of(filePathAndName));
+                                Files.delete(Path.of(getAppFileDir() + relativeFilePathAndName));
                             } catch (Exception exception) {
                                 if (DEBUG) Log.e(TAG, "Failed to delete file.", exception);
                             }
+                        }
+
+                        private String getAppFileDir() {
+                            return mContext.getFilesDir().getPath();
                         }
                     });
         } catch (RemoteException e) {
