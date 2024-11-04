@@ -34,6 +34,7 @@ import android.os.IProfilingService;
 import android.os.ParcelFileDescriptor;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
+import android.os.ProfilingTriggerValueParcel;
 import android.os.ProfilingTriggersWrapper;
 import android.os.QueuedResultsWrapper;
 import android.os.RemoteException;
@@ -1039,6 +1040,47 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
         stopProfiling(key);
+    }
+
+    /**
+     * Add the provided list of validated triggers with the provided package name and the callers
+     * uid being applied to all.
+     */
+    public void addProfilingTriggers(List<ProfilingTriggerValueParcel> triggers,
+            String packageName) {
+        int uid = Binder.getCallingUid();
+        for (int i = 0; i < triggers.size(); i++) {
+            ProfilingTriggerValueParcel trigger = triggers.get(i);
+            addTrigger(uid, packageName, trigger.triggerType, trigger.rateLimitingPeriodHours);
+        }
+    }
+
+    /**
+     * Remove the provided list of validated trigger codes from a process with the provided package
+     * name and the uid of the caller.
+     */
+    public void removeProfilingTriggers(int[] triggerTypesToRemove, String packageName) {
+        SparseArray<ProfilingTrigger> triggers =
+                mAppTriggers.get(packageName, Binder.getCallingUid());
+
+        for (int i = 0; i < triggerTypesToRemove.length; i++) {
+            int index = triggers.indexOfKey(triggerTypesToRemove[i]);
+            if (index >= 0) {
+                triggers.removeAt(index);
+            }
+        }
+
+        if (triggers.size() == 0) {
+            // Nothing left, remove.
+            mAppTriggers.remove(packageName, Binder.getCallingUid());
+        }
+    }
+
+    /**
+     * Remove all triggers from a process with the provided packagename and the uid of the caller.
+     */
+    public void clearProfilingTriggers(String packageName) {
+        mAppTriggers.remove(packageName, Binder.getCallingUid());
     }
 
     /**
