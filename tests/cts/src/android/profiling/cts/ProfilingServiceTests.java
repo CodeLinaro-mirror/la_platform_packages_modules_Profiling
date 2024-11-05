@@ -1756,7 +1756,7 @@ public final class ProfilingServiceTests {
                 .setLastTriggeredTimeMs(fakeLastTriggerTimeMs);
 
         // Now process the trigger.
-        mProfilingService.processTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
+        mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
 
         // Get the new trigger time and make sure it's later than the fake one, indicating it ran.
         long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
@@ -1798,7 +1798,7 @@ public final class ProfilingServiceTests {
                 .setLastTriggeredTimeMs(fakeLastTriggerTimeMs);
 
         // Now process the trigger.
-        mProfilingService.processTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
+        mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
 
         // Get the new trigger time and make sure it's equal to the fake one, indicating it did not
         // run.
@@ -1832,7 +1832,7 @@ public final class ProfilingServiceTests {
                 rateLimitingPeriodHours);
 
         // Now process the trigger.
-        mProfilingService.processTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
+        mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
 
         // Get the new trigger time and make sure it's later than 0, indicating it ran.
         long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
@@ -1871,7 +1871,7 @@ public final class ProfilingServiceTests {
                 rateLimitingPeriodHours);
 
         // Now process the trigger.
-        mProfilingService.processTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
+        mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
 
         // Get the new trigger time and make sure it's equal to 0, indicating it did not run.
         long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
