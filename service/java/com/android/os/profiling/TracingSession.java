@@ -18,6 +18,7 @@ package android.os.profiling;
 
 import static android.os.profiling.ProfilingService.TracingState;
 
+import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.os.Bundle;
 import android.os.QueuedResultsWrapper;
@@ -34,15 +35,15 @@ public final class TracingSession {
     // LINT.IfChange(persisted_params)
     // Persisted params
     private final int mProfilingType;
-    private final String mAppFilePath;
+    private final int mTriggerType;
     private final int mUid;
-    private final String mPackageName;
-    private final String mTag;
+    @NonNull private final String mPackageName;
+    @Nullable private final String mTag;
     private final long mKeyMostSigBits;
     private final long mKeyLeastSigBits;
     @Nullable private String mFileName = null;
     @Nullable private String mRedactedFileName = null;
-    private TracingState mState;
+    @NonNull private TracingState mState;
     private int mRetryCount = 0;
     @Nullable private String mErrorMessage = null;
     // Expected to be populated with ProfilingResult.ERROR_* values.
@@ -60,11 +61,36 @@ public final class TracingSession {
     private long mProfilingStartTimeMs;
     private int mMaxProfilingTimeAllowedMs = 0;
 
-    public TracingSession(int profilingType, Bundle params, String appFilePath, int uid,
-                String packageName, String tag, long keyMostSigBits, long keyLeastSigBits) {
+    public TracingSession(int profilingType,  int uid, String packageName, int triggerType) {
+        this(
+                profilingType,
+                null,
+                uid,
+                packageName,
+                null,
+                0L,
+                0L,
+                triggerType);
+    }
+
+    public TracingSession(int profilingType, Bundle params, int uid, String packageName, String tag,
+            long keyMostSigBits, long keyLeastSigBits) {
+        this(
+                profilingType,
+                params,
+                uid,
+                packageName,
+                tag,
+                keyMostSigBits,
+                keyLeastSigBits,
+                -1); // TODO: b/373461116 - set to NONE after API is published.
+    }
+
+    public TracingSession(int profilingType, Bundle params, int uid, String packageName, String tag,
+            long keyMostSigBits, long keyLeastSigBits, int triggerType) {
         mProfilingType = profilingType;
+        mTriggerType = triggerType;
         mParams = params;
-        mAppFilePath = appFilePath;
         mUid = uid;
         mPackageName = packageName;
         mTag = tag;
@@ -73,11 +99,9 @@ public final class TracingSession {
         mState = TracingState.REQUESTED;
     }
 
-
     // LINT.IfChange(from_proto)
     public TracingSession(QueuedResultsWrapper.TracingSession sessionProto) {
         mProfilingType = sessionProto.getProfilingType();
-        mAppFilePath = sessionProto.getAppFilePath();
         mUid = sessionProto.getUid();
         mPackageName = sessionProto.getPackageName();
         mTag = sessionProto.getTag();
@@ -95,6 +119,7 @@ public final class TracingSession {
             mErrorMessage = sessionProto.getErrorMessage();
         }
         mErrorStatus = sessionProto.getErrorStatus();
+        mTriggerType = sessionProto.getTriggerType();
 
         // params is not persisted because we cannot guarantee that it does not contain some large
         // store of data, and because we don't need it anymore once the request has gotten to the
@@ -134,6 +159,7 @@ public final class TracingSession {
         return mMaxProfilingTimeAllowedMs;
     }
 
+    @Nullable
     public String getKey() {
         if (mKey == null) {
             mKey = (new UUID(mKeyMostSigBits, mKeyLeastSigBits)).toString();
@@ -202,14 +228,17 @@ public final class TracingSession {
         mErrorMessage = message;
     }
 
+    @Nullable
     public Process getActiveTrace() {
         return mActiveTrace;
     }
 
+    @Nullable
     public Process getActiveRedaction() {
         return mActiveRedaction;
     }
 
+    @Nullable
     public Runnable getProcessResultRunnable() {
         return mProcessResultRunnable;
     }
@@ -218,18 +247,16 @@ public final class TracingSession {
         return mProfilingType;
     }
 
-    public String getAppFilePath() {
-        return mAppFilePath;
-    }
-
     public int getUid() {
         return mUid;
     }
 
+    @NonNull
     public String getPackageName() {
         return mPackageName;
     }
 
+    @Nullable
     public String getTag() {
         return mTag;
     }
@@ -242,12 +269,14 @@ public final class TracingSession {
         return mKeyLeastSigBits;
     }
 
-    // This returns the name of the file that perfetto created during profiling.  If the profling
+    // This returns the name of the file that perfetto created during profiling. If the profiling
     // type was a trace collection it will return the unredacted trace file name.
+    @Nullable
     public String getFileName() {
         return mFileName;
     }
 
+    @Nullable
     public String getRedactedFileName() {
         return mRedactedFileName;
     }
@@ -261,21 +290,24 @@ public final class TracingSession {
     }
 
     /**
-     * Returns the full path including name of the file being returned to the client.
+     * Returns the relative path starting from apps storage dir including name of the file being
+     * returned to the client.
      * @param appRelativePath relative path to app storage.
-     * @return full file path and name of file.
+     * @return relative file path and name of file.
      */
+    @Nullable
     public String getDestinationFileName(String appRelativePath) {
         if (mFileName == null) {
             return null;
         }
         if (mDestinationFileName == null) {
-            mDestinationFileName = mAppFilePath + appRelativePath
+            mDestinationFileName = appRelativePath
                     + ((this.getRedactedFileName() == null) ? mFileName : mRedactedFileName);
         }
         return mDestinationFileName;
     }
 
+    @NonNull
     public TracingState getState() {
         return mState;
     }
@@ -284,12 +316,17 @@ public final class TracingSession {
         return mRetryCount;
     }
 
+    @Nullable
     public String getErrorMessage() {
         return mErrorMessage;
     }
 
     public int getErrorStatus() {
         return mErrorStatus;
+    }
+
+    public int getTriggerType() {
+        return mTriggerType;
     }
 
     // LINT.IfChange(to_proto)
@@ -299,9 +336,6 @@ public final class TracingSession {
                 QueuedResultsWrapper.TracingSession.newBuilder();
 
         tracingSessionBuilder.setProfilingType(mProfilingType);
-        if (mAppFilePath != null) {
-            tracingSessionBuilder.setAppFilePath(mAppFilePath);
-        }
         tracingSessionBuilder.setUid(mUid);
         tracingSessionBuilder.setPackageName(mPackageName);
         if (mTag != null) {
@@ -321,6 +355,7 @@ public final class TracingSession {
             tracingSessionBuilder.setErrorMessage(mErrorMessage);
         }
         tracingSessionBuilder.setErrorStatus(mErrorStatus);
+        tracingSessionBuilder.setTriggerType(mTriggerType);
 
         return tracingSessionBuilder.build();
     }

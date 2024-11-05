@@ -44,12 +44,14 @@ import android.os.ProfilingManager;
 import android.os.ProfilingResult;
 import android.os.profiling.DeviceConfigHelper;
 import android.os.profiling.ProfilingService;
+import android.os.profiling.ProfilingTrigger;
 import android.os.profiling.RateLimiter;
 import android.os.profiling.TracingSession;
 import android.platform.test.annotations.EnableFlags;
 import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
 import android.platform.test.flag.junit.SetFlagsRule;
+import android.util.SparseArray;
 
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.platform.app.InstrumentationRegistry;
@@ -82,12 +84,14 @@ import java.util.UUID;
 @RunWith(AndroidJUnit4.class)
 public final class ProfilingServiceTests {
 
-    private static final String APP_FILE_PATH = "/data/user/0/com.android.profiling.tests/files";
     private static final String APP_PACKAGE_NAME = "com.android.profiling.tests";
     private static final String REQUEST_TAG = "some unique string";
 
     private static final String OVERRIDE_DEVICE_CONFIG_INT = "device_config put %s %s %d";
     private static final String GET_DEVICE_CONFIG = "device_config get %s %s";
+
+    private static final String PERSIST_TEST_DIR = "testdir";
+    private static final String PERSIST_TEST_FILE = "testfile";
 
     // Key most and least significant bits are used to generate a unique key specific to each
     // request. Key is used to pair request back to caller and callbacks so test to keep consistent.
@@ -95,6 +99,7 @@ public final class ProfilingServiceTests {
     private static final long KEY_LEAST_SIG_BITS = 123l;
 
     private static final int FAKE_UID = 12345;
+    private static final int FAKE_UID_2 = 12346;
 
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
@@ -125,15 +130,20 @@ public final class ProfilingServiceTests {
         // to our own file/directory in app storage, since the test app context can't access
         // /data/system
         doReturn(true).when(mRateLimiter).setupPersistFiles();
-        mRateLimiter.mPersistStoreDir = new File(mContext.getFilesDir(), "testdir");
+        mRateLimiter.mPersistStoreDir = new File(mContext.getFilesDir(), PERSIST_TEST_DIR);
         mRateLimiter.mPersistStoreDir.mkdir();
-        mRateLimiter.mPersistFile = new File(mRateLimiter.mPersistStoreDir, "testfile");
+        mRateLimiter.mPersistFile = new File(mRateLimiter.mPersistStoreDir, PERSIST_TEST_FILE);
 
         doReturn(true).when(mProfilingService).setupPersistQueueFiles();
-        mProfilingService.mPersistQueueStoreDir = new File(mContext.getFilesDir(), "testdir");
+        mProfilingService.mPersistStoreDir =
+                new File(mContext.getFilesDir(), PERSIST_TEST_DIR);
         // Same dir for both, no need to create the 2nd time.
         mProfilingService.mPersistQueueFile =
-                new File(mProfilingService.mPersistQueueStoreDir, "testfile");
+                new File(mProfilingService.mPersistStoreDir, PERSIST_TEST_FILE);
+
+        doReturn(true).when(mProfilingService).setupPersistAppTriggerFiles();
+        mProfilingService.mPersistAppTriggersFile =
+                new File(mProfilingService.mPersistStoreDir, PERSIST_TEST_FILE);
     }
 
     @After
@@ -186,8 +196,7 @@ public final class ProfilingServiceTests {
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
-                APP_PACKAGE_NAME);
+                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, APP_PACKAGE_NAME);
 
         // Confirm callbacks was triggered for callback registered to this process.
         assertTrue(callback.mResultSent);
@@ -217,8 +226,7 @@ public final class ProfilingServiceTests {
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
-                APP_PACKAGE_NAME);
+                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, APP_PACKAGE_NAME);
 
         // Confirm callbacks was triggered for callback registered to this process.
         assertTrue(callbackOne.mResultSent);
@@ -240,8 +248,7 @@ public final class ProfilingServiceTests {
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
-                APP_PACKAGE_NAME);
+                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, APP_PACKAGE_NAME);
 
         // Confirm result matches failure expectation.
         confirmResultCallback(callback, null, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
@@ -262,8 +269,8 @@ public final class ProfilingServiceTests {
         mProfilingService.registerResultsCallback(false, callback);
 
         // Kick off request.
-        mProfilingService.requestProfiling(-1, null, APP_FILE_PATH, REQUEST_TAG,
-                KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, APP_PACKAGE_NAME);
+        mProfilingService.requestProfiling(-1, null, REQUEST_TAG, KEY_MOST_SIG_BITS,
+                KEY_LEAST_SIG_BITS, APP_PACKAGE_NAME);
 
         // Confirm result matches failure expectation.
         confirmResultCallback(callback, null, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
@@ -279,8 +286,7 @@ public final class ProfilingServiceTests {
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
-                null);
+                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, null);
 
         // Confirm result matches failure expectation.
         confirmResultCallback(callback, null, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
@@ -296,8 +302,7 @@ public final class ProfilingServiceTests {
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
-                "not.my.application");
+                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, "not.my.application");
 
         // Confirm result matches failure expectation.
         confirmResultCallback(callback, null, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
@@ -312,7 +317,7 @@ public final class ProfilingServiceTests {
 
         // Mock rate limiter result to simulate failure case.
         doReturn(RateLimiter.RATE_LIMIT_RESULT_BLOCKED_PROCESS).when(mRateLimiter)
-              .isProfilingRequestAllowed(anyInt(), anyInt(), any());
+              .isProfilingRequestAllowed(anyInt(), anyInt(), eq(false), any());
 
         // Register callback.
         ProfilingResultCallback callback = new ProfilingResultCallback();
@@ -320,8 +325,7 @@ public final class ProfilingServiceTests {
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
-                APP_PACKAGE_NAME);
+                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, APP_PACKAGE_NAME);
 
         // Confirm result matches failure expectation.
         confirmResultCallback(callback, null, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
@@ -341,8 +345,7 @@ public final class ProfilingServiceTests {
 
         // Kick off request.
         mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                APP_FILE_PATH, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
-                APP_PACKAGE_NAME);
+                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, APP_PACKAGE_NAME);
 
         // Perfetto cannot be run from this context, ensure it was attempted and failed permissions.
         confirmResultCallback(callback, null, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
@@ -359,8 +362,8 @@ public final class ProfilingServiceTests {
 
         // Create a tracing session.
         TracingSession tracingSession = new TracingSession(
-                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null, APP_FILE_PATH, 123,
-                APP_PACKAGE_NAME, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null, 123, APP_PACKAGE_NAME,
+                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
 
         // Mock tracing session to be running.
         doReturn(true).when(mActiveTrace).isAlive();
@@ -382,8 +385,8 @@ public final class ProfilingServiceTests {
         assertFalse(mProfilingService.areAnyTracesRunning());
 
         TracingSession tracingSession = new TracingSession(
-                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null, APP_FILE_PATH, 123,
-                APP_PACKAGE_NAME, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null, 123, APP_PACKAGE_NAME,
+                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
         mProfilingService.mActiveTracingSessions.put(
                 (new UUID(KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS)).toString(), tracingSession);
 
@@ -399,8 +402,8 @@ public final class ProfilingServiceTests {
         assertFalse(mProfilingService.areAnyTracesRunning());
 
         TracingSession tracingSession = new TracingSession(
-                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null, APP_FILE_PATH, 123,
-                APP_PACKAGE_NAME, REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+                ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null, 123, APP_PACKAGE_NAME,
+                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
         mProfilingService.mActiveTracingSessions.put(
                 (new UUID(KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS)).toString(), tracingSession);
 
@@ -669,7 +672,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -696,7 +698,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -726,7 +727,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -762,7 +762,6 @@ public final class ProfilingServiceTests {
         TracingSession session1 = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -774,7 +773,6 @@ public final class ProfilingServiceTests {
         TracingSession session2 = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -787,7 +785,6 @@ public final class ProfilingServiceTests {
         TracingSession session3 = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 fakeUid2,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -919,13 +916,16 @@ public final class ProfilingServiceTests {
     /**
      * Test that persisting queue respects the frequency defined, allowing the persist on the first
      * instance but rejecting the subsequent persist.
+     *
+     * While this test focuses on queue persist, the logic for respect frequency is shared with
+     * triggers so this test covers both.
      */
     @Test
     @EnableFlags(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
     public void testQueuePersist_RespectFrequency() throws Exception {
         // Override persist frequency to something large.
         updateDeviceConfigAndWaitForChange(DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.PERSIST_QUEUE_TO_DISK_FREQUENCY_MS, 60 * 60 * 1000);
+                DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS, 60 * 60 * 1000);
 
         // Clear the queue.
         mProfilingService.mQueuedTracingResults.clear();
@@ -935,7 +935,6 @@ public final class ProfilingServiceTests {
         TracingSession session1 = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -946,7 +945,6 @@ public final class ProfilingServiceTests {
         TracingSession session2 = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -961,7 +959,7 @@ public final class ProfilingServiceTests {
         mProfilingService.mQueuedTracingResults.put(FAKE_UID, sessionList);
 
         // Trigger a persist.
-        mProfilingService.maybePersistQueueToDisk();
+        mProfilingService.maybePersistToDisk();
 
         // Confirm that it actually persisted.
         verify(mProfilingService, times(1)).persistQueueToDisk();
@@ -971,7 +969,7 @@ public final class ProfilingServiceTests {
         assertTrue(mProfilingService.mPersistQueueFile.delete());
 
         // Finally, trigger another persist.
-        mProfilingService.maybePersistQueueToDisk();
+        mProfilingService.maybePersistToDisk();
 
         // And confirm the persist did not immediately run.
         assertFalse(mProfilingService.mPersistQueueFile.exists());
@@ -982,16 +980,19 @@ public final class ProfilingServiceTests {
     /**
      * Test that persists that are scheduled for the future due to a persist having recently
      * occurred, occur at a future time as expected.
+     *
+     * While this test focuses on queue persist, the logic for scheduling is shared with triggers so
+     * this test covers both.
      */
     @Test
     @EnableFlags(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
     public void testQueuePersist_Scheduling() throws Exception {
         // Override persist frequency to 5 seconds that way we can confirm both that the persist did
         // not happen immediately and that it did eventually happen. This is the time from the first
-        // call to maybePersistQueueToDisk until the next call to the same method for the scheduling
+        // call to maybePersistToDisk until the next call to the same method for the scheduling
         // of the next persist to occur as expected, rather than immediately persisting.
         updateDeviceConfigAndWaitForChange(DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.PERSIST_QUEUE_TO_DISK_FREQUENCY_MS, 5 * 1000);
+                DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS, 5 * 1000);
 
         // Clear the queue.
         mProfilingService.mQueuedTracingResults.clear();
@@ -1000,7 +1001,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1014,7 +1014,7 @@ public final class ProfilingServiceTests {
         mProfilingService.mQueuedTracingResults.put(FAKE_UID, sessionList);
 
         // Trigger a persist.
-        mProfilingService.maybePersistQueueToDisk();
+        mProfilingService.maybePersistToDisk();
 
         // Confirm that it actually persisted.
         assertTrue(mProfilingService.mPersistQueueFile.exists());
@@ -1024,7 +1024,7 @@ public final class ProfilingServiceTests {
         assertTrue(mProfilingService.mPersistQueueFile.delete());
 
         // Trigger another persist.
-        mProfilingService.maybePersistQueueToDisk();
+        mProfilingService.maybePersistToDisk();
 
         // And confirm the persist did not immediately run.
         assertFalse(mProfilingService.mPersistQueueFile.exists());
@@ -1034,6 +1034,137 @@ public final class ProfilingServiceTests {
 
         // Finally, confirm that the file now exists.
         assertTrue(mProfilingService.mPersistQueueFile.exists());
+    }
+
+    /**
+     * Test that persisting app triggers and then reloading them from disk works correctly, loading
+     * all previous triggers.
+     */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    public void testAppTriggersPersist_PersistAndRestore() {
+        // First, clear the data structure.
+        mProfilingService.mAppTriggers.getMap().clear();
+
+        // Create 3 triggers belonging to 2 uids. Add a last triggered time to one of them.
+        ProfilingTrigger trigger1 = new ProfilingTrigger(FAKE_UID, APP_PACKAGE_NAME, 1, 0);
+
+        ProfilingTrigger trigger2 = new ProfilingTrigger(FAKE_UID, APP_PACKAGE_NAME, 2, 1);
+        trigger2.setLastTriggeredTimeMs(123L);
+
+        ProfilingTrigger trigger3 = new ProfilingTrigger(FAKE_UID_2, APP_PACKAGE_NAME, 1, 2);
+
+        // Group into sparse arrays by uid.
+        SparseArray<ProfilingTrigger> triggerArray1 = new SparseArray<ProfilingTrigger>();
+        triggerArray1.put(1, trigger1);
+        triggerArray1.put(2, trigger2);
+
+        SparseArray<ProfilingTrigger> triggerArray2 = new SparseArray<ProfilingTrigger>();
+        triggerArray2.put(1, trigger3);
+
+        mProfilingService.mAppTriggers.put(APP_PACKAGE_NAME, FAKE_UID, triggerArray1);
+        mProfilingService.mAppTriggers.put(APP_PACKAGE_NAME, FAKE_UID_2, triggerArray2);
+
+        // Trigger a persist.
+        mProfilingService.persistAppTriggersToDisk();
+
+        // Confirm file was written to
+        confirmNonEmptyFileExists(mProfilingService.mPersistAppTriggersFile);
+
+        // Clear app triggers so we can ensure it is reloaded properly.
+        mProfilingService.mAppTriggers.getMap().clear();
+        assertEquals(0, mProfilingService.mAppTriggers.getMap().size());
+
+        // Load app triggers from disk.
+        mProfilingService.loadAppTriggersFromPersistedData();
+
+        // Finally, verify the loaded contents match the ones that were persisted.
+        confirmProfilingTriggerEquals(trigger1,
+                mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID).get(1));
+        confirmProfilingTriggerEquals(trigger2,
+                mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID).get(2));
+        confirmProfilingTriggerEquals(trigger3,
+                mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID_2).get(1));
+    }
+
+    /**
+     * Test that loading app triggers with no persist file works as intended with no triggers added,
+     * loaded set to true, and correct methods called.
+     */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    public void testAppTriggersPersist_NoPersistFile() {
+        // First, clear the data structure.
+        mProfilingService.mAppTriggers.getMap().clear();
+
+        // Ensure the file doesn't exist.
+        mProfilingService.mPersistAppTriggersFile.delete();
+        assertFalse(mProfilingService.mPersistAppTriggersFile.exists());
+
+        // Load app triggers from disk.
+        mProfilingService.loadAppTriggersFromPersistedData();
+
+        // Ensure that the triggers are still empty, that loaded was set to true, and that a delete
+        // was not attempted as there was no file to delete.
+        assertEquals(0, mProfilingService.mAppTriggers.getMap().size());
+        assertTrue(mProfilingService.mAppTriggersLoaded);
+        verify(mProfilingService, times(0)).deletePersistAppTriggersFile();
+    }
+
+    /**
+     * Test that loading app triggers with an empty persist file works as intended with no triggers
+     * added, loaded set to true, and correct methods called.
+     */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
+    public void testAppTriggersPersist_EmptyPersistFile() throws Exception {
+        // First, clear the data structure.
+        mProfilingService.mAppTriggers.getMap().clear();
+
+        // Ensure the file exists and is empty.
+        mProfilingService.mPersistAppTriggersFile.delete();
+        assertFalse(mProfilingService.mPersistAppTriggersFile.exists());
+        mProfilingService.mPersistAppTriggersFile.createNewFile();
+        assertTrue(mProfilingService.mPersistAppTriggersFile.exists());
+        assertEquals(0L, mProfilingService.mPersistAppTriggersFile.length());
+
+        // Load app triggers from disk.
+        mProfilingService.loadAppTriggersFromPersistedData();
+
+        // Ensure that the triggers are still empty, that loaded was set to true, and that a delete
+        // was attempted as expected for the bad file state.
+        assertEquals(0, mProfilingService.mAppTriggers.getMap().size());
+        assertTrue(mProfilingService.mAppTriggersLoaded);
+        verify(mProfilingService, times(1)).deletePersistAppTriggersFile();
+    }
+
+    /**
+     * Test that loading app triggers with an invalid persist file works as intended with no
+     * triggers added, loaded set to true, and correct methods called.
+     */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
+    public void testAppTriggersPersist_BadPersistFile() throws Exception {
+        // First, clear the data structure.
+        mProfilingService.mAppTriggers.getMap().clear();
+
+        // Ensure the file exists and contains some non proto contents.
+        mProfilingService.mPersistAppTriggersFile.delete();
+        mProfilingService.mPersistAppTriggersFile.createNewFile();
+        FileOutputStream fileOutputStream = new FileOutputStream(
+                mProfilingService.mPersistAppTriggersFile);
+        fileOutputStream.write("some text that is definitely not a proto".getBytes());
+        fileOutputStream.close();
+        confirmNonEmptyFileExists(mProfilingService.mPersistAppTriggersFile);
+
+        // Load app triggers from disk.
+        mProfilingService.loadAppTriggersFromPersistedData();
+
+        // Ensure that the triggers are still empty, that loaded was set to true, and that a delete
+        // was attempted as expected for the bad file state.
+        assertEquals(0, mProfilingService.mAppTriggers.getMap().size());
+        assertTrue(mProfilingService.mAppTriggersLoaded);
+        verify(mProfilingService, times(1)).deletePersistAppTriggersFile();
     }
 
     /** Test that adding a specific listener does not trigger handling queued results. */
@@ -1084,7 +1215,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1123,7 +1253,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1161,7 +1290,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 uid,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1200,7 +1328,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1238,7 +1365,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 uid,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1281,7 +1407,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1318,7 +1443,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1356,7 +1480,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1394,7 +1517,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1438,7 +1560,6 @@ public final class ProfilingServiceTests {
         TracingSession session = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1481,7 +1602,6 @@ public final class ProfilingServiceTests {
         TracingSession session1 = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 FAKE_UID,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1491,7 +1611,6 @@ public final class ProfilingServiceTests {
         TracingSession session2 = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 fakeUid2,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1501,7 +1620,6 @@ public final class ProfilingServiceTests {
         TracingSession session3 = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
                 new Bundle(),
-                mContext.getFilesDir().getPath(),
                 fakeUid2,
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
@@ -1565,6 +1683,202 @@ public final class ProfilingServiceTests {
         assertEquals(2, mProfilingService.mResultCallbacks.get(Binder.getCallingUid()).size());
     }
 
+    /**
+     * Test that adding triggers adds to the correct process and overwrites with new results when
+     * the same trigger, uid, and process name are used.
+     */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    public void testAddTriggers() throws Exception {
+        // First, clear the data structure.
+        mProfilingService.mAppTriggers.getMap().clear();
+
+        // Now add several triggers:
+        // First add 2 different triggers to the same uid/package
+        // TODO: b/373461116 - update hardcoded triggers to api value
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, 1, 0);
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, 2, 0);
+        // And add one to another uid with the same package name.
+        mProfilingService.addTrigger(FAKE_UID_2, APP_PACKAGE_NAME, 2, 0);
+
+        // Grab the per process arrays.
+        SparseArray<ProfilingTrigger> uid1Triggers =
+                mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID);
+        SparseArray<ProfilingTrigger> uid2Triggers =
+                mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID_2);
+
+        // Confirm they are represented correctly.
+        assertEquals(2, uid1Triggers.size());
+        assertEquals(1, uid2Triggers.size());
+        confirmProfilingTriggerEquals(uid1Triggers.get(1), FAKE_UID, APP_PACKAGE_NAME, 1, 0);
+        confirmProfilingTriggerEquals(uid1Triggers.get(2), FAKE_UID, APP_PACKAGE_NAME, 2, 0);
+        confirmProfilingTriggerEquals(uid2Triggers.get(2), FAKE_UID_2, APP_PACKAGE_NAME, 2, 0);
+
+        // Now add a repeated trigger with 1 field changed.
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, 2, 100);
+
+        // Confirm the new value is set.
+        assertEquals(100, mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID).get(2)
+                .getRateLimitingPeriodHours());
+    }
+
+    /** Test that app level rate limiting works correctly in the allow case. */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    public void testProcessTrigger_appLevelRateLimit_allow() throws Exception {
+        // First, clear the data structure.
+        mProfilingService.mAppTriggers.getMap().clear();
+
+        // Override the system rate limiter to always pass, we're not testing that here.
+        doReturn(RateLimiter.RATE_LIMIT_RESULT_ALLOWED).when(mRateLimiter)
+                .isProfilingRequestAllowed(anyInt(), anyInt(), eq(true), any());
+
+        // And setup some mocks.
+        mProfilingService.mSystemTriggeredTraceUniqueSessionName = "something_non_null";
+        doReturn(true).when(mActiveTrace).isAlive();
+        mProfilingService.mSystemTriggeredTraceProcess = mActiveTrace;
+
+        // TODO: b/373461116 - update hardcoded trigger to api value
+        int fakeTrigger = 1;
+
+        // Setup some rate limiting values. Since this is an allow test, set the last run to be 1
+        // hour more than the rate limiting period.
+        int rateLimitingPeriodHours = 10;
+        long fakeLastTriggerTimeMs = System.currentTimeMillis()
+                - ((rateLimitingPeriodHours + 1) * 60L * 60L * 1000L);
+
+        // Add the trigger we'll use.
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger,
+                rateLimitingPeriodHours);
+
+        // Set the last run time.
+        mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID).get(fakeTrigger)
+                .setLastTriggeredTimeMs(fakeLastTriggerTimeMs);
+
+        // Now process the trigger.
+        mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
+
+        // Get the new trigger time and make sure it's later than the fake one, indicating it ran.
+        long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
+                .get(fakeTrigger).getLastTriggeredTimeMs();
+        assertTrue(newTriggerTime > fakeLastTriggerTimeMs);
+    }
+
+    /** Test that app level rate limiting works correctly in the deny case. */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    public void testProcessTrigger_appLevelRateLimit_deny() throws Exception {
+        // First, clear the data structure.
+        mProfilingService.mAppTriggers.getMap().clear();
+
+        // Override the system rate limiter to always pass, we're not testing that here.
+        doReturn(RateLimiter.RATE_LIMIT_RESULT_ALLOWED).when(mRateLimiter)
+                .isProfilingRequestAllowed(anyInt(), anyInt(), eq(true), any());
+
+        // And setup some mocks.
+        mProfilingService.mSystemTriggeredTraceUniqueSessionName = "something_non_null";
+        doReturn(true).when(mActiveTrace).isAlive();
+        mProfilingService.mSystemTriggeredTraceProcess = mActiveTrace;
+
+        // TODO: b/373461116 - update hardcoded trigger to api value
+        int fakeTrigger = 1;
+
+        // Setup some rate limiting values. Since this is a deny test, set the last run to be 1 hour
+        // less than the rate limiting period.
+        int rateLimitingPeriodHours = 10;
+        long fakeLastTriggerTimeMs = System.currentTimeMillis()
+                - ((rateLimitingPeriodHours - 1) * 60L * 60L * 1000L);
+
+        // Add the trigger we'll use,
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger,
+                rateLimitingPeriodHours);
+
+        // Set the last run time.
+        mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID).get(fakeTrigger)
+                .setLastTriggeredTimeMs(fakeLastTriggerTimeMs);
+
+        // Now process the trigger.
+        mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
+
+        // Get the new trigger time and make sure it's equal to the fake one, indicating it did not
+        // run.
+        long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
+                .get(fakeTrigger).getLastTriggeredTimeMs();
+        assertEquals(fakeLastTriggerTimeMs, newTriggerTime);
+    }
+
+    /** Test that system level rate limiting works correctly in the allow case. */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    public void testProcessTrigger_systemLevelRateLimit_allow() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // First, clear the data structure.
+        mProfilingService.mAppTriggers.getMap().clear();
+
+        // And setup some mocks.
+        mProfilingService.mSystemTriggeredTraceUniqueSessionName = "something_non_null";
+        doReturn(true).when(mActiveTrace).isAlive();
+        mProfilingService.mSystemTriggeredTraceProcess = mActiveTrace;
+
+        // TODO: b/373461116 - update hardcoded trigger to api value
+        int fakeTrigger = 1;
+
+        // Set app level rate limiting to 0, we're not testing that here.
+        int rateLimitingPeriodHours = 0;
+
+        // Add the trigger we'll use.
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger,
+                rateLimitingPeriodHours);
+
+        // Now process the trigger.
+        mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
+
+        // Get the new trigger time and make sure it's later than 0, indicating it ran.
+        long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
+                .get(fakeTrigger).getLastTriggeredTimeMs();
+        assertTrue(newTriggerTime > 0);
+    }
+
+    /** Test that system level rate limiting works correctly in the deny case. */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    public void testProcessTrigger_systemLevelRateLimit_deny() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // First, clear the data structure.
+        mProfilingService.mAppTriggers.getMap().clear();
+
+        // And setup some mocks.
+        mProfilingService.mSystemTriggeredTraceUniqueSessionName = "something_non_null";
+        doReturn(true).when(mActiveTrace).isAlive();
+        mProfilingService.mSystemTriggeredTraceProcess = mActiveTrace;
+
+        // Add record with high cost to rate limiter so that it won't allow future runs.
+        mRateLimiter.mPastRunsHour.add(FAKE_UID, 1000, System.currentTimeMillis());
+
+        // Wait 1 ms to ensure time has ticked and avoid potential flake.
+        sleep(1);
+
+        // TODO: b/373461116 - update hardcoded trigger to api value
+        int fakeTrigger = 1;
+
+        // Set app level rate limiting to 0, we're not testing that here.
+        int rateLimitingPeriodHours = 0;
+
+        // Add the trigger we'll use,
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger,
+                rateLimitingPeriodHours);
+
+        // Now process the trigger.
+        mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
+
+        // Get the new trigger time and make sure it's equal to 0, indicating it did not run.
+        long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
+                .get(fakeTrigger).getLastTriggeredTimeMs();
+        assertEquals(0, newTriggerTime);
+    }
+
     private File createAndConfirmFileExists(File directory, String fileName) throws Exception {
         File file = new File(directory, fileName);
         file.createNewFile();
@@ -1583,12 +1897,13 @@ public final class ProfilingServiceTests {
     private void overrideRateLimiterDefaults() throws Exception {
         // Update DeviceConfig defaults to general high enough limits, cost of 1, and persist
         // frequency 0.
-        overrideRateLimiterDefaults(5, 10, 20, 50, 50, 100, 1, 1, 1, 1, 0);
+        overrideRateLimiterDefaults(5, 10, 20, 50, 50, 100, 1, 1, 1, 1, 1, 0);
     }
 
     private void overrideRateLimiterDefaults(int systemHour, int processHour, int systemDay,
             int processDay, int systemWeek, int processWeek, int costHeapDump, int costHeapProfile,
-            int costStackSampling, int costSystemTrace, int persistToDiskFrequency)
+            int costStackSampling, int costSystemTrace, int costSystemTriggeredSystemProfiling,
+            int persistToDiskFrequency)
             throws Exception {
         executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, systemHour);
@@ -1610,6 +1925,9 @@ public final class ProfilingServiceTests {
                 DeviceConfigHelper.COST_STACK_SAMPLING, costStackSampling);
         executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.COST_SYSTEM_TRACE, costSystemTrace);
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.COST_SYSTEM_TRIGGERED_SYSTEM_TRACE,
+                costSystemTriggeredSystemProfiling);
         executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS, persistToDiskFrequency);
     }
@@ -1633,7 +1951,6 @@ public final class ProfilingServiceTests {
     // LINT.IfChange(equals)
     private void confirmTracingSessionsEqual(TracingSession s1, TracingSession s2) {
         assertEquals(s1.getProfilingType(), s2.getProfilingType());
-        assertEquals(s1.getAppFilePath(), s2.getAppFilePath());
         assertEquals(s1.getUid(), s2.getUid());
         assertEquals(s1.getPackageName(), s2.getPackageName());
         assertEquals(s1.getTag(), s2.getTag());
@@ -1645,8 +1962,25 @@ public final class ProfilingServiceTests {
         assertEquals(s1.getRetryCount(), s2.getRetryCount());
         assertEquals(s1.getErrorMessage(), s2.getErrorMessage());
         assertEquals(s1.getErrorStatus(), s2.getErrorStatus());
+        assertEquals(s1.getTriggerType(), s2.getTriggerType());
     }
     // LINT.ThenChange(/service/proto/android/os/queue.proto:proto)
+
+    // LINT.IfChange(trigger_equals)
+    private void confirmProfilingTriggerEquals(ProfilingTrigger t1, int uid, String packageName,
+            int triggerType, int rateLimitingPeriodHours) {
+        confirmProfilingTriggerEquals(t1,
+                new ProfilingTrigger(uid, packageName, triggerType, rateLimitingPeriodHours));
+    }
+
+    private void confirmProfilingTriggerEquals(ProfilingTrigger t1, ProfilingTrigger t2) {
+        assertEquals(t1.getUid(), t2.getUid());
+        assertEquals(t1.getPackageName(), t2.getPackageName());
+        assertEquals(t1.getTriggerType(), t2.getTriggerType());
+        assertEquals(t1.getRateLimitingPeriodHours(), t2.getRateLimitingPeriodHours());
+        assertEquals(t1.getLastTriggeredTimeMs(), t2.getLastTriggeredTimeMs());
+    }
+    // LINT.ThenChange(/service/proto/android/os/trigger.proto:proto)
 
     /** Confirm that all fields returned by callback match expectation. */
     private void confirmResultCallback(ProfilingResultCallback callback, String resultFile,

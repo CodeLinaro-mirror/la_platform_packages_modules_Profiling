@@ -7,8 +7,8 @@ option java_multiple_files = true;
 // LINT.IfChange(proto)
 message QueuedResultsWrapper {
   message TracingSession {
+    reserved 2;
     optional int32 profiling_type = 1;
-    optional string app_file_path = 2;
     optional int32 uid = 3;
     optional string package_name = 4;
     optional string tag = 5;
@@ -20,6 +20,7 @@ message QueuedResultsWrapper {
     optional int32 retry_count = 11;
     optional string error_message = 12;
     optional int32 error_status = 13;
+    optional int32 trigger_type = 14;
   }
   repeated TracingSession sessions = 1;
 }
