@@ -75,6 +75,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Tests in this class are for testing the ProfilingService directly without the need to get a
@@ -1877,6 +1878,46 @@ public final class ProfilingServiceTests {
         long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
                 .get(fakeTrigger).getLastTriggeredTimeMs();
         assertEquals(0, newTriggerTime);
+    }
+
+    /**
+     * Test that scheduling for system triggered profiling trace start works correctly, configuring
+     * run delay for correct amount of time.
+     */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    public void testSystemTriggeredProfiling_Scheduling() throws Exception {
+        // Override system triggered trace start values so that the trace will be attempted to be
+        // started within the test duration
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS, 3);
+        updateDeviceConfigAndWaitForChange(DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS, 4);
+
+        // Cancel the already scheduled future and set to null, if applicable.
+        if (mProfilingService.mStartSystemTriggeredTraceScheduledFuture != null) {
+            mProfilingService.mStartSystemTriggeredTraceScheduledFuture.cancel(true);
+            mProfilingService.mStartSystemTriggeredTraceScheduledFuture = null;
+        }
+
+        // Schedule a start of system triggered trace.
+        mProfilingService.scheduleNextSystemTriggeredTraceStart();
+
+        // Confirm the future is scheduled and that an attempt to start the trace has not occurred
+        // yet.
+        assertNotNull(mProfilingService.mStartSystemTriggeredTraceScheduledFuture);
+        assertFalse(mProfilingService.mStartSystemTriggeredTraceScheduledFuture.isDone());
+        verify(mProfilingService, times(0)).startSystemTriggeredTrace();
+
+        // Wait for 1 second longer than the scheduled future delay so that the future can execute.
+        long delay = mProfilingService.mStartSystemTriggeredTraceScheduledFuture.getDelay(
+                TimeUnit.SECONDS);
+        sleep((delay + 1L) * 1000L);
+
+        // Finally, confirm that the future ran by confirming that an attempt to start the trace was
+        // made. We don't confirm that it actually started as we can't actually start the trace from
+        // this context.
+        verify(mProfilingService, times(1)).startSystemTriggeredTrace();
     }
 
     private File createAndConfirmFileExists(File directory, String fileName) throws Exception {
