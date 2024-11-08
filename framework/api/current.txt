@@ -38,7 +38,7 @@ package android.os {
     method public int getRateLimitingPeriodHours();
     method public int getTriggerType();
     field public static final int TRIGGER_TYPE_ANR = 2; // 0x2
-    field public static final int TRIGGER_TYPE_APP_COLD_START_ACTIVITY = 1; // 0x1
+    field public static final int TRIGGER_TYPE_APP_FULLY_DRAWN = 1; // 0x1
     field public static final int TRIGGER_TYPE_NONE = 0; // 0x0
   }
 
