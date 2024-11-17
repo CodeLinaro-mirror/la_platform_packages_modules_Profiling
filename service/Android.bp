@@ -35,7 +35,7 @@ java_library {
     ],
     static_libs: [
         "modules-utils-build",
-        "android.os.profiling.flags-aconfig-java",
+        "profiling_flags_lib",
         "service-profiling-proto",
         "perfetto_config_java_protos_system_server_current",
     ],

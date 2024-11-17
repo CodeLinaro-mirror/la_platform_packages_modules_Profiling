@@ -133,6 +133,12 @@ public final class DeviceConfigHelper {
     public static final String CLEAR_TEMPORARY_DIRECTORY_BOOT_DELAY_MS =
             "clear_temporary_directory_boot_delay_ms";
 
+    // System triggered run configs
+    public static final String SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS =
+            "system_triggered_trace_min_period_seconds";
+    public static final String SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS =
+            "system_triggered_trace_max_period_seconds";
+
     // Post Processing Configs
     public static final String PROFILING_RECHECK_DELAY_MS = "profiling_recheck_delay_ms";
 
