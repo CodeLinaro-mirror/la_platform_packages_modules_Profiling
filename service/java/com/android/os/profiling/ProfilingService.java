@@ -60,8 +60,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -114,6 +118,10 @@ public class ProfilingService extends IProfilingService.Stub {
     public static final int QUEUED_RESULT_MAX_RETAINED_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 
     private static final int PERSIST_TO_DISK_DEFAULT_FREQUENCY_MS = 30 * 60 * 1000;
+
+    // Targeting a period of around 24 hours, so set max and min to 24 +/- 6 hours, respectively.
+    private static final int DEFAULT_SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS = 18 * 60 * 60;
+    private static final int DEFAULT_SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS = 30 * 60 * 60;
 
     private final Context mContext;
     private final Object mLock = new Object();
@@ -191,6 +199,18 @@ public class ProfilingService extends IProfilingService.Stub {
     /** To be disabled for testing only. */
     @GuardedBy("mLock")
     private boolean mKeepUnredactedTrace = false;
+
+    /** Executor for scheduling system triggered profiling trace. */
+    private ScheduledExecutorService mScheduledExecutorService = null;
+
+    /** Future for the start system triggered trace. */
+    @VisibleForTesting
+    public ScheduledFuture<?> mStartSystemTriggeredTraceScheduledFuture = null;
+
+    @GuardedBy("mLock")
+    private AtomicInteger mSystemTriggeredTraceMinPeriodSeconds;
+    @GuardedBy("mLock")
+    private AtomicInteger mSystemTriggeredTraceMaxPeriodSeconds;
 
     /**
      * Package name of app being tested, or null if no app is being tested. To be used both for
@@ -310,6 +330,14 @@ public class ProfilingService extends IProfilingService.Stub {
             mPersistFrequencyMs = new AtomicInteger(DeviceConfigHelper.getInt(
                     DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS,
                     PERSIST_TO_DISK_DEFAULT_FREQUENCY_MS));
+
+            mSystemTriggeredTraceMinPeriodSeconds = new AtomicInteger(DeviceConfigHelper.getInt(
+                    DeviceConfigHelper.SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS,
+                    DEFAULT_SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS));
+
+            mSystemTriggeredTraceMaxPeriodSeconds = new AtomicInteger(DeviceConfigHelper.getInt(
+                    DeviceConfigHelper.SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS,
+                    DEFAULT_SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS));
         }
         // Now subscribe to updates on test config.
         DeviceConfig.addOnPropertiesChangedListener(DeviceConfigHelper.NAMESPACE_TESTING,
@@ -369,15 +397,24 @@ public class ProfilingService extends IProfilingService.Stub {
                             mPersistFrequencyMs.set(properties.getInt(
                                     DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS,
                                     mPersistFrequencyMs.get()));
+
+                            mSystemTriggeredTraceMinPeriodSeconds.set(DeviceConfigHelper.getInt(
+                                    DeviceConfigHelper.SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS,
+                                    mSystemTriggeredTraceMinPeriodSeconds.get()));
+
+                            mSystemTriggeredTraceMaxPeriodSeconds.set(DeviceConfigHelper.getInt(
+                                    DeviceConfigHelper.SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS,
+                                    mSystemTriggeredTraceMaxPeriodSeconds.get()));
                         }
                     }
                 });
 
-        // Schedule initial storage cleanup after delay so as not to increase non-critical work
-        // during boot.
+        // Schedule initial storage cleanup and system triggered trace start after a delay so as not
+        // to increase non-critical or work during boot.
         getHandler().postDelayed(new Runnable() {
             @Override
             public void run() {
+                scheduleNextSystemTriggeredTraceStart();
                 maybeCleanupTemporaryDirectory();
             }
         }, mClearTemporaryDirectoryBootDelayMs);
@@ -624,6 +661,58 @@ public class ProfilingService extends IProfilingService.Stub {
         }
 
         return false;
+    }
+
+    /**
+     * Schedule the next start of system triggered profiling trace for a random time between min and
+     * max period.
+     */
+    @VisibleForTesting
+    public void scheduleNextSystemTriggeredTraceStart() {
+        if (!Flags.systemTriggeredProfilingNew()) {
+            // Feature disabled.
+            return;
+        }
+
+        if (mStartSystemTriggeredTraceScheduledFuture != null) {
+            // If an existing start is already scheduled, don't schedule another.
+            // This should not happen.
+            Log.e(TAG, "Attempted to schedule a system triggered trace start with one already "
+                    + "scheduled.");
+            return;
+        }
+
+        if (mScheduledExecutorService == null) {
+            mScheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+        }
+
+        synchronized (mLock) {
+            // It's important that trace doesn't always run at the same time as this will bias the
+            // results, so grab a random number between min and max.
+            int scheduledDelaySeconds = mSystemTriggeredTraceMinPeriodSeconds.get()
+                    + (new Random()).nextInt(mSystemTriggeredTraceMaxPeriodSeconds.get()
+                    - mSystemTriggeredTraceMinPeriodSeconds.get());
+
+            if (DEBUG) {
+                Log.d(TAG, String.format("System triggered trace scheduled in %d seconds for params"
+                        + " min %d and max %d seconds.",
+                        scheduledDelaySeconds,
+                        mSystemTriggeredTraceMinPeriodSeconds.get(),
+                        mSystemTriggeredTraceMaxPeriodSeconds.get()));
+            }
+
+            mStartSystemTriggeredTraceScheduledFuture = mScheduledExecutorService.schedule(() -> {
+                // Start the system triggered trace.
+                startSystemTriggeredTrace();
+
+                mStartSystemTriggeredTraceScheduledFuture = null;
+
+                // In all cases, schedule again. Feature flagged off is handled earlier in this
+                // method, and all return cases in {@link #startSystemTriggeredTrace} should result
+                // in trying again at the next regularly scheduled time.
+                scheduleNextSystemTriggeredTraceStart();
+            }, scheduledDelaySeconds, TimeUnit.SECONDS);
+        }
     }
 
     /**
@@ -1374,7 +1463,8 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     /** Start a trace to be used for system triggered profiling. */
-    private void startSystemTriggeredTrace() {
+    @VisibleForTesting
+    public void startSystemTriggeredTrace() {
         if (!Flags.systemTriggeredProfilingNew()) {
             // Flag disabled.
             return;
@@ -1446,13 +1536,26 @@ public class ProfilingService extends IProfilingService.Stub {
      * Cloning will fork the running trace, stop the new forked trace, and output the result to a
      * separate file. This leaves the original trace running.
      */
-    @VisibleForTesting
     public void processTrigger(int uid, @NonNull String packageName, int triggerType) {
         if (!Flags.systemTriggeredProfilingNew()) {
             // Flag disabled.
             return;
         }
 
+        // Don't block the calling thread.
+        getHandler().post(new Runnable() {
+            @Override
+            public void run() {
+                processTriggerInternal(uid, packageName, triggerType);
+            }
+        });
+    }
+
+    /**
+     * Internal call to process trigger, not to be called on the thread that passed the trigger in.
+     */
+    @VisibleForTesting
+    public void processTriggerInternal(int uid, @NonNull String packageName, int triggerType) {
         if (mSystemTriggeredTraceUniqueSessionName == null) {
             // If we don't have the session name then we don't know how to clone the trace so stop
             // it if it's still running and then return.
