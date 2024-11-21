@@ -686,10 +686,12 @@ public class ProfilingService extends IProfilingService.Stub {
             mScheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
         }
 
+        int scheduledDelaySeconds;
+
         synchronized (mLock) {
             // It's important that trace doesn't always run at the same time as this will bias the
             // results, so grab a random number between min and max.
-            int scheduledDelaySeconds = mSystemTriggeredTraceMinPeriodSeconds.get()
+            scheduledDelaySeconds = mSystemTriggeredTraceMinPeriodSeconds.get()
                     + (new Random()).nextInt(mSystemTriggeredTraceMaxPeriodSeconds.get()
                     - mSystemTriggeredTraceMinPeriodSeconds.get());
 
@@ -700,19 +702,21 @@ public class ProfilingService extends IProfilingService.Stub {
                         mSystemTriggeredTraceMinPeriodSeconds.get(),
                         mSystemTriggeredTraceMaxPeriodSeconds.get()));
             }
-
-            mStartSystemTriggeredTraceScheduledFuture = mScheduledExecutorService.schedule(() -> {
-                // Start the system triggered trace.
-                startSystemTriggeredTrace();
-
-                mStartSystemTriggeredTraceScheduledFuture = null;
-
-                // In all cases, schedule again. Feature flagged off is handled earlier in this
-                // method, and all return cases in {@link #startSystemTriggeredTrace} should result
-                // in trying again at the next regularly scheduled time.
-                scheduleNextSystemTriggeredTraceStart();
-            }, scheduledDelaySeconds, TimeUnit.SECONDS);
         }
+
+        // Scheduling of system triggered trace setup is done out of the lock to avoid a potential
+        // deadlock in the case of really frequent triggering due to low min/max values for period.
+        mStartSystemTriggeredTraceScheduledFuture = mScheduledExecutorService.schedule(() -> {
+            // Start the system triggered trace.
+            startSystemTriggeredTrace();
+
+            mStartSystemTriggeredTraceScheduledFuture = null;
+
+            // In all cases, schedule again. Feature flagged off is handled earlier in this
+            // method, and all return cases in {@link #startSystemTriggeredTrace} should result
+            // in trying again at the next regularly scheduled time.
+            scheduleNextSystemTriggeredTraceStart();
+        }, scheduledDelaySeconds, TimeUnit.SECONDS);
     }
 
     /**
