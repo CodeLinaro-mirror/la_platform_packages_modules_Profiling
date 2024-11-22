@@ -36,11 +36,13 @@ apex {
 
     name: "com.android.profiling",
     manifest: "manifest.json",
-    file_contexts: ":apex.test-file_contexts",
+    file_contexts: ":com.android.profiling-file_contexts",
     key: "com.android.profiling.key",
     certificate: ":com.android.profiling.certificate",
     defaults: ["v-launched-apex-module"],
     min_sdk_version: "35",
+
+    binaries: ["trace_redactor"],
 
     bootclasspath_fragments: ["com.android.profiling-bootclasspath-fragment"],
     systemserverclasspath_fragments: ["com.android.profiling-systemserverclasspath-fragment"],
