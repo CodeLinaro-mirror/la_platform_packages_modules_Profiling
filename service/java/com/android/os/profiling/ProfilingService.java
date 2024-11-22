@@ -1987,7 +1987,8 @@ public class ProfilingService extends IProfilingService.Stub {
             // Start the redaction process and log the time of start.  Redaction has
             // mRedactionMaxRuntimeAllottedMs to complete. Redaction status will be checked every
             // mRedactionCheckFrequencyMs.
-            ProcessBuilder redactionProcess = new ProcessBuilder("/system/bin/trace_redactor",
+            ProcessBuilder redactionProcess = new ProcessBuilder(
+                    "/apex/com.android.profiling/bin/trace_redactor",
                     TEMP_TRACE_PATH + session.getFileName(),
                     TEMP_TRACE_PATH + session.getRedactedFileName(),
                     session.getPackageName());
