@@ -32,12 +32,8 @@ public final class ProfilingTrigger {
     /** No trigger. Used in {@link ProfilingResult} for non trigger caused results. */
     public static final int TRIGGER_TYPE_NONE = 0;
 
-    /**
-     * Trigger occurs after a cold start has been completed for an activity component start. See
-     * {@link android.app.ApplicationStartInfo#getStartComponent} for more detail on start
-     * components.
-     */
-    public static final int TRIGGER_TYPE_APP_COLD_START_ACTIVITY = 1;
+    /** Trigger occurs after {@link Activity#reportFullyDrawn} is called for a cold start. */
+    public static final int TRIGGER_TYPE_APP_FULLY_DRAWN = 1;
 
     /** Trigger occurs after the app was killed due to an ANR */
     public static final int TRIGGER_TYPE_ANR = 2;
@@ -45,7 +41,7 @@ public final class ProfilingTrigger {
     /** @hide */
     @IntDef(value = {
         TRIGGER_TYPE_NONE,
-        TRIGGER_TYPE_APP_COLD_START_ACTIVITY,
+        TRIGGER_TYPE_APP_FULLY_DRAWN,
         TRIGGER_TYPE_ANR,
     })
     @Retention(RetentionPolicy.SOURCE)
@@ -160,7 +156,7 @@ public final class ProfilingTrigger {
      * @hide
      */
     public static boolean isValidRequestTriggerType(int triggerType) {
-        return triggerType == TRIGGER_TYPE_APP_COLD_START_ACTIVITY
+        return triggerType == TRIGGER_TYPE_APP_FULLY_DRAWN
                 || triggerType == TRIGGER_TYPE_ANR;
     }
 
