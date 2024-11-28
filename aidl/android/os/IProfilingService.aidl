@@ -18,6 +18,7 @@ package android.os;
 
 import android.os.Bundle;
 import android.os.IProfilingResultCallback;
+import android.os.ProfilingTriggerValueParcel;
 
 /**
  * {@hide}
@@ -33,5 +34,13 @@ interface IProfilingService {
     oneway void requestCancel(long keyMostSigBits, long keyLeastSigBits);
 
     oneway void receiveFileDescriptor(in ParcelFileDescriptor fileDescriptor, long keyMostSigBits, long keyLeastSigBits);
+
+    oneway void addProfilingTriggers(in List<ProfilingTriggerValueParcel> triggers, String packageName);
+
+    oneway void removeProfilingTriggers(in int[] triggers, String packageName);
+
+    oneway void clearProfilingTriggers(String packageName);
+
+    oneway void processTrigger(int uid, String packageName, int triggerType);
 
 }

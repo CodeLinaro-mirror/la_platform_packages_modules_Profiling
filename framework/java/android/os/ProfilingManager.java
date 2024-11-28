@@ -15,6 +15,8 @@
  */
 package android.os;
 
+import static android.os.ProfilingTrigger.TriggerType;
+
 import android.annotation.FlaggedApi;
 import android.annotation.IntDef;
 import android.annotation.NonNull;
@@ -33,14 +35,17 @@ import java.lang.annotation.RetentionPolicy;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 
 /**
  * <p>
- * This class allows the caller to request profiling and listen for results. Profiling types
- * supported are: system traces, java heap dumps, heap profiles, and stack traces.
+ * This class allows the caller to:
+ * - Request profiling and listen for results. Profiling types supported are: system traces,
+ *      java heap dumps, heap profiles, and stack traces.
+ * - Register triggers for the system to capture profiling on the apps behalf.
  * </p>
  *
  * <p>
@@ -59,13 +64,24 @@ import java.util.function.Consumer;
  * - A request-specific listener included with the request. This will trigger only with a result
  *     from the request it was provided with.
  * - A global listener provided by {@link #registerForAllProfilingResults}. This will be triggered
- *     for all results belonging to your app.
+ *     for all results belonging to your app. This listener is the only way to receive results from
+ *     system triggered profiling instances set up with {@link #addProfilingTriggers}.
  * </p>
  *
  * <p>
  * Requests are rate limited and not guaranteed to be filled. Rate limiting can be disabled for
- * local testing using the shell command
+ * local testing of {@link #requestProfiling} using the shell command
  * {@code device_config put profiling_testing rate_limiter.disabled true}
+ * </p>
+ *
+ * <p>
+ * In order to test profiling triggers, enable testing mode for your app with the shell command
+ * {@code device_config put profiling_testing system_triggered_profiling.testing_package_name
+ * com.your.app} which will:
+ * - Ensure that a background trace is running.
+ * - Allow all triggers for the provided package name to pass the system level rate limiter.
+ * This mode will continue until manually stopped with the shell command
+ * {@code device_config delete profiling_testing system_triggered_profiling.testing_package_name}
  * </p>
  *
  * <p>
@@ -256,7 +272,9 @@ public final class ProfilingManager {
                 if (service == null) {
                     executor.execute(() -> listener.accept(
                             new ProfilingResult(ProfilingResult.ERROR_UNKNOWN, null, tag,
-                                "ProfilingService is not available")));
+                                "ProfilingService is not available",
+                                Flags.systemTriggeredProfilingNew()
+                                        ? ProfilingTrigger.TRIGGER_TYPE_NONE : 0)));
                     if (DEBUG) Log.d(TAG, "ProfilingService is not available");
                     return;
                 }
@@ -265,7 +283,9 @@ public final class ProfilingManager {
                 if (packageName == null) {
                     executor.execute(() -> listener.accept(
                             new ProfilingResult(ProfilingResult.ERROR_UNKNOWN, null, tag,
-                                    "Failed to resolve package name")));
+                                    "Failed to resolve package name",
+                                    Flags.systemTriggeredProfilingNew()
+                                            ? ProfilingTrigger.TRIGGER_TYPE_NONE : 0)));
                     if (DEBUG) Log.d(TAG, "Failed to resolve package name.");
                     return;
                 }
@@ -293,7 +313,9 @@ public final class ProfilingManager {
                 if (DEBUG) Log.d(TAG, "Binder exception processing request", e);
                 executor.execute(() -> listener.accept(
                         new ProfilingResult(ProfilingResult.ERROR_UNKNOWN, null, tag,
-                                "Binder exception processing request")));
+                                "Binder exception processing request",
+                                Flags.systemTriggeredProfilingNew()
+                                        ? ProfilingTrigger.TRIGGER_TYPE_NONE : 0)));
                 throw new RuntimeException("Unable to request profiling.");
             }
         }
@@ -323,7 +345,9 @@ public final class ProfilingManager {
                 // not ever be triggered.
                 executor.execute(() -> listener.accept(new ProfilingResult(
                         ProfilingResult.ERROR_UNKNOWN, null, null,
-                        "Binder exception processing request")));
+                        "Binder exception processing request",
+                        Flags.systemTriggeredProfilingNew()
+                                ? ProfilingTrigger.TRIGGER_TYPE_NONE : 0)));
                 return;
             }
             mCallbacks.add(new ProfilingRequestCallbackWrapper(executor, listener, null));
@@ -384,6 +408,125 @@ public final class ProfilingManager {
         }
     }
 
+    /**
+     * Register the provided list of triggers for this process.
+     *
+     * Profiling triggers are system triggered events that an app can register interest in receiving
+     * profiling of. There is no guarantee that these triggers will be filled. Results, if
+     * available, will be delivered only to a global listener added using
+     * {@link #registerForAllProfilingResults}.
+     *
+     * Only one of each trigger type can be added at a time.
+     * - If the provided list contains a trigger type that is already registered then the new one
+     *      will replace the existing one.
+     * - If the provided list contains more than one trigger object for a trigger type then only one
+     *      will be kept.
+     */
+    @FlaggedApi(Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    public void addProfilingTriggers(@NonNull List<ProfilingTrigger> triggers) {
+        synchronized (mLock) {
+            if (triggers.isEmpty()) {
+                // No triggers are being added, nothing to do.
+                if (DEBUG) Log.d(TAG, "Trying to add an empty list of triggers.");
+                return;
+            }
+
+            final IProfilingService service = getOrCreateIProfilingServiceLocked(false);
+            if (service == null) {
+                // If we can't access service then we can't do anything. Return.
+                if (DEBUG) Log.d(TAG, "ProfilingService is not available, triggers will be lost.");
+                return;
+            }
+
+            String packageName = mContext.getPackageName();
+            if (packageName == null) {
+                if (DEBUG) Log.d(TAG, "Failed to resolve package name.");
+                return;
+            }
+
+            try {
+                service.addProfilingTriggers(toValueParcelList(triggers), packageName);
+            } catch (RemoteException e) {
+                if (DEBUG) Log.d(TAG, "Binder exception processing request", e);
+                throw new RuntimeException("Unable to add profiling triggers.");
+            }
+        }
+    }
+
+    @FlaggedApi(Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    private List<ProfilingTriggerValueParcel> toValueParcelList(
+            List<ProfilingTrigger> triggerList) {
+        List<ProfilingTriggerValueParcel> triggerValueParcelList =
+                new ArrayList<ProfilingTriggerValueParcel>();
+
+        for (int i = 0; i < triggerList.size(); i++) {
+            triggerValueParcelList.add(triggerList.get(i).toValueParcel());
+        }
+
+        return triggerValueParcelList;
+    }
+
+    /** Remove triggers for this process with trigger types in the provided list. */
+    @FlaggedApi(Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    public void removeProfilingTriggersByType(@NonNull @TriggerType int[] triggers) {
+        synchronized (mLock) {
+            if (triggers.length == 0) {
+                // No triggers are being removed, nothing to do.
+                if (DEBUG) Log.d(TAG, "Trying to remove an empty list of triggers.");
+                return;
+            }
+
+            final IProfilingService service = getOrCreateIProfilingServiceLocked(false);
+            if (service == null) {
+                // If we can't access service then we can't do anything. Return.
+                if (DEBUG) {
+                    Log.d(TAG, "ProfilingService is not available, triggers will not be removed.");
+                }
+                return;
+            }
+
+            String packageName = mContext.getPackageName();
+            if (packageName == null) {
+                if (DEBUG) Log.d(TAG, "Failed to resolve package name.");
+                return;
+            }
+
+            try {
+                service.removeProfilingTriggers(triggers, packageName);
+            } catch (RemoteException e) {
+                if (DEBUG) Log.d(TAG, "Binder exception processing request", e);
+                throw new RuntimeException("Unable to remove profiling triggers.");
+            }
+        }
+    }
+
+    /** Remove all triggers for this process. */
+    @FlaggedApi(Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    public void clearProfilingTriggers() {
+        synchronized (mLock) {
+            final IProfilingService service = getOrCreateIProfilingServiceLocked(false);
+            if (service == null) {
+                // If we can't access service then we can't do anything. Return.
+                if (DEBUG) {
+                    Log.d(TAG, "ProfilingService is not available, triggers will not be removed.");
+                }
+                return;
+            }
+
+            String packageName = mContext.getPackageName();
+            if (packageName == null) {
+                if (DEBUG) Log.d(TAG, "Failed to resolve package name.");
+                return;
+            }
+
+            try {
+                service.clearProfilingTriggers(packageName);
+            } catch (RemoteException e) {
+                if (DEBUG) Log.d(TAG, "Binder exception processing request", e);
+                throw new RuntimeException("Unable to clear profiling triggers.");
+            }
+        }
+    }
 
     /** @hide */
     @VisibleForTesting
@@ -460,7 +603,10 @@ public final class ProfilingManager {
                                     wrapper.mExecutor.execute(() -> wrapper.mListener.accept(
                                             new ProfilingResult(overrideStatusToError
                                                     ? ProfilingResult.ERROR_UNKNOWN : status,
-                                                    getAppFileDir() + resultFile, tag, error)));
+                                                    getAppFileDir() + resultFile, tag, error,
+                                                    Flags.systemTriggeredProfilingNew()
+                                                            ? ProfilingTrigger.TRIGGER_TYPE_NONE
+                                                            : 0)));
                                 }
 
                                 // Remove the single listener that was tied to the request, if
