@@ -15,6 +15,8 @@
  */
 package android.os;
 
+import static android.os.ProfilingTrigger.TriggerType;
+
 import android.annotation.FlaggedApi;
 import android.annotation.IntDef;
 import android.annotation.NonNull;
@@ -464,11 +466,11 @@ public final class ProfilingManager {
         return triggerValueParcelList;
     }
 
-    /** Remove the provided list of triggers for this process. */
+    /** Remove triggers for this process with trigger types in the provided list. */
     @FlaggedApi(Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
-    public void removeProfilingTriggers(@NonNull List<Integer> triggers) {
+    public void removeProfilingTriggersByType(@NonNull @TriggerType int[] triggers) {
         synchronized (mLock) {
-            if (triggers.isEmpty()) {
+            if (triggers.length == 0) {
                 // No triggers are being removed, nothing to do.
                 if (DEBUG) Log.d(TAG, "Trying to remove an empty list of triggers.");
                 return;
@@ -489,29 +491,8 @@ public final class ProfilingManager {
                 return;
             }
 
-            // First filter for valid triggers only.
-            ArrayList<Integer> validTriggers = new ArrayList<Integer>();
-            for (int i = 0; i < triggers.size(); i++) {
-                int trigger = triggers.get(i).intValue();
-                if (ProfilingTrigger.isValidRequestTriggerType(trigger)) {
-                    validTriggers.add(trigger);
-                }
-            }
-
-            if (validTriggers.isEmpty()) {
-                // No valid triggers are being removed, nothing to do.
-                if (DEBUG) Log.d(TAG, "Trying to remove a list of invalid triggers only.");
-                return;
-            }
-
-            // Move to array for binder.
-            int[] arr = new int[validTriggers.size()];
-            for (int i = 0; i < validTriggers.size(); i++) {
-                arr[i] = validTriggers.get(i).intValue();
-            }
-
             try {
-                service.removeProfilingTriggers(arr, packageName);
+                service.removeProfilingTriggers(triggers, packageName);
             } catch (RemoteException e) {
                 if (DEBUG) Log.d(TAG, "Binder exception processing request", e);
                 throw new RuntimeException("Unable to remove profiling triggers.");

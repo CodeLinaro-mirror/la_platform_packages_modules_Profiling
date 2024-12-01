@@ -956,7 +956,8 @@ public final class ProfilingFrameworkTests {
         sleep(WAIT_TIME_FOR_PROFILING_START_MS);
 
         // Remove the trigger.
-        mProfilingManager.removeProfilingTriggers(List.of(ProfilingTrigger.TRIGGER_TYPE_ANR));
+        mProfilingManager.removeProfilingTriggersByType(
+                new int[]{ProfilingTrigger.TRIGGER_TYPE_ANR});
 
         // Now fake a system trigger.
         ProfilingServiceHelper.getInstance().onProfilingTriggerOccurred(Binder.getCallingUid(),
