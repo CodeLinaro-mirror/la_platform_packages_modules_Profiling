@@ -30,10 +30,13 @@ import static org.mockito.Mockito.verify;
 
 import android.app.Instrumentation;
 import android.content.Context;
+import android.os.Binder;
 import android.os.Bundle;
 import android.os.CancellationSignal;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
+import android.os.ProfilingServiceHelper;
+import android.os.ProfilingTrigger;
 import android.os.profiling.DeviceConfigHelper;
 import android.os.profiling.Flags;
 import android.os.profiling.ProfilingService;
@@ -64,6 +67,7 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -92,7 +96,12 @@ public final class ProfilingFrameworkTests {
     private static final int RATE_LIMITER_WAIT_TIME_INCREMENTS_COUNT = 12;
 
     // Wait 2 seconds for profiling to get started before attempting to cancel it.
+    // TODO: b/376440094 - change to query perfetto and confirm profiling is running.
     private static final int WAIT_TIME_FOR_PROFILING_START_MS = 2 * 1000;
+
+    // Wait 10 seconds for profiling to potentially clone, process, and return result to confirm it
+    // did not occur.
+    private static final int WAIT_TIME_FOR_TRIGGERED_PROFILING_NO_RESULT = 10 * 1000;
 
     // Keep in sync with {@link ProfilingService} because we can't access it.
     private static final String OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX = ".perfetto-java-heap-dump";
@@ -105,6 +114,11 @@ public final class ProfilingFrameworkTests {
 
     private static final String COMMAND_OVERRIDE_DEVICE_CONFIG_INT = "device_config put %s %s %d";
     private static final String COMMAND_OVERRIDE_DEVICE_CONFIG_BOOL = "device_config put %s %s %b";
+    private static final String COMMAND_OVERRIDE_DEVICE_CONFIG_STRING =
+            "device_config put %s %s %s";
+    private static final String COMMAND_DELETE_DEVICE_CONFIG_STRING = "device_config delete %s %s";
+
+    private static final String REAL_PACKAGE_NAME = "com.android.profiling.tests";
 
     private static final int ONE_SECOND_MS = 1 * 1000;
     private static final int FIVE_SECONDS_MS = 5 * 1000;
@@ -143,8 +157,10 @@ public final class ProfilingFrameworkTests {
 
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager.mProfilingService lock.
     @After
-    public void cleanup() {
+    public void cleanup() throws Exception {
         mProfilingManager.mProfilingService = null;
+        executeShellCmd(COMMAND_DELETE_DEVICE_CONFIG_STRING, DeviceConfigHelper.NAMESPACE_TESTING,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_TEST_PACKAGE_NAME);
     }
 
     /** Check and see if we can get a reference to the ProfilingManager service. */
@@ -860,6 +876,99 @@ public final class ProfilingFrameworkTests {
         verify(mProfilingManager.mProfilingService, times(0)).registerResultsCallback(anyBoolean(),
                 any());
         verify(mProfilingManager.mProfilingService, times(0)).generalListenerAdded();
+    }
+
+    /**
+     * Test adding a profiling trigger and receiving a result works correctly.
+     *
+     * This is done by: adding the trigger through the public api, force starting a system triggered
+     * trace, sending a fake trigger as if from the system, and then confirming the result is
+     * received.
+     */
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    public void testSystemTriggeredProfiling() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // First add a trigger
+        ProfilingTrigger trigger = new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANR)
+                .setRateLimitingPeriodHours(1)
+                .build();
+        mProfilingManager.addProfilingTriggers(List.of(trigger));
+
+        // And add a global listener
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(
+                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
+
+        // Then start the system triggered trace for testing.
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_STRING,
+                DeviceConfigHelper.NAMESPACE_TESTING,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_TEST_PACKAGE_NAME,
+                REAL_PACKAGE_NAME);
+
+        // Wait a bit so the trace can get started and actually collect something.
+        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+
+        // Now fake a system trigger.
+        ProfilingServiceHelper.getInstance().onProfilingTriggerOccurred(Binder.getCallingUid(),
+                REAL_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_ANR);
+
+        // Wait for the trace to process.
+        waitForCallback(callbackGeneral);
+
+        // Finally, confirm that a result was received.
+        confirmCollectionSuccess(callbackGeneral.mResult, OUTPUT_FILE_TRACE_SUFFIX);
+    }
+
+    /**
+     * Test removing profiling trigger.
+     *
+     * There is no way to check the data structure from this context and that specifically is tested
+     * in {@link ProfilingServiceTests}, so this test just ensures that a result is not received.
+     */
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    public void testSystemTriggeredProfilingRemove() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // First add a trigger
+        ProfilingTrigger trigger = new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANR)
+                .setRateLimitingPeriodHours(1)
+                .build();
+        mProfilingManager.addProfilingTriggers(List.of(trigger));
+
+        // And add a global listener
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(
+                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
+
+        // Then start the system triggered trace for testing.
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_STRING,
+                DeviceConfigHelper.NAMESPACE_TESTING,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_TEST_PACKAGE_NAME,
+                REAL_PACKAGE_NAME);
+
+        // Wait a bit so the trace can get started and actually collect something.
+        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+
+        // Remove the trigger.
+        mProfilingManager.removeProfilingTriggersByType(
+                new int[]{ProfilingTrigger.TRIGGER_TYPE_ANR});
+
+        // Now fake a system trigger.
+        ProfilingServiceHelper.getInstance().onProfilingTriggerOccurred(Binder.getCallingUid(),
+                REAL_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_ANR);
+
+        // We can't wait for nothing to happen, so wait 10 seconds which should be long enough.
+        sleep(WAIT_TIME_FOR_TRIGGERED_PROFILING_NO_RESULT);
+
+        // Finally, confirm that no callback was received.
+        assertNull(callbackGeneral.mResult);
     }
 
     /** Disable the rate limiter and wait long enough for the update to be picked up. */
