@@ -75,6 +75,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Tests in this class are for testing the ProfilingService directly without the need to get a
@@ -89,6 +90,7 @@ public final class ProfilingServiceTests {
 
     private static final String OVERRIDE_DEVICE_CONFIG_INT = "device_config put %s %s %d";
     private static final String GET_DEVICE_CONFIG = "device_config get %s %s";
+    private static final String DELETE_DEVICE_CONFIG = "device_config delete %s %s";
 
     private static final String PERSIST_TEST_DIR = "testdir";
     private static final String PERSIST_TEST_FILE = "testfile";
@@ -147,7 +149,7 @@ public final class ProfilingServiceTests {
     }
 
     @After
-    public void cleanup() {
+    public void cleanup() throws Exception {
         // Delete any local persist files.
         if (mRateLimiter.mPersistFile != null) {
             mRateLimiter.mPersistFile.delete();
@@ -157,6 +159,12 @@ public final class ProfilingServiceTests {
             // on disk, but just in case that changes try the delete here too.
             mProfilingService.mPersistQueueFile.delete();
         }
+
+        // Remove any overrides set for period.
+        executeShellCmd(DELETE_DEVICE_CONFIG, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS);
+        executeShellCmd(DELETE_DEVICE_CONFIG, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS);
     }
 
     /** Test that registering binder callbacks works as expected. */
@@ -1756,7 +1764,7 @@ public final class ProfilingServiceTests {
                 .setLastTriggeredTimeMs(fakeLastTriggerTimeMs);
 
         // Now process the trigger.
-        mProfilingService.processTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
+        mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
 
         // Get the new trigger time and make sure it's later than the fake one, indicating it ran.
         long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
@@ -1798,7 +1806,7 @@ public final class ProfilingServiceTests {
                 .setLastTriggeredTimeMs(fakeLastTriggerTimeMs);
 
         // Now process the trigger.
-        mProfilingService.processTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
+        mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
 
         // Get the new trigger time and make sure it's equal to the fake one, indicating it did not
         // run.
@@ -1832,7 +1840,7 @@ public final class ProfilingServiceTests {
                 rateLimitingPeriodHours);
 
         // Now process the trigger.
-        mProfilingService.processTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
+        mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
 
         // Get the new trigger time and make sure it's later than 0, indicating it ran.
         long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
@@ -1871,12 +1879,56 @@ public final class ProfilingServiceTests {
                 rateLimitingPeriodHours);
 
         // Now process the trigger.
-        mProfilingService.processTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
+        mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
 
         // Get the new trigger time and make sure it's equal to 0, indicating it did not run.
         long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
                 .get(fakeTrigger).getLastTriggeredTimeMs();
         assertEquals(0, newTriggerTime);
+    }
+
+    /**
+     * Test that scheduling for system triggered profiling trace start works correctly, configuring
+     * run delay for correct amount of time.
+     */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    public void testSystemTriggeredProfiling_Scheduling() throws Exception {
+        // Override system triggered trace start values so that the trace will be attempted to be
+        // started within the test duration. If these values are changed, make sure to update the
+        // additional delay below as well.
+        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS, 3);
+        updateDeviceConfigAndWaitForChange(DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS, 4);
+
+        // Cancel the already scheduled future and set to null, if applicable.
+        if (mProfilingService.mStartSystemTriggeredTraceScheduledFuture != null) {
+            mProfilingService.mStartSystemTriggeredTraceScheduledFuture.cancel(true);
+            mProfilingService.mStartSystemTriggeredTraceScheduledFuture = null;
+        }
+
+        // Schedule a start of system triggered trace.
+        mProfilingService.scheduleNextSystemTriggeredTraceStart();
+
+        // Confirm the future is scheduled and that an attempt to start the trace has not occurred
+        // yet.
+        assertNotNull(mProfilingService.mStartSystemTriggeredTraceScheduledFuture);
+        assertFalse(mProfilingService.mStartSystemTriggeredTraceScheduledFuture.isDone());
+        verify(mProfilingService, times(0)).startSystemTriggeredTrace();
+
+        // Wait for 2 seconds longer than the scheduled future delay so that the future can execute
+        // once, but not twice. 2 seconds is selected as the extra delay because it is less than 3
+        // which is set as min for period above, but also the highest value possible to give time to
+        // execute.
+        long delay = mProfilingService.mStartSystemTriggeredTraceScheduledFuture.getDelay(
+                TimeUnit.SECONDS);
+        sleep((delay + 2L) * 1000L);
+
+        // Finally, confirm that the future ran by confirming that an attempt to start the trace was
+        // made. We don't confirm that it actually started as we can't actually start the trace from
+        // this context.
+        verify(mProfilingService, times(1)).startSystemTriggeredTrace();
     }
 
     private File createAndConfirmFileExists(File directory, String fileName) throws Exception {
