@@ -5,7 +5,7 @@ package android.os {
     method @FlaggedApi("android.os.profiling.system_triggered_profiling_new") public void addProfilingTriggers(@NonNull java.util.List<android.os.ProfilingTrigger>);
     method @FlaggedApi("android.os.profiling.system_triggered_profiling_new") public void clearProfilingTriggers();
     method public void registerForAllProfilingResults(@NonNull java.util.concurrent.Executor, @NonNull java.util.function.Consumer<android.os.ProfilingResult>);
-    method @FlaggedApi("android.os.profiling.system_triggered_profiling_new") public void removeProfilingTriggers(@NonNull java.util.List<java.lang.Integer>);
+    method @FlaggedApi("android.os.profiling.system_triggered_profiling_new") public void removeProfilingTriggersByType(@NonNull int[]);
     method public void requestProfiling(int, @Nullable android.os.Bundle, @Nullable String, @Nullable android.os.CancellationSignal, @Nullable java.util.concurrent.Executor, @Nullable java.util.function.Consumer<android.os.ProfilingResult>);
     method public void unregisterForAllProfilingResults(@Nullable java.util.function.Consumer<android.os.ProfilingResult>);
     field public static final int PROFILING_TYPE_HEAP_PROFILE = 2; // 0x2
