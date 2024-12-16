@@ -2,7 +2,10 @@
 package android.os {
 
   @FlaggedApi("android.os.profiling.telemetry_apis") public final class ProfilingManager {
+    method @FlaggedApi("android.os.profiling.system_triggered_profiling_new") public void addProfilingTriggers(@NonNull java.util.List<android.os.ProfilingTrigger>);
+    method @FlaggedApi("android.os.profiling.system_triggered_profiling_new") public void clearProfilingTriggers();
     method public void registerForAllProfilingResults(@NonNull java.util.concurrent.Executor, @NonNull java.util.function.Consumer<android.os.ProfilingResult>);
+    method @FlaggedApi("android.os.profiling.system_triggered_profiling_new") public void removeProfilingTriggers(@NonNull java.util.List<java.lang.Integer>);
     method public void requestProfiling(int, @Nullable android.os.Bundle, @Nullable String, @Nullable android.os.CancellationSignal, @Nullable java.util.concurrent.Executor, @Nullable java.util.function.Consumer<android.os.ProfilingResult>);
     method public void unregisterForAllProfilingResults(@Nullable java.util.function.Consumer<android.os.ProfilingResult>);
     field public static final int PROFILING_TYPE_HEAP_PROFILE = 2; // 0x2
@@ -17,6 +20,7 @@ package android.os {
     method @Nullable public String getErrorMessage();
     method @Nullable public String getResultFilePath();
     method @Nullable public String getTag();
+    method @FlaggedApi("android.os.profiling.system_triggered_profiling_new") public int getTriggerType();
     method public void writeToParcel(@NonNull android.os.Parcel, int);
     field @NonNull public static final android.os.Parcelable.Creator<android.os.ProfilingResult> CREATOR;
     field public static final int ERROR_FAILED_EXECUTING = 4; // 0x4
@@ -28,6 +32,20 @@ package android.os {
     field public static final int ERROR_FAILED_RATE_LIMIT_SYSTEM = 1; // 0x1
     field public static final int ERROR_NONE = 0; // 0x0
     field public static final int ERROR_UNKNOWN = 8; // 0x8
+  }
+
+  @FlaggedApi("android.os.profiling.system_triggered_profiling_new") public final class ProfilingTrigger {
+    method public int getRateLimitingPeriodHours();
+    method public int getTriggerType();
+    field public static final int TRIGGER_TYPE_ANR = 2; // 0x2
+    field public static final int TRIGGER_TYPE_APP_FULLY_DRAWN = 1; // 0x1
+    field public static final int TRIGGER_TYPE_NONE = 0; // 0x0
+  }
+
+  @FlaggedApi("android.os.profiling.system_triggered_profiling_new") public static final class ProfilingTrigger.Builder {
+    ctor public ProfilingTrigger.Builder(int);
+    method @NonNull public android.os.ProfilingTrigger build();
+    method @NonNull public android.os.ProfilingTrigger.Builder setRateLimitingPeriodHours(int);
   }
 
 }

@@ -20,7 +20,7 @@ message QueuedResultsWrapper {
     optional int32 retry_count = 11;
     optional string error_message = 12;
     optional int32 error_status = 13;
-    optional int32 trigger = 14;
+    optional int32 trigger_type = 14;
   }
   repeated TracingSession sessions = 1;
 }

@@ -52,13 +52,14 @@ public class RateLimiter {
     private static final long TIME_DAY_MS = 24 * 60 * 60 * 1000;
     private static final long TIME_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-    private static final int DEFAULT_MAX_COST_SYSTEM_HOUR = 2;
-    private static final int DEFAULT_MAX_COST_PROCESS_HOUR = 1;
-    private static final int DEFAULT_MAX_COST_SYSTEM_DAY = 5;
-    private static final int DEFAULT_MAX_COST_PROCESS_DAY = 2;
-    private static final int DEFAULT_MAX_COST_SYSTEM_WEEK = 15;
-    private static final int DEFAULT_MAX_COST_PROCESS_WEEK = 3;
-    private static final int DEFAULT_COST_PER_SESSION = 1;
+    private static final int DEFAULT_MAX_COST_SYSTEM_HOUR = 20;
+    private static final int DEFAULT_MAX_COST_PROCESS_HOUR = 10;
+    private static final int DEFAULT_MAX_COST_SYSTEM_DAY = 50;
+    private static final int DEFAULT_MAX_COST_PROCESS_DAY = 20;
+    private static final int DEFAULT_MAX_COST_SYSTEM_WEEK = 150;
+    private static final int DEFAULT_MAX_COST_PROCESS_WEEK = 30;
+    private static final int DEFAULT_COST_PER_SESSION = 10;
+    private static final int DEFAULT_COST_PER_SYSTEM_TRIGGERED_SESSION = 5;
 
     public static final int RATE_LIMIT_RESULT_ALLOWED = 0;
     public static final int RATE_LIMIT_RESULT_BLOCKED_PROCESS = 1;
@@ -88,6 +89,7 @@ public class RateLimiter {
     private int mCostHeapProfile;
     private int mCostStackSampling;
     private int mCostSystemTrace;
+    private int mCostSystemTriggeredSystemTrace;
 
     private final HandlerCallback mHandlerCallback;
 
@@ -154,6 +156,9 @@ public class RateLimiter {
                 DEFAULT_COST_PER_SESSION);
         mCostSystemTrace = properties.getInt(DeviceConfigHelper.COST_SYSTEM_TRACE,
                 DEFAULT_COST_PER_SESSION);
+        mCostSystemTriggeredSystemTrace = properties.getInt(
+                DeviceConfigHelper.COST_SYSTEM_TRIGGERED_SYSTEM_TRACE,
+                DEFAULT_COST_PER_SYSTEM_TRIGGERED_SESSION);
 
         mPersistToDiskFrequency = properties.getLong(
                 DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS, 0);
@@ -170,10 +175,11 @@ public class RateLimiter {
     }
 
     public @RateLimitResult int isProfilingRequestAllowed(int uid,
-            int profilingType, @Nullable Bundle params) {
+            int profilingType, boolean isTriggered, @Nullable Bundle params) {
         synchronized (mLock) {
-            if (mRateLimiterDisabled) {
+            if (mRateLimiterDisabled && !isTriggered) {
                 // Rate limiter is disabled for testing, approve request and don't store cost.
+                // This mechanism applies only to direct requests, not system triggered ones.
                 Log.w(TAG, "Rate limiter disabled, request allowed.");
                 return RATE_LIMIT_RESULT_ALLOWED;
             }
@@ -182,7 +188,7 @@ public class RateLimiter {
                 Log.e(TAG, "Data loading in progress or failed, request denied.");
                 return RATE_LIMIT_RESULT_BLOCKED_SYSTEM;
             }
-            final int cost = getCostForProfiling(profilingType);
+            final int cost = getCostForProfiling(profilingType, isTriggered);
             final long currentTimeMillis = System.currentTimeMillis();
             int status = mPastRunsHour.isProfilingAllowed(uid, cost, currentTimeMillis);
             if (status == RATE_LIMIT_RESULT_ALLOWED) {
@@ -202,7 +208,10 @@ public class RateLimiter {
         }
     }
 
-    private int getCostForProfiling(int profilingType) {
+    private int getCostForProfiling(int profilingType, boolean isTriggered) {
+        if (isTriggered) {
+            return mCostSystemTriggeredSystemTrace;
+        }
         switch (profilingType) {
             case ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP:
                 return mCostJavaHeapDump;
@@ -503,6 +512,9 @@ public class RateLimiter {
                 mCostStackSampling);
         mCostSystemTrace = properties.getInt(DeviceConfigHelper.COST_SYSTEM_TRACE,
                 mCostSystemTrace);
+        mCostSystemTriggeredSystemTrace = properties.getInt(
+                DeviceConfigHelper.COST_SYSTEM_TRIGGERED_SYSTEM_TRACE,
+                mCostSystemTriggeredSystemTrace);
 
         // For max cost values, set a invalid default value and pass through to each group wrapper
         // to determine whether to update values.
