@@ -14,26 +14,17 @@
  * limitations under the License.
  */
 
-package android.profiling.cts;
+#include <jni.h>
+#include <stdlib.h>
 
-import android.os.Bundle;
-
-import java.util.concurrent.Executor;
-
-public final class ProfilingTestUtils {
-
-    private static String KEY_DURATION_MS = "KEY_DURATION_MS";
-
-    static class ImmediateExecutor implements Executor {
-        public void execute(Runnable r) {
-            r.run();
-        }
-    }
-
-    static Bundle getOneSecondDurationParamBundle() {
-        Bundle params = new Bundle();
-        params.putInt(KEY_DURATION_MS, 1000);
-        return params;
-    }
+JNIEXPORT void JNICALL
+Java_android_profiling_cts_ProfilingFrameworkTests_doMallocAndFree(JNIEnv* env,
+                                                                   jclass klass) {
+  (void) env;
+  (void) klass;
+  volatile char* x = malloc(4200);
+  if (x) {
+    x[0] = '\0';
+    free((char*)x);
+  }
 }
-

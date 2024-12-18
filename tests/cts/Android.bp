@@ -1,9 +1,10 @@
 package {
     default_applicable_licenses: ["Android-Apache-2.0"],
+    default_team: "trendy_team_system_performance",
 }
 
 android_test {
-    name: "MtsProfilingModuleTests",
+    name: "CtsProfilingModuleTests",
     defaults: ["cts_defaults"],
     static_libs: [
         "androidx.test.rules",
@@ -18,20 +19,26 @@ android_test {
         "testng",
     ],
     libs: [
-        "android.test.runner",
-        "android.test.base",
-        "framework-profiling-proto",
-        "android.test.mock",
+        "android.test.runner.stubs.system",
+        "android.test.base.stubs.system",
+        "android.test.mock.stubs.system",
         "junit",
     ],
+    // include both the 32 and 64 bit versions
+    compile_multilib: "both",
     srcs: [
         "src/android/profiling/cts/*.java",
     ],
+    jni_libs: [
+        "libcts_profiling_module_test_native",
+    ],
+    jarjar_rules: "jarjar-rules.txt",
     test_suites: [
         "cts",
         "general-tests",
         "mts-profiling",
+        "mcts-profiling",
     ],
-    min_sdk_version: "34",
+    min_sdk_version: "35",
     sdk_version: "module_current",
 }
