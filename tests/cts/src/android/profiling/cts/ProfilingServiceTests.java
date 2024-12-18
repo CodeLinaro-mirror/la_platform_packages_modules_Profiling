@@ -146,6 +146,10 @@ public final class ProfilingServiceTests {
         doReturn(true).when(mProfilingService).setupPersistAppTriggerFiles();
         mProfilingService.mPersistAppTriggersFile =
                 new File(mProfilingService.mPersistStoreDir, PERSIST_TEST_FILE);
+
+        // Since we use mock files we can't rely on the setup call that would typically come from
+        // initialization of rate limiter, so trigger setup manually.
+        mRateLimiter.setupFromPersistedData();
     }
 
     @After
