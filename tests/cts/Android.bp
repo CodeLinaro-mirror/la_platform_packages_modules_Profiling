@@ -14,14 +14,14 @@ android_test {
         "cts-wm-util",
         "modules-utils-build",
         "service-profiling",
-        "android.os.profiling.flags-aconfig-java",
+        "profiling_flags_lib",
         "framework-profiling.impl",
         "testng",
     ],
     libs: [
-        "android.test.runner",
-        "android.test.base",
-        "android.test.mock",
+        "android.test.runner.stubs.system",
+        "android.test.base.stubs.system",
+        "android.test.mock.stubs.system",
         "junit",
     ],
     // include both the 32 and 64 bit versions
