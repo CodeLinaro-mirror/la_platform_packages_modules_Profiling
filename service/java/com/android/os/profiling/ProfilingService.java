@@ -1420,7 +1420,9 @@ public class ProfilingService extends IProfilingService.Stub {
             // Request couldn't be processed. This shouldn't happen.
             if (DEBUG) Log.d(TAG, "Request couldn't be processed", e);
             session.setError(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, e.getMessage());
-            moveSessionToQueue(session, true);
+            // Don't bother adding the session to the queue as there is no real value in trying to
+            // deliver this error callback again later in the case that the app no longer has a
+            // registered listener.
             advanceTracingSession(session, TracingState.ERROR_OCCURRED);
             return;
 
@@ -1448,7 +1450,9 @@ public class ProfilingService extends IProfilingService.Stub {
             mActiveTracingSessions.put(session.getKey(), session);
         } else {
             session.setError(ProfilingResult.ERROR_FAILED_EXECUTING, "Trace couldn't be started");
-            moveSessionToQueue(session, true);
+            // Don't bother adding the session to the queue as there is no real value in trying to
+            // deliver this error callback again later in the case that the app no longer has a
+            // registered listener.
             advanceTracingSession(session, TracingState.ERROR_OCCURRED);
             return;
         }
@@ -2047,7 +2051,6 @@ public class ProfilingService extends IProfilingService.Stub {
                 Log.d(TAG, String.format("Redaction processed failed with error code: %s",
                         redactionErrorCode));
             }
-            cleanupTracingSession(session);
             session.setError(ProfilingResult.ERROR_FAILED_POST_PROCESSING);
             advanceTracingSession(session, TracingState.ERROR_OCCURRED);
             return;
