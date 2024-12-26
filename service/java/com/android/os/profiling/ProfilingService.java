@@ -1686,6 +1686,7 @@ public class ProfilingService extends IProfilingService.Stub {
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE, uid, packageName, triggerType);
         session.setRedactedFileName(baseFileName + OUTPUT_FILE_TRACE_SUFFIX);
         session.setFileName(unredactedFullName);
+        session.setProfilingStartTimeMs(System.currentTimeMillis());
         moveSessionToQueue(session, true);
         advanceTracingSession(session, TracingState.PROFILING_FINISHED);
 
@@ -2207,11 +2208,20 @@ public class ProfilingService extends IProfilingService.Stub {
      * Sessions are expected to be in the queue when their states are between PROFILING_FINISHED and
      * NOTIFIED_REQUESTER, inclusive.
      *
+     * Sessions should only be added to the queue with a valid profiling start time. Sessions added
+     * without a valid start time may be cleaned up in middle of their execution and fail to deliver
+     * any result.
+     *
      * @param session      the session to move to the queue
      * @param maybePersist whether to persist the queue to disk if the queue is eligible to be
      *          persisted
      */
     private void moveSessionToQueue(TracingSession session, boolean maybePersist) {
+        if (DEBUG && session.getProfilingStartTimeMs() == 0) {
+            Log.e(TAG, "Attempting to move session to queue without a start time set.",
+                    new Throwable());
+        }
+
         List<TracingSession> queuedResults = mQueuedTracingResults.get(session.getUid());
         if (queuedResults == null) {
             queuedResults = new ArrayList<TracingSession>();
