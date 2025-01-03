@@ -2129,10 +2129,11 @@ public final class ProfilingServiceTests {
         public int mStatus;
         public String mTag;
         public String mError;
+        public int mTriggerType;
 
         @Override
         public void sendResult(String resultFile, long keyMostSigBits,
-                long keyLeastSigBits, int status, String tag, String error) {
+                long keyLeastSigBits, int status, String tag, String error, int triggerType) {
             mResultSent = true;
             mResultFile = resultFile;
             mKeyMostSigBits = keyMostSigBits;
@@ -2140,6 +2141,7 @@ public final class ProfilingServiceTests {
             mStatus = status;
             mTag = tag;
             mError = error;
+            mTriggerType = triggerType;
         }
 
         @Override

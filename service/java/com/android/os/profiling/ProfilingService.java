@@ -962,7 +962,7 @@ public class ProfilingService extends IProfilingService.Stub {
             if (DEBUG) Log.d(TAG, "Invalid request profiling type: " + profilingType);
             processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
                     ProfilingResult.ERROR_FAILED_INVALID_REQUEST, null, tag,
-                    "Invalid request profiling type");
+                    "Invalid request profiling type", getTriggerTypeNone());
             return;
         }
 
@@ -972,13 +972,15 @@ public class ProfilingService extends IProfilingService.Stub {
         try {
             if (areAnyTracesRunning()) {
                 processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                        ProfilingResult.ERROR_FAILED_PROFILING_IN_PROGRESS, null, tag, null);
+                        ProfilingResult.ERROR_FAILED_PROFILING_IN_PROGRESS, null, tag, null,
+                        getTriggerTypeNone());
                 return;
             }
         } catch (RuntimeException e) {
             if (DEBUG) Log.d(TAG, "Error communicating with perfetto", e);
             processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                    ProfilingResult.ERROR_UNKNOWN, null, tag, "Error communicating with perfetto");
+                    ProfilingResult.ERROR_UNKNOWN, null, tag, "Error communicating with perfetto",
+                    getTriggerTypeNone());
             return;
         }
 
@@ -986,7 +988,8 @@ public class ProfilingService extends IProfilingService.Stub {
             // This shouldn't happen as it should be checked on the app side.
             if (DEBUG) Log.d(TAG, "PackageName is null");
             processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                    ProfilingResult.ERROR_UNKNOWN, null, tag, "Couldn't determine package name");
+                    ProfilingResult.ERROR_UNKNOWN, null, tag, "Couldn't determine package name",
+                    getTriggerTypeNone());
             return;
         }
 
@@ -995,7 +998,8 @@ public class ProfilingService extends IProfilingService.Stub {
             // Failed to get uids for this package, can't validate package name.
             if (DEBUG) Log.d(TAG, "Failed to resolve package name");
             processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                    ProfilingResult.ERROR_UNKNOWN, null, tag, "Couldn't determine package name");
+                    ProfilingResult.ERROR_UNKNOWN, null, tag, "Couldn't determine package name",
+                    getTriggerTypeNone());
             return;
         }
 
@@ -1011,7 +1015,7 @@ public class ProfilingService extends IProfilingService.Stub {
             if (DEBUG) Log.d(TAG, "Package name not associated with calling uid");
             processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
                     ProfilingResult.ERROR_FAILED_INVALID_REQUEST, null, tag,
-                    "Package name not associated with calling uid.");
+                    "Package name not associated with calling uid.", getTriggerTypeNone());
             return;
         }
 
@@ -1035,20 +1039,22 @@ public class ProfilingService extends IProfilingService.Stub {
                             e);
                 }
                 processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                        ProfilingResult.ERROR_FAILED_INVALID_REQUEST, null, tag, e.getMessage());
+                        ProfilingResult.ERROR_FAILED_INVALID_REQUEST, null, tag, e.getMessage(),
+                        getTriggerTypeNone());
                 return;
             } catch (RuntimeException e) {
                 // Perfetto error. Systems fault.
                 if (DEBUG) Log.d(TAG, "Perfetto error", e);
                 processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                        ProfilingResult.ERROR_UNKNOWN, null, tag, "Perfetto error");
+                        ProfilingResult.ERROR_UNKNOWN, null, tag, "Perfetto error",
+                        getTriggerTypeNone());
                 return;
             }
         } else {
             // Rate limiter denied, notify caller.
             if (DEBUG) Log.d(TAG, "Request denied with status: " + status);
             processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                    RateLimiter.statusToResult(status), null, tag, null);
+                    RateLimiter.statusToResult(status), null, tag, null, getTriggerTypeNone());
         }
     }
 
@@ -1355,7 +1361,7 @@ public class ProfilingService extends IProfilingService.Stub {
         boolean succeeded = processResultCallback(session.getUid(), session.getKeyMostSigBits(),
                 session.getKeyLeastSigBits(), session.getErrorStatus(),
                 session.getDestinationFileName(OUTPUT_FILE_RELATIVE_PATH),
-                session.getTag(), session.getErrorMessage());
+                session.getTag(), session.getErrorMessage(), session.getTriggerType());
 
         if (continueAdvancing && succeeded) {
             advanceTracingSession(session, TracingState.NOTIFIED_REQUESTER);
@@ -1375,7 +1381,7 @@ public class ProfilingService extends IProfilingService.Stub {
      */
     private boolean processResultCallback(int uid, long keyMostSigBits, long keyLeastSigBits,
             int status, @Nullable String fileResultPathAndName, @Nullable String tag,
-            @Nullable String error) {
+            @Nullable String error, int triggerType) {
         List<IProfilingResultCallback> perUidCallbacks = mResultCallbacks.get(uid);
         if (perUidCallbacks == null || perUidCallbacks.isEmpty()) {
             // No callbacks, nowhere to notify with result or failure.
@@ -1389,10 +1395,10 @@ public class ProfilingService extends IProfilingService.Stub {
                 if (status == ProfilingResult.ERROR_NONE) {
                     perUidCallbacks.get(i).sendResult(
                             fileResultPathAndName, keyMostSigBits, keyLeastSigBits, status, tag,
-                            error);
+                            error, triggerType);
                 } else {
                     perUidCallbacks.get(i).sendResult(
-                            null, keyMostSigBits, keyLeastSigBits, status, tag, error);
+                            null, keyMostSigBits, keyLeastSigBits, status, tag, error, triggerType);
                 }
                 // One success is all we need to know that a callback was sent to the app.
                 // This is not perfect but sufficient given we cannot verify the success of
