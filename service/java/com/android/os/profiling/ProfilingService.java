@@ -34,6 +34,7 @@ import android.os.IProfilingService;
 import android.os.ParcelFileDescriptor;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
+import android.os.ProfilingTrigger;
 import android.os.ProfilingTriggerValueParcel;
 import android.os.ProfilingTriggersWrapper;
 import android.os.QueuedResultsWrapper;
@@ -167,7 +168,7 @@ public class ProfilingService extends IProfilingService.Stub {
 
     // Map of uid + package name to a sparse array of trigger objects.
     @VisibleForTesting
-    public ProcessMap<SparseArray<ProfilingTrigger>> mAppTriggers = new ProcessMap<>();
+    public ProcessMap<SparseArray<ProfilingTriggerData>> mAppTriggers = new ProcessMap<>();
     @VisibleForTesting
     public boolean mAppTriggersLoaded = false;
 
@@ -588,7 +589,7 @@ public class ProfilingService extends IProfilingService.Stub {
         // Populate in memory app triggers store
         for (int i = 0; i < wrapper.getTriggersCount(); i++) {
             ProfilingTriggersWrapper.ProfilingTrigger triggerProto = wrapper.getTriggers(i);
-            addTrigger(new ProfilingTrigger(triggerProto), false);
+            addTrigger(new ProfilingTriggerData(triggerProto), false);
         }
 
         mAppTriggersLoaded = true;
@@ -1022,7 +1023,7 @@ public class ProfilingService extends IProfilingService.Stub {
             // Rate limiter approved, try to start the request.
             try {
                 TracingSession session = new TracingSession(profilingType, params, uid,
-                        packageName, tag, keyMostSigBits, keyLeastSigBits);
+                        packageName, tag, keyMostSigBits, keyLeastSigBits, getTriggerTypeNone());
                 advanceTracingSession(session, TracingState.APPROVED);
                 return;
             } catch (IllegalArgumentException e) {
@@ -1049,6 +1050,17 @@ public class ProfilingService extends IProfilingService.Stub {
             processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
                     RateLimiter.statusToResult(status), null, tag, null);
         }
+    }
+
+    /**
+     * Convenience method to make checking the flag for obtaining trigger type none value in code
+     * cleaner. When cleaning up the system triggered flag, remove this method and inline the value.
+     */
+    private int getTriggerTypeNone() {
+        if (Flags.systemTriggeredProfilingNew()) {
+            return ProfilingTrigger.TRIGGER_TYPE_NONE;
+        }
+        return 0;
     }
 
     /** Call from application to register a callback object. */
@@ -1153,7 +1165,7 @@ public class ProfilingService extends IProfilingService.Stub {
      * name and the uid of the caller.
      */
     public void removeProfilingTriggers(int[] triggerTypesToRemove, String packageName) {
-        SparseArray<ProfilingTrigger> triggers =
+        SparseArray<ProfilingTriggerData> triggers =
                 mAppTriggers.get(packageName, Binder.getCallingUid());
 
         for (int i = 0; i < triggerTypesToRemove.length; i++) {
@@ -1588,7 +1600,7 @@ public class ProfilingService extends IProfilingService.Stub {
         }
 
         // Then check if the app has registered interest in this combo.
-        SparseArray<ProfilingTrigger> perProcessTriggers = mAppTriggers.get(packageName, uid);
+        SparseArray<ProfilingTriggerData> perProcessTriggers = mAppTriggers.get(packageName, uid);
         if (perProcessTriggers == null) {
             // This uid hasn't registered any triggers.
             if (DEBUG) {
@@ -1598,7 +1610,7 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
 
-        ProfilingTrigger trigger = perProcessTriggers.get(triggerType);
+        ProfilingTriggerData trigger = perProcessTriggers.get(triggerType);
         if (trigger == null) {
             // This uid hasn't registered a trigger for this type.
             if (DEBUG) {
@@ -1697,7 +1709,7 @@ public class ProfilingService extends IProfilingService.Stub {
     @VisibleForTesting
     public void addTrigger(int uid, @NonNull String packageName, int triggerType,
             int rateLimitingPeriodHours) {
-        addTrigger(new ProfilingTrigger(uid, packageName, triggerType, rateLimitingPeriodHours),
+        addTrigger(new ProfilingTriggerData(uid, packageName, triggerType, rateLimitingPeriodHours),
                 true);
     }
 
@@ -1709,17 +1721,17 @@ public class ProfilingService extends IProfilingService.Stub {
      *                          intended to be set to false only when loading triggers from disk.
      */
     @VisibleForTesting
-    public void addTrigger(ProfilingTrigger trigger, boolean maybePersist) {
+    public void addTrigger(ProfilingTriggerData trigger, boolean maybePersist) {
         if (!Flags.systemTriggeredProfilingNew()) {
             // Flag disabled.
             return;
         }
 
-        SparseArray<ProfilingTrigger> perProcessTriggers = mAppTriggers.get(
+        SparseArray<ProfilingTriggerData> perProcessTriggers = mAppTriggers.get(
                 trigger.getPackageName(), trigger.getUid());
 
         if (perProcessTriggers == null) {
-            perProcessTriggers = new SparseArray<ProfilingTrigger>();
+            perProcessTriggers = new SparseArray<ProfilingTriggerData>();
             mAppTriggers.put(trigger.getPackageName(), trigger.getUid(), perProcessTriggers);
         }
 
@@ -2496,20 +2508,21 @@ public class ProfilingService extends IProfilingService.Stub {
 
     /** Receive a callback with each of the tracked profiling triggers. */
     private void forEachTrigger(
-            ArrayMap<String, SparseArray<SparseArray<ProfilingTrigger>>> triggersOuterMap,
-            Consumer<ProfilingTrigger> callback) {
+            ArrayMap<String, SparseArray<SparseArray<ProfilingTriggerData>>> triggersOuterMap,
+            Consumer<ProfilingTriggerData> callback) {
 
         for (int i = 0; i < triggersOuterMap.size(); i++) {
-            SparseArray<SparseArray<ProfilingTrigger>> triggerUidList = triggersOuterMap.valueAt(i);
+            SparseArray<SparseArray<ProfilingTriggerData>> triggerUidList =
+                    triggersOuterMap.valueAt(i);
 
             for (int j = 0; j < triggerUidList.size(); j++) {
                 int uidKey = triggerUidList.keyAt(j);
-                SparseArray<ProfilingTrigger> triggersList = triggerUidList.get(uidKey);
+                SparseArray<ProfilingTriggerData> triggersList = triggerUidList.get(uidKey);
 
                 if (triggersList != null) {
                     for (int k = 0; k < triggersList.size(); k++) {
                         int triggerTypeKey = triggersList.keyAt(k);
-                        ProfilingTrigger trigger = triggersList.get(triggerTypeKey);
+                        ProfilingTriggerData trigger = triggersList.get(triggerTypeKey);
 
                         if (trigger != null) {
                             callback.accept(trigger);
