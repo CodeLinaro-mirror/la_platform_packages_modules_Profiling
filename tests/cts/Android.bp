@@ -33,6 +33,7 @@ android_test {
         "libcts_profiling_module_test_native",
     ],
     jarjar_rules: "jarjar-rules.txt",
+    test_mainline_modules: ["com.google.android.profiling.apex"],
     test_suites: [
         "cts",
         "general-tests",
