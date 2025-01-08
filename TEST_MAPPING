@@ -1,5 +1,5 @@
 {
-  "mainline-presubmit": [
+  "profiling-mainline-presubmit": [
     {
       "name": "CtsProfilingModuleTests[com.google.android.profiling.apex]",
       "options": [
