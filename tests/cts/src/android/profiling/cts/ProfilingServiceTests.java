@@ -42,9 +42,10 @@ import android.os.Handler;
 import android.os.IProfilingResultCallback;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
+import android.os.ProfilingTrigger;
 import android.os.profiling.DeviceConfigHelper;
 import android.os.profiling.ProfilingService;
-import android.os.profiling.ProfilingTrigger;
+import android.os.profiling.ProfilingTriggerData;
 import android.os.profiling.RateLimiter;
 import android.os.profiling.TracingSession;
 import android.platform.test.annotations.EnableFlags;
@@ -102,6 +103,14 @@ public final class ProfilingServiceTests {
 
     private static final int FAKE_UID = 12345;
     private static final int FAKE_UID_2 = 12346;
+
+    // Stub value for tests when system triggered api is not guaranteed to be enabled so
+    // {@link ProfilingTrigger#TRIGGER_TYPE_NONE} cannot be accessed. Value is the same as trigger
+    // type none. When cleaning up system triggered flag, remove this value and replace with
+    // {@link ProfilingTrigger#TRIGGER_TYPE_NONE}.
+    private static final int TRIGGER_TYPE_NONE = 0;
+
+    private static final int RATE_LIMITING_0_HOURS_BETWEEN = 0;
 
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
@@ -375,7 +384,7 @@ public final class ProfilingServiceTests {
         // Create a tracing session.
         TracingSession tracingSession = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null, 123, APP_PACKAGE_NAME,
-                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, TRIGGER_TYPE_NONE);
 
         // Mock tracing session to be running.
         doReturn(true).when(mActiveTrace).isAlive();
@@ -398,7 +407,7 @@ public final class ProfilingServiceTests {
 
         TracingSession tracingSession = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null, 123, APP_PACKAGE_NAME,
-                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, TRIGGER_TYPE_NONE);
         mProfilingService.mActiveTracingSessions.put(
                 (new UUID(KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS)).toString(), tracingSession);
 
@@ -415,7 +424,7 @@ public final class ProfilingServiceTests {
 
         TracingSession tracingSession = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null, 123, APP_PACKAGE_NAME,
-                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, TRIGGER_TYPE_NONE);
         mProfilingService.mActiveTracingSessions.put(
                 (new UUID(KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS)).toString(), tracingSession);
 
@@ -688,7 +697,8 @@ public final class ProfilingServiceTests {
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
-                KEY_MOST_SIG_BITS);
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
         session.setState(TracingState.PROFILING_FINISHED);
 
         // Trigger an advance to a subsequent state.
@@ -714,7 +724,8 @@ public final class ProfilingServiceTests {
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
-                KEY_MOST_SIG_BITS);
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
         session.setState(TracingState.APPROVED);
 
         // Attempt to advance to earlier state.
@@ -743,7 +754,8 @@ public final class ProfilingServiceTests {
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
-                KEY_MOST_SIG_BITS);
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
         session.setState(TracingState.REQUESTED);
 
         // Make sure retry count is 0 (default value).
@@ -778,7 +790,8 @@ public final class ProfilingServiceTests {
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
-                KEY_MOST_SIG_BITS);
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
         session1.setProfilingStartTimeMs(System.currentTimeMillis());
         session1.setState(TracingState.PROFILING_FINISHED);
 
@@ -789,7 +802,8 @@ public final class ProfilingServiceTests {
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
-                KEY_MOST_SIG_BITS);
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
         session2.setProfilingStartTimeMs(System.currentTimeMillis());
         session2.setState(TracingState.ERROR_OCCURRED);
         session2.setError(ProfilingResult.ERROR_FAILED_POST_PROCESSING, "some error message");
@@ -801,7 +815,8 @@ public final class ProfilingServiceTests {
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
-                KEY_MOST_SIG_BITS);
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
         session3.setProfilingStartTimeMs(System.currentTimeMillis());
         session3.setState(TracingState.REDACTED);
 
@@ -951,7 +966,8 @@ public final class ProfilingServiceTests {
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
-                KEY_MOST_SIG_BITS);
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
         session1.setProfilingStartTimeMs(System.currentTimeMillis());
         session1.setState(TracingState.PROFILING_FINISHED);
         TracingSession session2 = new TracingSession(
@@ -961,7 +977,8 @@ public final class ProfilingServiceTests {
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
-                KEY_MOST_SIG_BITS);
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
         session2.setProfilingStartTimeMs(System.currentTimeMillis());
         session2.setState(TracingState.ERROR_OCCURRED);
         session2.setError(ProfilingResult.ERROR_FAILED_POST_PROCESSING, "some error message");
@@ -1017,7 +1034,8 @@ public final class ProfilingServiceTests {
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
-                KEY_MOST_SIG_BITS);
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
         session.setProfilingStartTimeMs(System.currentTimeMillis());
         session.setState(TracingState.PROFILING_FINISHED);
 
@@ -1059,20 +1077,23 @@ public final class ProfilingServiceTests {
         mProfilingService.mAppTriggers.getMap().clear();
 
         // Create 3 triggers belonging to 2 uids. Add a last triggered time to one of them.
-        ProfilingTrigger trigger1 = new ProfilingTrigger(FAKE_UID, APP_PACKAGE_NAME, 1, 0);
+        ProfilingTriggerData trigger1 = new ProfilingTriggerData(FAKE_UID, APP_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN, 0);
 
-        ProfilingTrigger trigger2 = new ProfilingTrigger(FAKE_UID, APP_PACKAGE_NAME, 2, 1);
+        ProfilingTriggerData trigger2 = new ProfilingTriggerData(FAKE_UID, APP_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_ANR, 1);
         trigger2.setLastTriggeredTimeMs(123L);
 
-        ProfilingTrigger trigger3 = new ProfilingTrigger(FAKE_UID_2, APP_PACKAGE_NAME, 1, 2);
+        ProfilingTriggerData trigger3 = new ProfilingTriggerData(FAKE_UID_2, APP_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN, 2);
 
         // Group into sparse arrays by uid.
-        SparseArray<ProfilingTrigger> triggerArray1 = new SparseArray<ProfilingTrigger>();
-        triggerArray1.put(1, trigger1);
-        triggerArray1.put(2, trigger2);
+        SparseArray<ProfilingTriggerData> triggerArray1 = new SparseArray<ProfilingTriggerData>();
+        triggerArray1.put(ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN, trigger1);
+        triggerArray1.put(ProfilingTrigger.TRIGGER_TYPE_ANR, trigger2);
 
-        SparseArray<ProfilingTrigger> triggerArray2 = new SparseArray<ProfilingTrigger>();
-        triggerArray2.put(1, trigger3);
+        SparseArray<ProfilingTriggerData> triggerArray2 = new SparseArray<ProfilingTriggerData>();
+        triggerArray2.put(ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN, trigger3);
 
         mProfilingService.mAppTriggers.put(APP_PACKAGE_NAME, FAKE_UID, triggerArray1);
         mProfilingService.mAppTriggers.put(APP_PACKAGE_NAME, FAKE_UID_2, triggerArray2);
@@ -1092,11 +1113,14 @@ public final class ProfilingServiceTests {
 
         // Finally, verify the loaded contents match the ones that were persisted.
         confirmProfilingTriggerEquals(trigger1,
-                mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID).get(1));
+                mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
+                        .get(ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN));
         confirmProfilingTriggerEquals(trigger2,
-                mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID).get(2));
+                mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
+                        .get(ProfilingTrigger.TRIGGER_TYPE_ANR));
         confirmProfilingTriggerEquals(trigger3,
-                mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID_2).get(1));
+                mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID_2)
+                        .get(ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN));
     }
 
     /**
@@ -1231,7 +1255,8 @@ public final class ProfilingServiceTests {
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
-                KEY_MOST_SIG_BITS);
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
         session.setState(TracingState.PROFILING_STARTED);
         queue.add(session);
         mProfilingService.mQueuedTracingResults.put(FAKE_UID, queue);
@@ -1269,7 +1294,8 @@ public final class ProfilingServiceTests {
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
-                KEY_MOST_SIG_BITS);
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
         session.setState(TracingState.PROFILING_FINISHED);
         session.setRetryCount(3);
         queue.add(session);
@@ -1306,7 +1332,8 @@ public final class ProfilingServiceTests {
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
-                KEY_MOST_SIG_BITS);
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
         session.setState(TracingState.PROFILING_FINISHED);
         queue.add(session);
         mProfilingService.mQueuedTracingResults.put(uid, queue);
@@ -1344,7 +1371,8 @@ public final class ProfilingServiceTests {
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
-                KEY_MOST_SIG_BITS);
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
         session.setState(TracingState.PROFILING_FINISHED);
         queue.add(session);
         mProfilingService.mQueuedTracingResults.put(FAKE_UID, queue);
@@ -1381,7 +1409,8 @@ public final class ProfilingServiceTests {
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
-                KEY_MOST_SIG_BITS);
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
         session.setState(TracingState.REDACTED);
         session.setProfilingStartTimeMs(System.currentTimeMillis());
         queue.add(session);
@@ -1423,7 +1452,8 @@ public final class ProfilingServiceTests {
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
-                KEY_MOST_SIG_BITS);
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
         session.setState(TracingState.COPIED_FILE);
         session.setError(ProfilingResult.ERROR_NONE);
         queue.add(session);
@@ -1459,7 +1489,8 @@ public final class ProfilingServiceTests {
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
-                KEY_MOST_SIG_BITS);
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
         session.setState(TracingState.ERROR_OCCURRED);
         session.setError(ProfilingResult.ERROR_UNKNOWN);
         queue.add(session);
@@ -1496,7 +1527,8 @@ public final class ProfilingServiceTests {
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
-                KEY_MOST_SIG_BITS);
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
         session.setState(TracingState.NOTIFIED_REQUESTER);
         session.setError(ProfilingResult.ERROR_NONE);
         queue.add(session);
@@ -1533,7 +1565,8 @@ public final class ProfilingServiceTests {
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
-                KEY_MOST_SIG_BITS);
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
         session.setState(TracingState.COPIED_FILE);
         session.setProfilingStartTimeMs(System.currentTimeMillis() - 1000
                 - ProfilingService.QUEUED_RESULT_MAX_RETAINED_DURATION_MS);
@@ -1576,7 +1609,8 @@ public final class ProfilingServiceTests {
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
-                KEY_MOST_SIG_BITS);
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
         session.setFileName(trackedFile.getName());
         mProfilingService.mActiveTracingSessions.put(session.getKey(), session);
         assertEquals(1, mProfilingService.mActiveTracingSessions.size());
@@ -1618,7 +1652,8 @@ public final class ProfilingServiceTests {
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
-                KEY_MOST_SIG_BITS);
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
         session1.setRedactedFileName(trackedFile1.getName());
         TracingSession session2 = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
@@ -1627,7 +1662,8 @@ public final class ProfilingServiceTests {
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
-                KEY_MOST_SIG_BITS);
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
         session2.setFileName(trackedFile2.getName());
         TracingSession session3 = new TracingSession(
                 ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
@@ -1636,7 +1672,8 @@ public final class ProfilingServiceTests {
                 APP_PACKAGE_NAME,
                 REQUEST_TAG,
                 KEY_LEAST_SIG_BITS,
-                KEY_MOST_SIG_BITS);
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
         session3.setFileName(trackedFile3.getName());
         // Put 1 session in one list.
         List<TracingSession> sessionList1 = new ArrayList<TracingSession>(Arrays.asList(session1));
@@ -1707,31 +1744,40 @@ public final class ProfilingServiceTests {
 
         // Now add several triggers:
         // First add 2 different triggers to the same uid/package
-        // TODO: b/373461116 - update hardcoded triggers to api value
-        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, 1, 0);
-        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, 2, 0);
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN, RATE_LIMITING_0_HOURS_BETWEEN);
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_ANR, RATE_LIMITING_0_HOURS_BETWEEN);
         // And add one to another uid with the same package name.
-        mProfilingService.addTrigger(FAKE_UID_2, APP_PACKAGE_NAME, 2, 0);
+        mProfilingService.addTrigger(FAKE_UID_2, APP_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_ANR, RATE_LIMITING_0_HOURS_BETWEEN);
 
         // Grab the per process arrays.
-        SparseArray<ProfilingTrigger> uid1Triggers =
+        SparseArray<ProfilingTriggerData> uid1Triggers =
                 mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID);
-        SparseArray<ProfilingTrigger> uid2Triggers =
+        SparseArray<ProfilingTriggerData> uid2Triggers =
                 mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID_2);
 
         // Confirm they are represented correctly.
         assertEquals(2, uid1Triggers.size());
         assertEquals(1, uid2Triggers.size());
-        confirmProfilingTriggerEquals(uid1Triggers.get(1), FAKE_UID, APP_PACKAGE_NAME, 1, 0);
-        confirmProfilingTriggerEquals(uid1Triggers.get(2), FAKE_UID, APP_PACKAGE_NAME, 2, 0);
-        confirmProfilingTriggerEquals(uid2Triggers.get(2), FAKE_UID_2, APP_PACKAGE_NAME, 2, 0);
+        confirmProfilingTriggerEquals(
+                uid1Triggers.get(ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN), FAKE_UID,
+                APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN, 0);
+        confirmProfilingTriggerEquals(
+                uid1Triggers.get(ProfilingTrigger.TRIGGER_TYPE_ANR), FAKE_UID, APP_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_ANR, 0);
+        confirmProfilingTriggerEquals(
+                uid2Triggers.get(ProfilingTrigger.TRIGGER_TYPE_ANR), FAKE_UID_2, APP_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_ANR, 0);
 
         // Now add a repeated trigger with 1 field changed.
-        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, 2, 100);
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_ANR,
+                100);
 
         // Confirm the new value is set.
-        assertEquals(100, mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID).get(2)
-                .getRateLimitingPeriodHours());
+        assertEquals(100, mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
+                .get(ProfilingTrigger.TRIGGER_TYPE_ANR).getRateLimitingPeriodHours());
     }
 
     /** Test that app level rate limiting works correctly in the allow case. */
@@ -1750,9 +1796,6 @@ public final class ProfilingServiceTests {
         doReturn(true).when(mActiveTrace).isAlive();
         mProfilingService.mSystemTriggeredTraceProcess = mActiveTrace;
 
-        // TODO: b/373461116 - update hardcoded trigger to api value
-        int fakeTrigger = 1;
-
         // Setup some rate limiting values. Since this is an allow test, set the last run to be 1
         // hour more than the rate limiting period.
         int rateLimitingPeriodHours = 10;
@@ -1760,19 +1803,21 @@ public final class ProfilingServiceTests {
                 - ((rateLimitingPeriodHours + 1) * 60L * 60L * 1000L);
 
         // Add the trigger we'll use.
-        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger,
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_ANR,
                 rateLimitingPeriodHours);
 
         // Set the last run time.
-        mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID).get(fakeTrigger)
+        mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
+                .get(ProfilingTrigger.TRIGGER_TYPE_ANR)
                 .setLastTriggeredTimeMs(fakeLastTriggerTimeMs);
 
         // Now process the trigger.
-        mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
+        mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_ANR);
 
         // Get the new trigger time and make sure it's later than the fake one, indicating it ran.
         long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
-                .get(fakeTrigger).getLastTriggeredTimeMs();
+                .get(ProfilingTrigger.TRIGGER_TYPE_ANR).getLastTriggeredTimeMs();
         assertTrue(newTriggerTime > fakeLastTriggerTimeMs);
     }
 
@@ -1792,9 +1837,6 @@ public final class ProfilingServiceTests {
         doReturn(true).when(mActiveTrace).isAlive();
         mProfilingService.mSystemTriggeredTraceProcess = mActiveTrace;
 
-        // TODO: b/373461116 - update hardcoded trigger to api value
-        int fakeTrigger = 1;
-
         // Setup some rate limiting values. Since this is a deny test, set the last run to be 1 hour
         // less than the rate limiting period.
         int rateLimitingPeriodHours = 10;
@@ -1802,20 +1844,22 @@ public final class ProfilingServiceTests {
                 - ((rateLimitingPeriodHours - 1) * 60L * 60L * 1000L);
 
         // Add the trigger we'll use,
-        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger,
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_ANR,
                 rateLimitingPeriodHours);
 
         // Set the last run time.
-        mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID).get(fakeTrigger)
+        mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
+                .get(ProfilingTrigger.TRIGGER_TYPE_ANR)
                 .setLastTriggeredTimeMs(fakeLastTriggerTimeMs);
 
         // Now process the trigger.
-        mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
+        mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_ANR);
 
         // Get the new trigger time and make sure it's equal to the fake one, indicating it did not
         // run.
         long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
-                .get(fakeTrigger).getLastTriggeredTimeMs();
+                .get(ProfilingTrigger.TRIGGER_TYPE_ANR).getLastTriggeredTimeMs();
         assertEquals(fakeLastTriggerTimeMs, newTriggerTime);
     }
 
@@ -1833,22 +1877,18 @@ public final class ProfilingServiceTests {
         doReturn(true).when(mActiveTrace).isAlive();
         mProfilingService.mSystemTriggeredTraceProcess = mActiveTrace;
 
-        // TODO: b/373461116 - update hardcoded trigger to api value
-        int fakeTrigger = 1;
-
-        // Set app level rate limiting to 0, we're not testing that here.
-        int rateLimitingPeriodHours = 0;
-
         // Add the trigger we'll use.
-        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger,
-                rateLimitingPeriodHours);
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN,
+                RATE_LIMITING_0_HOURS_BETWEEN/*Set to 0 as we're not testing rate limiting here.*/);
 
         // Now process the trigger.
-        mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
+        mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN);
 
         // Get the new trigger time and make sure it's later than 0, indicating it ran.
         long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
-                .get(fakeTrigger).getLastTriggeredTimeMs();
+                .get(ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN).getLastTriggeredTimeMs();
         assertTrue(newTriggerTime > 0);
     }
 
@@ -1872,22 +1912,18 @@ public final class ProfilingServiceTests {
         // Wait 1 ms to ensure time has ticked and avoid potential flake.
         sleep(1);
 
-        // TODO: b/373461116 - update hardcoded trigger to api value
-        int fakeTrigger = 1;
-
-        // Set app level rate limiting to 0, we're not testing that here.
-        int rateLimitingPeriodHours = 0;
-
         // Add the trigger we'll use,
-        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger,
-                rateLimitingPeriodHours);
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN,
+                RATE_LIMITING_0_HOURS_BETWEEN/*Set to 0 as we're not testing rate limiting here.*/);
 
         // Now process the trigger.
-        mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME, fakeTrigger);
+        mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN);
 
         // Get the new trigger time and make sure it's equal to 0, indicating it did not run.
         long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
-                .get(fakeTrigger).getLastTriggeredTimeMs();
+                .get(ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN).getLastTriggeredTimeMs();
         assertEquals(0, newTriggerTime);
     }
 
@@ -2023,13 +2059,13 @@ public final class ProfilingServiceTests {
     // LINT.ThenChange(/service/proto/android/os/queue.proto:proto)
 
     // LINT.IfChange(trigger_equals)
-    private void confirmProfilingTriggerEquals(ProfilingTrigger t1, int uid, String packageName,
+    private void confirmProfilingTriggerEquals(ProfilingTriggerData t1, int uid, String packageName,
             int triggerType, int rateLimitingPeriodHours) {
         confirmProfilingTriggerEquals(t1,
-                new ProfilingTrigger(uid, packageName, triggerType, rateLimitingPeriodHours));
+                new ProfilingTriggerData(uid, packageName, triggerType, rateLimitingPeriodHours));
     }
 
-    private void confirmProfilingTriggerEquals(ProfilingTrigger t1, ProfilingTrigger t2) {
+    private void confirmProfilingTriggerEquals(ProfilingTriggerData t1, ProfilingTriggerData t2) {
         assertEquals(t1.getUid(), t2.getUid());
         assertEquals(t1.getPackageName(), t2.getPackageName());
         assertEquals(t1.getTriggerType(), t2.getTriggerType());
@@ -2093,10 +2129,11 @@ public final class ProfilingServiceTests {
         public int mStatus;
         public String mTag;
         public String mError;
+        public int mTriggerType;
 
         @Override
         public void sendResult(String resultFile, long keyMostSigBits,
-                long keyLeastSigBits, int status, String tag, String error) {
+                long keyLeastSigBits, int status, String tag, String error, int triggerType) {
             mResultSent = true;
             mResultFile = resultFile;
             mKeyMostSigBits = keyMostSigBits;
@@ -2104,6 +2141,7 @@ public final class ProfilingServiceTests {
             mStatus = status;
             mTag = tag;
             mError = error;
+            mTriggerType = triggerType;
         }
 
         @Override
