@@ -1,7 +1,7 @@
 {
   "profiling-mainline-presubmit": [
     {
-      "name": "CtsProfilingModuleTests[com.google.android.profiling.apex]",
+      "name": "CtsProfilingModuleTests",
       "options": [
         {
           "exclude-annotation": "androidx.test.filters.LargeTest"
