@@ -897,6 +897,10 @@ public final class ProfilingFrameworkTests {
                 .build();
         mProfilingManager.addProfilingTriggers(List.of(trigger));
 
+        // Verify the trigger and rate limiting period.
+        assertEquals(ProfilingTrigger.TRIGGER_TYPE_ANR, trigger.getTriggerType());
+        assertEquals(1, trigger.getRateLimitingPeriodHours());
+
         // And add a global listener
         AppCallback callbackGeneral = new AppCallback();
         mProfilingManager.registerForAllProfilingResults(
@@ -920,7 +924,8 @@ public final class ProfilingFrameworkTests {
         waitForCallback(callbackGeneral);
 
         // Finally, confirm that a result was received.
-        confirmCollectionSuccess(callbackGeneral.mResult, OUTPUT_FILE_TRACE_SUFFIX);
+        confirmCollectionSuccess(callbackGeneral.mResult, OUTPUT_FILE_TRACE_SUFFIX,
+                ProfilingTrigger.TRIGGER_TYPE_ANR);
     }
 
     /**
@@ -958,6 +963,53 @@ public final class ProfilingFrameworkTests {
         // Remove the trigger.
         mProfilingManager.removeProfilingTriggersByType(
                 new int[]{ProfilingTrigger.TRIGGER_TYPE_ANR});
+
+        // Now fake a system trigger.
+        ProfilingServiceHelper.getInstance().onProfilingTriggerOccurred(Binder.getCallingUid(),
+                REAL_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_ANR);
+
+        // We can't wait for nothing to happen, so wait 10 seconds which should be long enough.
+        sleep(WAIT_TIME_FOR_TRIGGERED_PROFILING_NO_RESULT);
+
+        // Finally, confirm that no callback was received.
+        assertNull(callbackGeneral.mResult);
+    }
+
+    /**
+     * Test clearing all profiling triggers.
+     *
+     * There is no way to check the data structure from this context and that specifically is tested
+     * in {@link ProfilingServiceTests}, so this test just ensures that a result is not received.
+     */
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    public void testSystemTriggeredProfilingClear() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // First add a trigger
+        ProfilingTrigger trigger = new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANR)
+                .setRateLimitingPeriodHours(1)
+                .build();
+        mProfilingManager.addProfilingTriggers(List.of(trigger));
+
+        // And add a global listener
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(
+                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
+
+        // Then start the system triggered trace for testing.
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_STRING,
+                DeviceConfigHelper.NAMESPACE_TESTING,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_TEST_PACKAGE_NAME,
+                REAL_PACKAGE_NAME);
+
+        // Wait a bit so the trace can get started and actually collect something.
+        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+
+        // Clear all triggers for this process.
+        mProfilingManager.clearProfilingTriggers();
 
         // Now fake a system trigger.
         ProfilingServiceHelper.getInstance().onProfilingTriggerOccurred(Binder.getCallingUid(),
@@ -1017,11 +1069,17 @@ public final class ProfilingFrameworkTests {
 
     /** Assert that result matches a success case, specifically: contains a path and no errors. */
     private void confirmCollectionSuccess(ProfilingResult result, String suffix) {
+        confirmCollectionSuccess(result, suffix, 0);
+    }
+
+    /** Assert that result matches a success case, specifically: contains a path and no errors. */
+    private void confirmCollectionSuccess(ProfilingResult result, String suffix, int triggerType) {
         assertNotNull(result);
         assertEquals(ProfilingResult.ERROR_NONE, result.getErrorCode());
         assertNotNull(result.getResultFilePath());
         assertTrue(result.getResultFilePath().contains(suffix));
         assertNull(result.getErrorMessage());
+        assertEquals(triggerType, result.getTriggerType());
 
         // Confirm output file exists and is not empty.
         File file = new File(result.getResultFilePath());
