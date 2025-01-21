@@ -89,3 +89,10 @@ bootclasspath_fragment {
         split_packages: ["*"],
     },
 }
+
+sdk {
+    name: "profiling-module-sdk",
+    apexes: [
+        "com.android.profiling",
+    ],
+}

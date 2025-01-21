@@ -74,19 +74,6 @@ public final class TracingSession {
     }
 
     public TracingSession(int profilingType, Bundle params, int uid, String packageName, String tag,
-            long keyMostSigBits, long keyLeastSigBits) {
-        this(
-                profilingType,
-                params,
-                uid,
-                packageName,
-                tag,
-                keyMostSigBits,
-                keyLeastSigBits,
-                -1); // TODO: b/373461116 - set to NONE after API is published.
-    }
-
-    public TracingSession(int profilingType, Bundle params, int uid, String packageName, String tag,
             long keyMostSigBits, long keyLeastSigBits, int triggerType) {
         mProfilingType = profilingType;
         mTriggerType = triggerType;
