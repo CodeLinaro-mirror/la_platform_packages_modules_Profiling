@@ -19,7 +19,7 @@ package android.os.profiling;
 import android.annotation.NonNull;
 import android.os.ProfilingTriggersWrapper;
 
-public final class ProfilingTrigger {
+public final class ProfilingTriggerData {
     // LINT.IfChange(params)
     private final int mUid;
     @NonNull private final String mPackageName;
@@ -28,7 +28,7 @@ public final class ProfilingTrigger {
     private long mLastTriggeredTimeMs = 0;
     // LINT.ThenChange(:from_proto)
 
-    public ProfilingTrigger(int uid, @NonNull String packageName, int triggerType,
+    public ProfilingTriggerData(int uid, @NonNull String packageName, int triggerType,
             int rateLimitingPeriodHours) {
         mUid = uid;
         mPackageName = packageName;
@@ -37,7 +37,7 @@ public final class ProfilingTrigger {
     }
 
     // LINT.IfChange(from_proto)
-    public ProfilingTrigger(@NonNull ProfilingTriggersWrapper.ProfilingTrigger triggerProto) {
+    public ProfilingTriggerData(@NonNull ProfilingTriggersWrapper.ProfilingTrigger triggerProto) {
         mUid = triggerProto.getUid();
         mPackageName = triggerProto.getPackageName();
         mTriggerType = triggerProto.getTriggerType();

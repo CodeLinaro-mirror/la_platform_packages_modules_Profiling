@@ -35,7 +35,10 @@ public final class ProfilingTrigger {
     /** Trigger occurs after {@link Activity#reportFullyDrawn} is called for a cold start. */
     public static final int TRIGGER_TYPE_APP_FULLY_DRAWN = 1;
 
-    /** Trigger occurs after the app was killed due to an ANR */
+    /**
+     * Trigger occurs after an ANR has been identified, but before the system would attempt to kill
+     * the app. The trigger does not necessarily indicate that the app was killed due to the ANR.
+     */
     public static final int TRIGGER_TYPE_ANR = 2;
 
     /** @hide */
