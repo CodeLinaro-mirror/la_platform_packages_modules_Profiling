@@ -98,8 +98,8 @@ public final class ProfilingServiceTests {
 
     // Key most and least significant bits are used to generate a unique key specific to each
     // request. Key is used to pair request back to caller and callbacks so test to keep consistent.
-    private static final long KEY_MOST_SIG_BITS = 456l;
-    private static final long KEY_LEAST_SIG_BITS = 123l;
+    private static final long KEY_MOST_SIG_BITS = 456L;
+    private static final long KEY_LEAST_SIG_BITS = 123L;
 
     private static final int FAKE_UID = 12345;
     private static final int FAKE_UID_2 = 12346;

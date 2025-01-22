@@ -16,3 +16,4 @@ message ProfilingTriggersWrapper {
   repeated ProfilingTrigger triggers = 1;
 }
 // LINT.ThenChange(/service/java/com/android/os/profiling/ProfilingTriggerData.java:params)
+
