@@ -43,9 +43,11 @@ import java.util.function.Consumer;
 /**
  * <p>
  * This class allows the caller to:
- * - Request profiling and listen for results. Profiling types supported are: system traces,
- *      java heap dumps, heap profiles, and stack traces.
- * - Register triggers for the system to capture profiling on the apps behalf.
+ * <ul>
+ * <li>Request profiling and listen for results. Profiling types supported are: system traces,
+ *     java heap dumps, heap profiles, and stack traces.</li>
+ * <li>Register triggers for the system to capture profiling on the apps behalf.</li>
+ * </ul>
  * </p>
  *
  * <p>
@@ -61,11 +63,13 @@ import java.util.function.Consumer;
  *
  * <p>
  * Apps can provide listeners in one or both of two ways:
- * - A request-specific listener included with the request. This will trigger only with a result
- *     from the request it was provided with.
- * - A global listener provided by {@link #registerForAllProfilingResults}. This will be triggered
+ * <ul>
+ * <li>A request-specific listener included with the request. This will trigger only with a result
+ *     from the request it was provided with.</li>
+ * <li>A global listener provided by {@link #registerForAllProfilingResults}. This will be triggered
  *     for all results belonging to your app. This listener is the only way to receive results from
- *     system triggered profiling instances set up with {@link #addProfilingTriggers}.
+ *     system triggered profiling instances set up with {@link #addProfilingTriggers}.</li>
+ * </ul>
  * </p>
  *
  * <p>
@@ -78,10 +82,13 @@ import java.util.function.Consumer;
  * In order to test profiling triggers, enable testing mode for your app with the shell command
  * {@code device_config put profiling_testing system_triggered_profiling.testing_package_name
  * com.your.app} which will:
- * - Ensure that a background trace is running.
- * - Allow all triggers for the provided package name to pass the system level rate limiter.
- * This mode will continue until manually stopped with the shell command
- * {@code device_config delete profiling_testing system_triggered_profiling.testing_package_name}
+ * <ul>
+ * <li>Ensure that a background trace is running.</li>
+ * <li>Allow all triggers for the provided package name to pass the system level rate limiter.
+ *     This mode will continue until manually stopped with the shell command
+ *     {@code device_config delete profiling_testing system_triggered_profiling.testing_package_name}.
+ *     </li>
+ * </ul>
  * </p>
  *
  * <p>
@@ -417,10 +424,12 @@ public final class ProfilingManager {
      * {@link #registerForAllProfilingResults}.
      *
      * Only one of each trigger type can be added at a time.
-     * - If the provided list contains a trigger type that is already registered then the new one
-     *      will replace the existing one.
-     * - If the provided list contains more than one trigger object for a trigger type then only one
-     *      will be kept.
+     * <ul>
+     * <li>If the provided list contains a trigger type that is already registered then the new one
+     *     will replace the existing one.</li>
+     * <li>If the provided list contains more than one trigger object for a trigger type then only
+     *     one will be kept.</li>
+     * </ul>
      */
     @FlaggedApi(Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void addProfilingTriggers(@NonNull List<ProfilingTrigger> triggers) {
