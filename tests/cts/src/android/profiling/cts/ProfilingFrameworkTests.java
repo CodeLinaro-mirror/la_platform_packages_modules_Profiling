@@ -1181,22 +1181,23 @@ public final class ProfilingFrameworkTests {
 
     // Starts a thread that keeps a CPU busy.
     private static class BusyLoopThread {
-        private Thread thread;
-        private AtomicBoolean done = new AtomicBoolean(false);
+        private Thread mThread;
+        private AtomicBoolean mDone = new AtomicBoolean(false);
 
-        public BusyLoopThread() {
-            done.set(false);
-            thread = new Thread(() -> {
-                while (!done.get()) {
+        BusyLoopThread() {
+            mDone.set(false);
+            mThread = new Thread(() -> {
+                while (!mDone.get()) {
+                  // Keep spinning!
                 }
             });
-            thread.start();
+            mThread.start();
         }
 
         public void stop() {
-            done.set(true);
+            mDone.set(true);
             try {
-                thread.join();
+                mThread.join();
             } catch (InterruptedException e) {
                 throw new AssertionError("InterruptedException", e);
             }
@@ -1205,24 +1206,24 @@ public final class ProfilingFrameworkTests {
 
     // Starts a thread that repeatedly issues malloc() and free().
     private static class MallocLoopThread {
-        private Thread thread;
-        private AtomicBoolean done = new AtomicBoolean(false);
+        private Thread mThread;
+        private AtomicBoolean mDone = new AtomicBoolean(false);
 
-        public MallocLoopThread() {
-            done.set(false);
-            thread = new Thread(() -> {
-                while (!done.get()) {
+        MallocLoopThread() {
+            mDone.set(false);
+            mThread = new Thread(() -> {
+                while (!mDone.get()) {
                     doMallocAndFree();
                     sleep(10);
                 }
             });
-            thread.start();
+            mThread.start();
         }
 
         public void stop() {
-            done.set(true);
+            mDone.set(true);
             try {
-                thread.join();
+                mThread.join();
             } catch (InterruptedException e) {
                 throw new AssertionError("InterruptedException", e);
             }
