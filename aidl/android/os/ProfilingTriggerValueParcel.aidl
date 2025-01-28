@@ -23,3 +23,4 @@ parcelable ProfilingTriggerValueParcel {
     int triggerType;
     int rateLimitingPeriodHours;
 }
+
