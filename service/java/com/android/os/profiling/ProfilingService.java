@@ -200,7 +200,7 @@ public class ProfilingService extends IProfilingService.Stub {
 
     /** To be disabled for testing only. */
     @GuardedBy("mLock")
-    private boolean mKeepUnredactedTrace = false;
+    private boolean mKeepResultInTempDir = false;
 
     /** Executor for scheduling system triggered profiling trace. */
     private ScheduledExecutorService mScheduledExecutorService = null;
@@ -326,8 +326,8 @@ public class ProfilingService extends IProfilingService.Stub {
         // Get initial value for whether unredacted trace should be retained.
         // This is used for (automated and manual) testing only.
         synchronized (mLock) {
-            mKeepUnredactedTrace = DeviceConfigHelper.getTestBoolean(
-                    DeviceConfigHelper.DISABLE_DELETE_UNREDACTED_TRACE, false);
+            mKeepResultInTempDir = DeviceConfigHelper.getTestBoolean(
+                    DeviceConfigHelper.DISABLE_DELETE_TEMPORARY_RESULTS, false);
 
             mPersistFrequencyMs = new AtomicInteger(DeviceConfigHelper.getInt(
                     DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS,
@@ -347,8 +347,8 @@ public class ProfilingService extends IProfilingService.Stub {
                     @Override
                     public void onPropertiesChanged(@NonNull DeviceConfig.Properties properties) {
                         synchronized (mLock) {
-                            mKeepUnredactedTrace = properties.getBoolean(
-                                    DeviceConfigHelper.DISABLE_DELETE_UNREDACTED_TRACE, false);
+                            mKeepResultInTempDir = properties.getBoolean(
+                                    DeviceConfigHelper.DISABLE_DELETE_TEMPORARY_RESULTS, false);
                             getRateLimiter().maybeUpdateRateLimiterDisabled(properties);
 
                             String newTestPackageName = properties.getString(
@@ -791,11 +791,19 @@ public class ProfilingService extends IProfilingService.Stub {
                     // Redaction needed, kick it off.
                     handleRedactionRequiredResult(session);
                 } else {
+                    // For results that don't require redaction, maybe log the location of the
+                    // retained result after profiling completes.
+                    maybeLogTempFileLocation(session);
+
                     // No redaction needed, move straight to copying to app storage.
                     beginMoveFileToAppStorage(session);
                 }
                 break;
             case REDACTED:
+                // For results that require redaction, maybe log the location of the retained result
+                // after redaction completes.
+                maybeLogTempFileLocation(session);
+
                 // Redaction completed, move on to copying to app storage.
                 beginMoveFileToAppStorage(session);
                 break;
@@ -2103,18 +2111,41 @@ public class ProfilingService extends IProfilingService.Stub {
         }
 
         // At this point redaction has completed successfully it is safe to delete the
-        // unredacted trace file unless {@link mKeepUnredactedTrace} has been enabled.
+        // unredacted trace file unless {@link mKeepResultInTempDir} has been enabled.
         synchronized (mLock) {
-            if (mKeepUnredactedTrace) {
-                Log.i(TAG, "Unredacted trace file retained at: "
-                        + TEMP_TRACE_PATH + session.getFileName());
-            } else {
-                // TODO b/331988161 Delete after file is delivered to app.
-                maybeDeleteUnredactedTrace(session);
+            if (!mKeepResultInTempDir) {
+                deleteProfilingFiles(session,
+                        false, /* Don't delete the newly redacted file */
+                        true); /* Do delete the no longer needed unredacted file.*/
             }
         }
 
         advanceTracingSession(session, TracingState.REDACTED);
+    }
+
+    /**
+     * Log the location of the temporary files if they're being retained due to
+     * {@link mKeepResultInTempDir} being enabled for debug purposes.
+     */
+    private void maybeLogTempFileLocation(TracingSession session) {
+        synchronized (mLock) {
+            if (!mKeepResultInTempDir) {
+                // Results are only retained if {@link mKeepResultInTempDir} is enabled, so don't
+                // log the locations if it's disabled.
+                return;
+            }
+
+            // For all types, output the location of the original profiling output file. For trace,
+            // this will be the unredacted copy. For all other types, this will be the only output
+            // file.
+            Log.i(TAG, "Profiling file retained at: " + TEMP_TRACE_PATH + session.getFileName());
+
+            if (session.getProfilingType() == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE) {
+                // For a trace, output the location of the redacted file.
+                Log.i(TAG, "Profiling file retained at: "
+                        + TEMP_TRACE_PATH + session.getRedactedFileName());
+            }
+        }
     }
 
     /**
@@ -2198,25 +2229,17 @@ public class ProfilingService extends IProfilingService.Stub {
      */
     private void cleanupTracingSession(TracingSession session,
             @Nullable List<TracingSession> queuedSessions) {
-        // Delete all files
-        if (session.getProfilingType() == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE) {
-            // If type is trace, try to delete the temp file only if {@link mKeepUnredactedTrace} is
-            // false, and always try to delete redacted file.
-            maybeDeleteUnredactedTrace(session);
-            try {
-                Files.delete(Path.of(TEMP_TRACE_PATH + session.getRedactedFileName()));
-            } catch (Exception exception) {
-                if (DEBUG) Log.e(TAG, "Failed to delete file for discarded record.", exception);
+        synchronized (mLock) {
+            if (mKeepResultInTempDir) {
+                // If {@link mKeepResultInTempDir} is enabled, don't cleanup anything. Continue
+                // progressing as if cleanup is complete.
+                advanceTracingSession(session, TracingState.CLEANED_UP);
+                return;
             }
-        } else {
-            // If type is not trace, try to delete the temp file. There is no redacted file.
-            try {
-                Files.delete(Path.of(TEMP_TRACE_PATH + session.getFileName()));
-            } catch (Exception exception) {
-                if (DEBUG) Log.e(TAG, "Failed to delete file for discarded record.", exception);
-            }
-
         }
+
+        // Delete all files
+        deleteProfilingFiles(session, true, true);
 
         if (queuedSessions != null) {
             queuedSessions.remove(session);
@@ -2229,17 +2252,26 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     /**
-     * Attempt to delete unredacted trace unless mKeepUnredactedTrace is enabled.
+     * Attempt to delete profiling output.
      *
-     * Note: only to be called for types that support redaction.
+     * If both boolean params are false, this method expectedly does nothing.
+     *
+     * @param deleteRedacted Whether to delete the redacted file.
+     * @param deleteUnredacted Whether to delete the unredacted file.
      */
-    private void maybeDeleteUnredactedTrace(TracingSession session) {
-        synchronized (mLock) {
-            if (mKeepUnredactedTrace) {
-                return;
-            }
+    private void deleteProfilingFiles(TracingSession session, boolean deleteRedacted,
+            boolean deleteUnredacted) {
+        if (deleteRedacted) {
             try {
-                Files.delete(Path.of(TEMP_TRACE_PATH + session.getFileName()));
+                Files.deleteIfExists(Path.of(TEMP_TRACE_PATH + session.getRedactedFileName()));
+            } catch (Exception exception) {
+                if (DEBUG) Log.e(TAG, "Failed to delete file.", exception);
+            }
+        }
+
+        if (deleteUnredacted) {
+            try {
+                Files.deleteIfExists(Path.of(TEMP_TRACE_PATH + session.getFileName()));
             } catch (Exception exception) {
                 if (DEBUG) Log.e(TAG, "Failed to delete file.", exception);
             }
