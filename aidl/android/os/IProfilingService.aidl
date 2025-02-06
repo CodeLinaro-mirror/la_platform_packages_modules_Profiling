@@ -25,17 +25,21 @@ import android.os.ProfilingTriggerValueParcel;
  */
 interface IProfilingService {
 
-    oneway void requestProfiling(int profilingType, in Bundle params, String tag, long keyMostSigBits, long keyLeastSigBits, String packageName);
+    oneway void requestProfiling(int profilingType, in Bundle params, String tag,
+            long keyMostSigBits, long keyLeastSigBits, String packageName);
 
-    oneway void registerResultsCallback(boolean isGeneralCallback, IProfilingResultCallback callback);
+    oneway void registerResultsCallback(boolean isGeneralCallback,
+            IProfilingResultCallback callback);
 
     oneway void generalListenerAdded();
 
     oneway void requestCancel(long keyMostSigBits, long keyLeastSigBits);
 
-    oneway void receiveFileDescriptor(in ParcelFileDescriptor fileDescriptor, long keyMostSigBits, long keyLeastSigBits);
+    oneway void receiveFileDescriptor(in ParcelFileDescriptor fileDescriptor, long keyMostSigBits,
+            long keyLeastSigBits);
 
-    oneway void addProfilingTriggers(in List<ProfilingTriggerValueParcel> triggers, String packageName);
+    oneway void addProfilingTriggers(in List<ProfilingTriggerValueParcel> triggers,
+            String packageName);
 
     oneway void removeProfilingTriggers(in int[] triggers, String packageName);
 

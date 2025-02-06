@@ -22,7 +22,7 @@ import java.util.concurrent.Executor;
 
 public final class ProfilingTestUtils {
 
-    private static String KEY_DURATION_MS = "KEY_DURATION_MS";
+    private static final String KEY_DURATION_MS = "KEY_DURATION_MS";
 
     static class ImmediateExecutor implements Executor {
         public void execute(Runnable r) {
