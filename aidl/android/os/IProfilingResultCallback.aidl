@@ -20,9 +20,11 @@ package android.os;
  */
 interface IProfilingResultCallback {
 
-    oneway void sendResult(String resultFile, long keyMostSigBits, long keyLeastSigBits, int status, String tag, String error);
+    oneway void sendResult(String resultFile, long keyMostSigBits, long keyLeastSigBits, int status,
+            String tag, String error, int triggerType);
 
-    oneway void generateFile(String filePathRelative, String fileName, long keyMostSigBits, long keyLeastSigBits);
+    oneway void generateFile(String filePathRelative, String fileName, long keyMostSigBits,
+            long keyLeastSigBits);
 
     oneway void deleteFile(String relativeFilePathAndName);
 }

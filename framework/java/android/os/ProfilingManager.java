@@ -558,7 +558,7 @@ public final class ProfilingManager {
                         @Override
                         public void sendResult(@Nullable String resultFile, long keyMostSigBits,
                                 long keyLeastSigBits, int status, @Nullable String tag,
-                                @Nullable String error) {
+                                @Nullable String error, int triggerType) {
                             synchronized (mLock) {
                                 if (mCallbacks.isEmpty()) {
                                     // This shouldn't happen - no callbacks, nowhere to report this
@@ -604,9 +604,7 @@ public final class ProfilingManager {
                                             new ProfilingResult(overrideStatusToError
                                                     ? ProfilingResult.ERROR_UNKNOWN : status,
                                                     getAppFileDir() + resultFile, tag, error,
-                                                    Flags.systemTriggeredProfilingNew()
-                                                            ? ProfilingTrigger.TRIGGER_TYPE_NONE
-                                                            : 0)));
+                                                    triggerType)));
                                 }
 
                                 // Remove the single listener that was tied to the request, if
