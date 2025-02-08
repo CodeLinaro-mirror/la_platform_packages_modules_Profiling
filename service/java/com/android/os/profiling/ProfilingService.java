@@ -161,6 +161,7 @@ public class ProfilingService extends IProfilingService.Stub {
     // the active sessions above as it's not associated with a TracingSession until it has been
     // cloned.
     @VisibleForTesting
+    @GuardedBy("mLock")
     public Process mSystemTriggeredTraceProcess = null;
     @VisibleForTesting
     public String mSystemTriggeredTraceUniqueSessionName = null;
@@ -199,7 +200,7 @@ public class ProfilingService extends IProfilingService.Stub {
 
     /** To be disabled for testing only. */
     @GuardedBy("mLock")
-    private boolean mKeepUnredactedTrace = false;
+    private boolean mKeepResultInTempDir = false;
 
     /** Executor for scheduling system triggered profiling trace. */
     private ScheduledExecutorService mScheduledExecutorService = null;
@@ -325,8 +326,8 @@ public class ProfilingService extends IProfilingService.Stub {
         // Get initial value for whether unredacted trace should be retained.
         // This is used for (automated and manual) testing only.
         synchronized (mLock) {
-            mKeepUnredactedTrace = DeviceConfigHelper.getTestBoolean(
-                    DeviceConfigHelper.DISABLE_DELETE_UNREDACTED_TRACE, false);
+            mKeepResultInTempDir = DeviceConfigHelper.getTestBoolean(
+                    DeviceConfigHelper.DISABLE_DELETE_TEMPORARY_RESULTS, false);
 
             mPersistFrequencyMs = new AtomicInteger(DeviceConfigHelper.getInt(
                     DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS,
@@ -346,8 +347,8 @@ public class ProfilingService extends IProfilingService.Stub {
                     @Override
                     public void onPropertiesChanged(@NonNull DeviceConfig.Properties properties) {
                         synchronized (mLock) {
-                            mKeepUnredactedTrace = properties.getBoolean(
-                                    DeviceConfigHelper.DISABLE_DELETE_UNREDACTED_TRACE, false);
+                            mKeepResultInTempDir = properties.getBoolean(
+                                    DeviceConfigHelper.DISABLE_DELETE_TEMPORARY_RESULTS, false);
                             getRateLimiter().maybeUpdateRateLimiterDisabled(properties);
 
                             String newTestPackageName = properties.getString(
@@ -790,11 +791,19 @@ public class ProfilingService extends IProfilingService.Stub {
                     // Redaction needed, kick it off.
                     handleRedactionRequiredResult(session);
                 } else {
+                    // For results that don't require redaction, maybe log the location of the
+                    // retained result after profiling completes.
+                    maybeLogTempFileLocation(session);
+
                     // No redaction needed, move straight to copying to app storage.
                     beginMoveFileToAppStorage(session);
                 }
                 break;
             case REDACTED:
+                // For results that require redaction, maybe log the location of the retained result
+                // after redaction completes.
+                maybeLogTempFileLocation(session);
+
                 // Redaction completed, move on to copying to app storage.
                 beginMoveFileToAppStorage(session);
                 break;
@@ -1488,7 +1497,12 @@ public class ProfilingService extends IProfilingService.Stub {
         advanceTracingSession(session, TracingState.PROFILING_STARTED);
     }
 
-    /** Start a trace to be used for system triggered profiling. */
+    /**
+     * Start a trace to be used for system triggered profiling.
+     *
+     * This should not be called while a system triggered trace is already running. If it is called
+     * with a system triggered trace in progress, this request will be dropped.
+     */
     @VisibleForTesting
     public void startSystemTriggeredTrace() {
         if (!Flags.systemTriggeredProfilingNew()) {
@@ -1504,31 +1518,48 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
 
-        String[] packageNames = getActiveTriggerPackageNames();
-        if (packageNames.length == 0) {
-            // No apps have registered interest in system triggered profiling, so don't bother to
-            // start a trace for it.
-            if (DEBUG) {
-                Log.d(TAG,
-                        "System triggered trace not started due to no apps registering interest");
+        synchronized (mLock) {
+            // Everything from the check if a system triggered trace is in progress to updating the
+            // object to the new running trace should be in a single synchronized block to ensure
+            // that another system triggered start is not attempted while one is in progress.
+
+            if (mSystemTriggeredTraceProcess != null && mSystemTriggeredTraceProcess.isAlive()) {
+                // Only 1 system triggered trace should be running at a time. If one is already
+                // running then this should not be called, return.
+                if (DEBUG) {
+                    Log.d(TAG, "System triggered trace not started due to a system triggered trace "
+                            + "already in progress.");
+                }
+                return;
             }
-            return;
-        }
 
-        String uniqueSessionName = SYSTEM_TRIGGERED_SESSION_NAME_PREFIX
-                + System.currentTimeMillis();
+            String[] packageNames = getActiveTriggerPackageNames();
+            if (packageNames.length == 0) {
+                // No apps have registered interest in system triggered profiling, so don't bother
+                // to start a trace for it.
+                if (DEBUG) {
+                    Log.d(TAG,
+                        "System triggered trace not started due to no apps registering interest");
+                }
+                return;
+            }
 
-        byte[] config = Configs.generateSystemTriggeredTraceConfig(uniqueSessionName, packageNames,
-                mTestPackageName != null);
-        String outputFile = TEMP_TRACE_PATH + SYSTEM_TRIGGERED_SESSION_NAME_PREFIX
-                + OUTPUT_FILE_IN_PROGRESS + OUTPUT_FILE_UNREDACTED_TRACE_SUFFIX;
+            String uniqueSessionName = SYSTEM_TRIGGERED_SESSION_NAME_PREFIX
+                    + System.currentTimeMillis();
 
-        Process activeTrace = startProfilingProcess(config, outputFile);
+            byte[] config = Configs.generateSystemTriggeredTraceConfig(uniqueSessionName,
+                    packageNames,
+                    mTestPackageName != null);
+            String outputFile = TEMP_TRACE_PATH + SYSTEM_TRIGGERED_SESSION_NAME_PREFIX
+                    + OUTPUT_FILE_IN_PROGRESS + OUTPUT_FILE_UNREDACTED_TRACE_SUFFIX;
 
-        if (activeTrace != null) {
-            mSystemTriggeredTraceProcess = activeTrace;
-            mSystemTriggeredTraceUniqueSessionName = uniqueSessionName;
-            mLastStartedSystemTriggeredTraceMs = System.currentTimeMillis();
+            Process activeTrace = startProfilingProcess(config, outputFile);
+
+            if (activeTrace != null) {
+                mSystemTriggeredTraceProcess = activeTrace;
+                mSystemTriggeredTraceUniqueSessionName = uniqueSessionName;
+                mLastStartedSystemTriggeredTraceMs = System.currentTimeMillis();
+            }
         }
     }
 
@@ -1548,7 +1579,7 @@ public class ProfilingService extends IProfilingService.Stub {
             return activeProfiling;
         } catch (Exception e) {
             // Catch all exceptions related to starting process as they'll all be handled similarly.
-            if (DEBUG) Log.d(TAG, "Profiling couldn't be started", e);
+            if (DEBUG) Log.e(TAG, "Profiling couldn't be started", e);
             return null;
         }
     }
@@ -1582,27 +1613,31 @@ public class ProfilingService extends IProfilingService.Stub {
      */
     @VisibleForTesting
     public void processTriggerInternal(int uid, @NonNull String packageName, int triggerType) {
-        if (mSystemTriggeredTraceUniqueSessionName == null) {
-            // If we don't have the session name then we don't know how to clone the trace so stop
-            // it if it's still running and then return.
-            stopSystemTriggeredTrace();
+        synchronized (mLock) {
+            if (mSystemTriggeredTraceUniqueSessionName == null) {
+                // If we don't have the session name then we don't know how to clone the trace so
+                // stop it if it's still running and then return.
+                stopSystemTriggeredTraceLocked();
 
-            // There is no active system triggered trace so there's nothing to clone. Return.
-            if (DEBUG) {
-                Log.d(TAG, "Requested clone system triggered trace but we don't have the session "
-                        + "name.");
+                // There is no active system triggered trace so there's nothing to clone. Return.
+                if (DEBUG) {
+                    Log.d(TAG, "Requested clone system triggered trace but we don't have the "
+                            + "session name.");
+                }
+                return;
             }
-            return;
-        }
 
-        if (mSystemTriggeredTraceProcess == null || !mSystemTriggeredTraceProcess.isAlive()) {
-            // If we make it to this path then session name wasn't set to null but can't be used
-            // anymore as its associated trace is not running, so set to null now.
-            mSystemTriggeredTraceUniqueSessionName = null;
+            if (mSystemTriggeredTraceProcess == null || !mSystemTriggeredTraceProcess.isAlive()) {
+                // If we make it to this path then session name wasn't set to null but can't be used
+                // anymore as its associated trace is not running, so set to null now.
+                mSystemTriggeredTraceUniqueSessionName = null;
 
-            // There is no active system triggered trace so there's nothing to clone. Return.
-            if (DEBUG) Log.d(TAG, "Requested clone system triggered trace but no trace active.");
-            return;
+                // There is no active system triggered trace so there's nothing to clone. Return.
+                if (DEBUG) {
+                    Log.d(TAG, "Requested clone system triggered trace but no trace active.");
+                }
+                return;
+            }
         }
 
         // Then check if the app has registered interest in this combo.
@@ -2076,18 +2111,41 @@ public class ProfilingService extends IProfilingService.Stub {
         }
 
         // At this point redaction has completed successfully it is safe to delete the
-        // unredacted trace file unless {@link mKeepUnredactedTrace} has been enabled.
+        // unredacted trace file unless {@link mKeepResultInTempDir} has been enabled.
         synchronized (mLock) {
-            if (mKeepUnredactedTrace) {
-                Log.i(TAG, "Unredacted trace file retained at: "
-                        + TEMP_TRACE_PATH + session.getFileName());
-            } else {
-                // TODO b/331988161 Delete after file is delivered to app.
-                maybeDeleteUnredactedTrace(session);
+            if (!mKeepResultInTempDir) {
+                deleteProfilingFiles(session,
+                        false, /* Don't delete the newly redacted file */
+                        true); /* Do delete the no longer needed unredacted file.*/
             }
         }
 
         advanceTracingSession(session, TracingState.REDACTED);
+    }
+
+    /**
+     * Log the location of the temporary files if they're being retained due to
+     * {@link mKeepResultInTempDir} being enabled for debug purposes.
+     */
+    private void maybeLogTempFileLocation(TracingSession session) {
+        synchronized (mLock) {
+            if (!mKeepResultInTempDir) {
+                // Results are only retained if {@link mKeepResultInTempDir} is enabled, so don't
+                // log the locations if it's disabled.
+                return;
+            }
+
+            // For all types, output the location of the original profiling output file. For trace,
+            // this will be the unredacted copy. For all other types, this will be the only output
+            // file.
+            Log.i(TAG, "Profiling file retained at: " + TEMP_TRACE_PATH + session.getFileName());
+
+            if (session.getProfilingType() == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE) {
+                // For a trace, output the location of the redacted file.
+                Log.i(TAG, "Profiling file retained at: "
+                        + TEMP_TRACE_PATH + session.getRedactedFileName());
+            }
+        }
     }
 
     /**
@@ -2171,25 +2229,17 @@ public class ProfilingService extends IProfilingService.Stub {
      */
     private void cleanupTracingSession(TracingSession session,
             @Nullable List<TracingSession> queuedSessions) {
-        // Delete all files
-        if (session.getProfilingType() == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE) {
-            // If type is trace, try to delete the temp file only if {@link mKeepUnredactedTrace} is
-            // false, and always try to delete redacted file.
-            maybeDeleteUnredactedTrace(session);
-            try {
-                Files.delete(Path.of(TEMP_TRACE_PATH + session.getRedactedFileName()));
-            } catch (Exception exception) {
-                if (DEBUG) Log.e(TAG, "Failed to delete file for discarded record.", exception);
+        synchronized (mLock) {
+            if (mKeepResultInTempDir) {
+                // If {@link mKeepResultInTempDir} is enabled, don't cleanup anything. Continue
+                // progressing as if cleanup is complete.
+                advanceTracingSession(session, TracingState.CLEANED_UP);
+                return;
             }
-        } else {
-            // If type is not trace, try to delete the temp file. There is no redacted file.
-            try {
-                Files.delete(Path.of(TEMP_TRACE_PATH + session.getFileName()));
-            } catch (Exception exception) {
-                if (DEBUG) Log.e(TAG, "Failed to delete file for discarded record.", exception);
-            }
-
         }
+
+        // Delete all files
+        deleteProfilingFiles(session, true, true);
 
         if (queuedSessions != null) {
             queuedSessions.remove(session);
@@ -2202,17 +2252,26 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     /**
-     * Attempt to delete unredacted trace unless mKeepUnredactedTrace is enabled.
+     * Attempt to delete profiling output.
      *
-     * Note: only to be called for types that support redaction.
+     * If both boolean params are false, this method expectedly does nothing.
+     *
+     * @param deleteRedacted Whether to delete the redacted file.
+     * @param deleteUnredacted Whether to delete the unredacted file.
      */
-    private void maybeDeleteUnredactedTrace(TracingSession session) {
-        synchronized (mLock) {
-            if (mKeepUnredactedTrace) {
-                return;
-            }
+    private void deleteProfilingFiles(TracingSession session, boolean deleteRedacted,
+            boolean deleteUnredacted) {
+        if (deleteRedacted) {
             try {
-                Files.delete(Path.of(TEMP_TRACE_PATH + session.getFileName()));
+                Files.deleteIfExists(Path.of(TEMP_TRACE_PATH + session.getRedactedFileName()));
+            } catch (Exception exception) {
+                if (DEBUG) Log.e(TAG, "Failed to delete file.", exception);
+            }
+        }
+
+        if (deleteUnredacted) {
+            try {
+                Files.deleteIfExists(Path.of(TEMP_TRACE_PATH + session.getFileName()));
             } catch (Exception exception) {
                 if (DEBUG) Log.e(TAG, "Failed to delete file.", exception);
             }
@@ -2549,7 +2608,7 @@ public class ProfilingService extends IProfilingService.Stub {
 
                 // New null state is a changed from previous state, disable test mode.
                 mTestPackageName = null;
-                stopSystemTriggeredTrace();
+                stopSystemTriggeredTraceLocked();
             }
             // If new state is unchanged from previous null state, do nothing.
         } else {
@@ -2560,7 +2619,7 @@ public class ProfilingService extends IProfilingService.Stub {
             // device config should not be sending an update for a value change when the value
             // remains the same, but no need to check as the best experience for caller is to always
             // stop the current trace and start a new one for most up to date package list.
-            stopSystemTriggeredTrace();
+            stopSystemTriggeredTraceLocked();
 
             // Now update the test package name and start the system triggered trace.
             mTestPackageName = newTestPackageName;
@@ -2568,8 +2627,14 @@ public class ProfilingService extends IProfilingService.Stub {
         }
     }
 
-    /** Stop the system triggered trace. */
-    private void stopSystemTriggeredTrace() {
+    /**
+     * Stop the system triggered trace.
+     *
+     * Locked because {link mSystemTriggeredTraceProcess} is guarded and all callers are already
+     * locked.
+     */
+    @GuardedBy("mLock")
+    private void stopSystemTriggeredTraceLocked() {
         // If the trace is alive, stop it.
         if (mSystemTriggeredTraceProcess != null) {
             if (mSystemTriggeredTraceProcess.isAlive()) {
