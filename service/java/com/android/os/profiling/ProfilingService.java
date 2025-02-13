@@ -857,6 +857,12 @@ public class ProfilingService extends IProfilingService.Stub {
     @GuardedBy("mLock")
     @VisibleForTesting
     public void cleanupTemporaryDirectoryLocked(String temporaryDirectoryPath) {
+        if (mKeepResultInTempDir) {
+            // Don't clean up any temporary files while {@link mKeepResultInTempDir} is enabled as
+            // files are being retained for testing purposes.
+            return;
+        }
+
         // Obtain a list of all currently tracked files and create a filter with it. Filter is set
         // to null if the list is empty as that will efficiently accept all files.
         final List<String> trackedFilenames = getTrackedFilenames();

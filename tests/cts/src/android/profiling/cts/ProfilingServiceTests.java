@@ -2055,6 +2055,7 @@ public final class ProfilingServiceTests {
         assertEquals(s1.getErrorMessage(), s2.getErrorMessage());
         assertEquals(s1.getErrorStatus(), s2.getErrorStatus());
         assertEquals(s1.getTriggerType(), s2.getTriggerType());
+        assertEquals(s1.getProfilingStartTimeMs(), s2.getProfilingStartTimeMs());
     }
     // LINT.ThenChange(/service/proto/android/os/queue.proto:proto)
 
