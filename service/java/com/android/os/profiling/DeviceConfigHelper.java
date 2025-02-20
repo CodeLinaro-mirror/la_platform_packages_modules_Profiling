@@ -152,35 +152,11 @@ public final class DeviceConfigHelper {
     // End section: Server registered constants
 
     /**
-     * Get string param for provided device config name from server side device config namespace
-     * or return default if unavailable for any reason.
-     */
-    public static String getString(String name, String defaultValue) {
-        return DeviceConfig.getString(NAMESPACE, name, defaultValue);
-    }
-
-    /**
-     * Get boolean param for provided device config name from server side device config namespace
-     * or return default if unavailable for any reason.
-     */
-    public static boolean getBoolean(String name, boolean defaultValue) {
-        return DeviceConfig.getBoolean(NAMESPACE, name, defaultValue);
-    }
-
-    /**
      * Get int param for provided device config name from server side device config namespace
      * or return default if unavailable for any reason.
      */
     public static int getInt(String name, int defaultValue) {
         return DeviceConfig.getInt(NAMESPACE, name, defaultValue);
-    }
-
-    /**
-     * Get long param for provided device config name from server side device config namespace
-     * or return default if unavailable for any reason.
-     */
-    public static long getLong(String name, long defaultValue) {
-        return DeviceConfig.getLong(NAMESPACE, name, defaultValue);
     }
 
     /**
