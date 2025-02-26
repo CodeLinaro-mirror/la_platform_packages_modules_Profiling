@@ -48,6 +48,7 @@ public final class TracingSession {
     @Nullable private String mErrorMessage = null;
     // Expected to be populated with ProfilingResult.ERROR_* values.
     private int mErrorStatus = -1; // Default to invalid value.
+    private long mProfilingStartTimeMs;
     // LINT.ThenChange(:from_proto)
 
     // Non-persisted params
@@ -58,7 +59,6 @@ public final class TracingSession {
     @Nullable private String mKey = null;
     @Nullable private String mDestinationFileName = null;
     private long mRedactionStartTimeMs;
-    private long mProfilingStartTimeMs;
     private int mMaxProfilingTimeAllowedMs = 0;
 
     public TracingSession(int profilingType,  int uid, String packageName, int triggerType) {
@@ -107,6 +107,7 @@ public final class TracingSession {
         }
         mErrorStatus = sessionProto.getErrorStatus();
         mTriggerType = sessionProto.getTriggerType();
+        mProfilingStartTimeMs = sessionProto.getProfilingStartTime();
 
         // params is not persisted because we cannot guarantee that it does not contain some large
         // store of data, and because we don't need it anymore once the request has gotten to the
@@ -343,6 +344,7 @@ public final class TracingSession {
         }
         tracingSessionBuilder.setErrorStatus(mErrorStatus);
         tracingSessionBuilder.setTriggerType(mTriggerType);
+        tracingSessionBuilder.setProfilingStartTime(mProfilingStartTimeMs);
 
         return tracingSessionBuilder.build();
     }
