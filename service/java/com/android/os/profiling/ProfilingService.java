@@ -793,7 +793,7 @@ public class ProfilingService extends IProfilingService.Stub {
                 } else {
                     // For results that don't require redaction, maybe log the location of the
                     // retained result after profiling completes.
-                    maybeLogTempFileLocation(session);
+                    handleRetainedTempFiles(session);
 
                     // No redaction needed, move straight to copying to app storage.
                     beginMoveFileToAppStorage(session);
@@ -802,7 +802,7 @@ public class ProfilingService extends IProfilingService.Stub {
             case REDACTED:
                 // For results that require redaction, maybe log the location of the retained result
                 // after redaction completes.
-                maybeLogTempFileLocation(session);
+                handleRetainedTempFiles(session);
 
                 // Redaction completed, move on to copying to app storage.
                 beginMoveFileToAppStorage(session);
@@ -857,6 +857,12 @@ public class ProfilingService extends IProfilingService.Stub {
     @GuardedBy("mLock")
     @VisibleForTesting
     public void cleanupTemporaryDirectoryLocked(String temporaryDirectoryPath) {
+        if (mKeepResultInTempDir) {
+            // Don't clean up any temporary files while {@link mKeepResultInTempDir} is enabled as
+            // files are being retained for testing purposes.
+            return;
+        }
+
         // Obtain a list of all currently tracked files and create a filter with it. Filter is set
         // to null if the list is empty as that will efficiently accept all files.
         final List<String> trackedFilenames = getTrackedFilenames();
@@ -2124,10 +2130,10 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     /**
-     * Log the location of the temporary files if they're being retained due to
-     * {@link mKeepResultInTempDir} being enabled for debug purposes.
+     * Handle retained temporary files due to {@link mKeepResultInTempDir} being enabled, by
+     * attempting to make them publicly readable and logging their location
      */
-    private void maybeLogTempFileLocation(TracingSession session) {
+    private void handleRetainedTempFiles(TracingSession session) {
         synchronized (mLock) {
             if (!mKeepResultInTempDir) {
                 // Results are only retained if {@link mKeepResultInTempDir} is enabled, so don't
@@ -2138,13 +2144,42 @@ public class ProfilingService extends IProfilingService.Stub {
             // For all types, output the location of the original profiling output file. For trace,
             // this will be the unredacted copy. For all other types, this will be the only output
             // file.
-            Log.i(TAG, "Profiling file retained at: " + TEMP_TRACE_PATH + session.getFileName());
+            boolean makeReadableSucceeded = makeFileReadable(session.getFileName());
+            logRetainedFileDetails(session.getFileName(), makeReadableSucceeded);
 
             if (session.getProfilingType() == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE) {
                 // For a trace, output the location of the redacted file.
-                Log.i(TAG, "Profiling file retained at: "
-                        + TEMP_TRACE_PATH + session.getRedactedFileName());
+                makeReadableSucceeded = makeFileReadable(session.getRedactedFileName());
+                logRetainedFileDetails(session.getFileName(), makeReadableSucceeded);
             }
+        }
+    }
+
+    /** Wrapper to log all necessary information about retained file locations. */
+    private void logRetainedFileDetails(String fileName, boolean readable) {
+        if (readable) {
+            Log.i(TAG, "Profiling file retained at: " + TEMP_TRACE_PATH + fileName);
+        } else {
+            Log.i(TAG, "Profiling file retained at: " + TEMP_TRACE_PATH + fileName
+                    + " | File is not publicly accessible, root access is required to read.");
+        }
+    }
+
+    /**
+     * Make the provided file within the temp trace directory publicly readable. Access is still
+     * limited by selinux so only adbd will be additionally able to access the file due to this
+     * change.
+     *
+     * @return whether making the file readable succeeded.
+     */
+    @SuppressWarnings("SetWorldReadable")
+    private boolean makeFileReadable(String fileName) {
+        try {
+            File file = new File(TEMP_TRACE_PATH + fileName);
+            return file.setReadable(true, false);
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to make file readable for testing.", e);
+            return false;
         }
     }
 
