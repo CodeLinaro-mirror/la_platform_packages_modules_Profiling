@@ -33,6 +33,7 @@ import android.content.Context;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.CancellationSignal;
+import android.os.Parcel;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
 import android.os.ProfilingServiceHelper;
@@ -526,7 +527,53 @@ public final class ProfilingFrameworkTests {
 
         // Assert that the unregistered callback was not triggered.
         assertNull(callbackGeneral.mResult);
+    }
 
+    /** Test that unregistering all global listeners works and that listeners do not get called. */
+    @Test
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager.mCallbacks lock.
+    @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
+    public void testUnregisterAllGeneralListeners() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
+                FIVE_SECONDS_MS);
+
+        // Clear all existing callbacks.
+        mProfilingManager.mCallbacks.clear();
+
+        // Create 3 callbacks, 2 general and 1 specific.
+        AppCallback callbackSpecific = new AppCallback();
+        AppCallback callbackGeneral1 = new AppCallback();
+        AppCallback callbackGeneral2 = new AppCallback();
+
+        // Register both general callbacks.
+        mProfilingManager.registerForAllProfilingResults(
+                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral1);
+        mProfilingManager.registerForAllProfilingResults(
+                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral2);
+
+        // Confirm callbacks are properly registered by checking for size of 2.
+        assertTrue(mProfilingManager.mCallbacks.size() == 2);
+
+        // Now unregister the general callbacks.
+        mProfilingManager.unregisterForAllProfilingResults(null);
+
+        // Now kick off the request.
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
+                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                null,
+                null,
+                new ProfilingTestUtils.ImmediateExecutor(),
+                callbackSpecific);
+
+        // Wait until callback#onAccept is triggered so we can confirm the result.
+        waitForCallback(callbackSpecific);
+
+        // Assert that the unregistered callbacks were not triggered.
+        assertNull(callbackGeneral1.mResult);
+        assertNull(callbackGeneral2.mResult);
     }
 
     /** Test that a globally registered listener is triggered along with the specific one. */
@@ -1021,6 +1068,41 @@ public final class ProfilingFrameworkTests {
 
         // Finally, confirm that no callback was received.
         assertNull(callbackGeneral.mResult);
+    }
+
+    /**
+     * Test {@link ProfilingResult} parcel read and write implementations match, correctly loading
+     * result with the same values and leaving no data unread.
+     */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
+    public void testProfilingResultParcelReadWriteMatch() throws Exception {
+        // Create a fake ProfilingResult with all fields set.
+        ProfilingResult result = new ProfilingResult(
+                ProfilingResult.ERROR_FAILED_RATE_LIMIT_SYSTEM,
+                "/path/to/file.type",
+                "some_tag",
+                "This is an error message.",
+                ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN);
+
+        // Write to parcel.
+        Parcel parcel = Parcel.obtain();
+        result.writeToParcel(parcel, 0 /* flags */);
+
+        // Set the data position back to 0 so it's ready to be read.
+        parcel.setDataPosition(0);
+
+        // Now load from the parcel.
+        ProfilingResult resultFromParcel = new ProfilingResult(parcel);
+
+        // Make sure there is no unread data remaining in the parcel, and confirm that the loaded
+        // object is equal to the one it was written from. Check dataAvail first as if that check
+        // fails then the next check will fail too, but knowing the status of this check will tell
+        // us that we're missing a read or write. Check the objects are equals second as  if the
+        // avail check passes and equals fails, then we know we're reading all the data just not to
+        // the correct fields.
+        assertEquals(0, parcel.dataAvail());
+        assertTrue(result.equals(resultFromParcel));
     }
 
     /** Disable the rate limiter and wait long enough for the update to be picked up. */
