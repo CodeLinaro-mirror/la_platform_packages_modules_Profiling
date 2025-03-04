@@ -1847,14 +1847,12 @@ public class ProfilingService extends IProfilingService.Stub {
         }
     }
 
-    /** Stop active profiling for the given session key. */
-    private void stopProfiling(String key) {
+    private void stopProfiling(String key) throws RuntimeException {
         TracingSession session = mActiveTracingSessions.get(key);
         stopProfiling(session);
     }
 
-    /** Stop active profiling for the given session. */
-    private void stopProfiling(TracingSession session) {
+    private void stopProfiling(TracingSession session) throws RuntimeException {
         if (session == null || session.getActiveTrace() == null) {
             if (DEBUG) Log.d(TAG, "No active trace, nothing to stop.");
             return;
@@ -1878,11 +1876,10 @@ public class ProfilingService extends IProfilingService.Stub {
             if (!session.getActiveTrace().waitFor(mPerfettoDestroyTimeoutMs,
                     TimeUnit.MILLISECONDS)) {
                 if (DEBUG) Log.d(TAG, "Stopping of running trace process timed out.");
-                return;
+                throw new RuntimeException("Stopping of running trace process timed out.");
             }
         } catch (InterruptedException e) {
-            if (DEBUG) Log.d(TAG, "Stopping of running trace error occurred.", e);
-            return;
+            throw new RuntimeException(e);
         }
 
         // If we made it here the result is ready, now run the post processing runnable.

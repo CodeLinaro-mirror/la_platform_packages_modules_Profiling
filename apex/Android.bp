@@ -39,8 +39,8 @@ apex {
     file_contexts: ":com.android.profiling-file_contexts",
     key: "com.android.profiling.key",
     certificate: ":com.android.profiling.certificate",
-    defaults: ["b-launched-apex-module"],
-    min_sdk_version: "36",
+    defaults: ["v-launched-apex-module"],
+    min_sdk_version: "35",
 
     binaries: ["trace_redactor"],
 

@@ -80,20 +80,19 @@ import java.util.function.Consumer;
  *
  * <p>
  * For local testing, profiling results can be accessed more easily by enabling debug mode. This
- * will retain output files in a temporary system directory. The locations of the retained files
- * will be available in logcat. The behavior and command varies by version:
+ * will retain output files in a temporary system directory, which is accessible by adb shell. The
+ * locations of the retained files will be available in logcat. The behavior and command varies by
+ * version:
  * <ul>
  * <li>For Android versions 16 and above, debug mode will retain both unredacted (where applicable)
  * and redacted results in the temporary directory. It can be enabled with the shell command
  * {@code device_config put profiling_testing delete_temporary_results.disabled true} and disabled
- * by setting that same value back to false. Retained results are accessible on all build types.
+ * be setting that same value back to false.
  * </li>
  * <li>For Android version 15, debug mode will retain only the unredacted result (where applicable)
  * in the temporary directory. It can be enabled with the shell command
  * {@code device_config put profiling_testing delete_unredacted_trace.disabled true} and disabled
- * by setting that same value back to false. The retained unredacted file can only be accessed on
- * builds with root access. To access the redacted output file on an unrooted device, apps can copy
- * the file from {@code /pkg/files/profiling/file.type} to {@code /pkg/cache/file.type}.
+ * be setting that same value back to false.
  * </li>
  * </ul>
  * </p>
