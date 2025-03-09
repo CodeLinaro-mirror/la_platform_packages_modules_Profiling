@@ -43,6 +43,9 @@ public final class ProfilingResult implements Parcelable {
     /** @see #getErrorMessage */
     @Nullable final String mErrorMessage;
 
+    /** @see #getTriggerType */
+    final int mTriggerType;
+
     /** The request was executed and succeeded. */
     public static final int ERROR_NONE = 0;
 
@@ -85,11 +88,12 @@ public final class ProfilingResult implements Parcelable {
     @interface ErrorCode {}
 
     ProfilingResult(@ErrorCode int errorCode, String resultFilePath, String tag,
-            String errorMessage) {
+            String errorMessage, int triggerType) {
         mErrorCode = errorCode;
         mResultFilePath = resultFilePath;
         mTag = tag;
         mErrorMessage = errorMessage;
+        mTriggerType = triggerType;
     }
 
     private ProfilingResult(@NonNull Parcel in) {
@@ -97,6 +101,7 @@ public final class ProfilingResult implements Parcelable {
         mResultFilePath = in.readString();
         mTag = in.readString();
         mErrorMessage = in.readString();
+        mTriggerType = in.readInt();
     }
 
     @Override
@@ -105,6 +110,7 @@ public final class ProfilingResult implements Parcelable {
         dest.writeString(mResultFilePath);
         dest.writeString(mTag);
         dest.writeString(mErrorMessage);
+        dest.writeInt(mTriggerType);
     }
 
     @Override
@@ -153,5 +159,14 @@ public final class ProfilingResult implements Parcelable {
      */
     public @Nullable String getErrorMessage() {
         return mErrorMessage;
+    }
+
+    /**
+     * Trigger type that started this profiling, or {@link ProfilingTrigger#TRIGGER_TYPE_NONE} for
+     * profiling not started by a trigger.
+     */
+    @FlaggedApi(Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    public int getTriggerType() {
+        return mTriggerType;
     }
 }
