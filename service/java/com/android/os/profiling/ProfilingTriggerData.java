@@ -37,6 +37,7 @@ public final class ProfilingTriggerData {
     }
 
     // LINT.IfChange(from_proto)
+    /** Create object from proto. */
     public ProfilingTriggerData(@NonNull ProfilingTriggersWrapper.ProfilingTrigger triggerProto) {
         mUid = triggerProto.getUid();
         mPackageName = triggerProto.getPackageName();
@@ -72,6 +73,7 @@ public final class ProfilingTriggerData {
     }
 
     // LINT.IfChange(to_proto)
+    /** Write object to proto. */
     public ProfilingTriggersWrapper.ProfilingTrigger toProto() {
         ProfilingTriggersWrapper.ProfilingTrigger.Builder builder =
                 ProfilingTriggersWrapper.ProfilingTrigger.newBuilder();

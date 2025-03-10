@@ -106,7 +106,8 @@ import java.util.function.Consumer;
  * <li>Ensure that a background trace is running.</li>
  * <li>Allow all triggers for the provided package name to pass the system level rate limiter.
  *     This mode will continue until manually stopped with the shell command
- *     {@code device_config delete profiling_testing system_triggered_profiling.testing_package_name}.
+ *     {@code device_config delete profiling_testing
+ *     system_triggered_profiling.testing_package_name}.
  *     </li>
  * </ul>
  * </p>

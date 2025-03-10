@@ -174,6 +174,11 @@ public class RateLimiter {
         setupFromPersistedData();
     }
 
+    /**
+     * Check whether a profiling session with the specific details provided is allowed to run per
+     * current rate limiting restrictions. If the request is allowed, it will be stored as having
+     * run.
+     */
     public @RateLimitResult int isProfilingRequestAllowed(int uid,
             int profilingType, boolean isTriggered, @Nullable Bundle params) {
         synchronized (mLock) {
