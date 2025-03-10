@@ -67,7 +67,7 @@ public class RateLimiter {
 
     private final Object mLock = new Object();
 
-    private long mPersistToDiskFrequency;
+    @VisibleForTesting public long mPersistToDiskFrequency;
 
     /** To be disabled for testing only. */
     @GuardedBy("mLock")
@@ -85,11 +85,11 @@ public class RateLimiter {
     @VisibleForTesting
     public final EntryGroupWrapper mPastRunsWeek;
 
-    private int mCostJavaHeapDump;
-    private int mCostHeapProfile;
-    private int mCostStackSampling;
-    private int mCostSystemTrace;
-    private int mCostSystemTriggeredSystemTrace;
+    @VisibleForTesting public int mCostJavaHeapDump;
+    @VisibleForTesting public int mCostHeapProfile;
+    @VisibleForTesting public int mCostStackSampling;
+    @VisibleForTesting public int mCostSystemTrace;
+    @VisibleForTesting public int mCostSystemTriggeredSystemTrace;
 
     private final HandlerCallback mHandlerCallback;
 
