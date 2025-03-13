@@ -40,7 +40,6 @@ apex {
     key: "com.android.profiling.key",
     certificate: ":com.android.profiling.certificate",
     defaults: ["b-launched-apex-module"],
-    min_sdk_version: "36",
 
     binaries: ["trace_redactor"],
 
