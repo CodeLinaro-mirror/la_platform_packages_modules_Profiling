@@ -67,7 +67,7 @@ public class RateLimiter {
 
     private final Object mLock = new Object();
 
-    private long mPersistToDiskFrequency;
+    @VisibleForTesting public long mPersistToDiskFrequency;
 
     /** To be disabled for testing only. */
     @GuardedBy("mLock")
@@ -85,11 +85,11 @@ public class RateLimiter {
     @VisibleForTesting
     public final EntryGroupWrapper mPastRunsWeek;
 
-    private int mCostJavaHeapDump;
-    private int mCostHeapProfile;
-    private int mCostStackSampling;
-    private int mCostSystemTrace;
-    private int mCostSystemTriggeredSystemTrace;
+    @VisibleForTesting public int mCostJavaHeapDump;
+    @VisibleForTesting public int mCostHeapProfile;
+    @VisibleForTesting public int mCostStackSampling;
+    @VisibleForTesting public int mCostSystemTrace;
+    @VisibleForTesting public int mCostSystemTriggeredSystemTrace;
 
     private final HandlerCallback mHandlerCallback;
 
@@ -174,6 +174,11 @@ public class RateLimiter {
         setupFromPersistedData();
     }
 
+    /**
+     * Check whether a profiling session with the specific details provided is allowed to run per
+     * current rate limiting restrictions. If the request is allowed, it will be stored as having
+     * run.
+     */
     public @RateLimitResult int isProfilingRequestAllowed(int uid,
             int profilingType, boolean isTriggered, @Nullable Bundle params) {
         synchronized (mLock) {
