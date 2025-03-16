@@ -118,6 +118,7 @@ public final class ProfilingFrameworkTests {
     private static final String COMMAND_OVERRIDE_DEVICE_CONFIG_STRING =
             "device_config put %s %s %s";
     private static final String COMMAND_DELETE_DEVICE_CONFIG_STRING = "device_config delete %s %s";
+    private static final String RESET_NAMESPACE = "device_config reset trusted_defaults %s";
 
     private static final String REAL_PACKAGE_NAME = "com.android.profiling.tests";
 
@@ -143,17 +144,17 @@ public final class ProfilingFrameworkTests {
     public final TestName mTestName = new TestName();
 
     @Before
-    public void setup() {
+    public void setup() throws Exception {
         mContext = ApplicationProvider.getApplicationContext();
         mProfilingManager = mContext.getSystemService(ProfilingManager.class);
         mInstrumentation = InstrumentationRegistry.getInstrumentation();
 
+        executeShellCmd(RESET_NAMESPACE, DeviceConfigHelper.NAMESPACE);
+        executeShellCmd(RESET_NAMESPACE, DeviceConfigHelper.NAMESPACE_TESTING);
+
         // This permission is required for Headless (HSUM) tests, including Auto.
         mInstrumentation.getUiAutomation().adoptShellPermissionIdentity(
                 android.Manifest.permission.INTERACT_ACROSS_USERS_FULL);
-
-        // Disable the rate limiter, we're not testing that in any of these tests.
-        disableRateLimiter();
     }
 
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager.mProfilingService lock.
@@ -174,8 +175,10 @@ public final class ProfilingFrameworkTests {
     /** Test that request with invalid profiling type fails with correct error output. */
     @Test
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
-    public void testInvalidProfilingType() {
+    public void testInvalidProfilingType() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        disableRateLimiter();
 
         AppCallback callback = new AppCallback();
 
@@ -197,8 +200,10 @@ public final class ProfilingFrameworkTests {
     /** Test that request with invalid profiling params fails with correct error output. */
     @Test
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
-    public void testInvalidProfilingParams() {
+    public void testInvalidProfilingParams() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        disableRateLimiter();
 
         AppCallback callback = new AppCallback();
 
@@ -228,6 +233,8 @@ public final class ProfilingFrameworkTests {
     public void testRequestJavaHeapDumpSuccess() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
+        disableRateLimiter();
+
         overrideJavaHeapDumpDeviceConfigValues(false, ONE_SECOND_MS, TEN_SECONDS_MS);
 
         AppCallback callback = new AppCallback();
@@ -254,6 +261,8 @@ public final class ProfilingFrameworkTests {
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
     public void testRequestHeapProfileSuccess() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        disableRateLimiter();
 
         overrideHeapProfileDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
 
@@ -290,6 +299,8 @@ public final class ProfilingFrameworkTests {
     public void testRequestStackSamplingSuccess() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
+        disableRateLimiter();
+
         overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
                 FIVE_SECONDS_MS);
 
@@ -325,6 +336,8 @@ public final class ProfilingFrameworkTests {
     public void testRequestSystemTraceSuccess() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
+        disableRateLimiter();
+
         overrideSystemTraceDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
 
         AppCallback callback = new AppCallback();
@@ -351,6 +364,8 @@ public final class ProfilingFrameworkTests {
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
     public void testRequestJavaHeapDumpCancel() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        disableRateLimiter();
 
         // Set override duration and timeout to 10 minutes so we can ensure it finishes early when
         // canceled.
@@ -387,6 +402,8 @@ public final class ProfilingFrameworkTests {
     public void testRequestHeapProfileCancel() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
+        disableRateLimiter();
+
         // Set override durations to 10 minutes so we can ensure it finishes early when canceled.
         overrideHeapProfileDeviceConfigValues(false, TEN_MINUTES_MS, TEN_MINUTES_MS,
                 TEN_MINUTES_MS);
@@ -421,6 +438,8 @@ public final class ProfilingFrameworkTests {
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
     public void testRequestStackSamplingCancel() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        disableRateLimiter();
 
         // Set override durations to 10 minutes so we can ensure it finishes early when canceled.
         overrideStackSamplingDeviceConfigValues(false, TEN_MINUTES_MS, TEN_MINUTES_MS,
@@ -457,6 +476,8 @@ public final class ProfilingFrameworkTests {
     public void testRequestSystemTraceCancel() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
+        disableRateLimiter();
+
         // Set override durations to 10 minutes so we can ensure it finishes early when canceled.
         overrideSystemTraceDeviceConfigValues(false, TEN_MINUTES_MS, TEN_MINUTES_MS,
                 TEN_MINUTES_MS);
@@ -492,6 +513,8 @@ public final class ProfilingFrameworkTests {
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
     public void testUnregisterGeneralListener() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        disableRateLimiter();
 
         overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
                 FIVE_SECONDS_MS);
@@ -535,6 +558,8 @@ public final class ProfilingFrameworkTests {
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
     public void testUnregisterAllGeneralListeners() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        disableRateLimiter();
 
         overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
                 FIVE_SECONDS_MS);
@@ -582,6 +607,8 @@ public final class ProfilingFrameworkTests {
     public void testTriggerAllListeners() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
+        disableRateLimiter();
+
         overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
                 FIVE_SECONDS_MS);
 
@@ -621,6 +648,8 @@ public final class ProfilingFrameworkTests {
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
     public void testTriggerAllListenersDifferentContexts() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        disableRateLimiter();
 
         overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
                 FIVE_SECONDS_MS);
@@ -668,6 +697,8 @@ public final class ProfilingFrameworkTests {
     public void testRequestTagInFilename() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
+        disableRateLimiter();
+
         overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
                 FIVE_SECONDS_MS);
 
@@ -707,6 +738,8 @@ public final class ProfilingFrameworkTests {
     public void testJavaHeapDumpKillswitchEnabled() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
+        disableRateLimiter();
+
         overrideJavaHeapDumpDeviceConfigValues(true, ONE_SECOND_MS, TEN_SECONDS_MS);
 
         AppCallback callback = new AppCallback();
@@ -732,6 +765,8 @@ public final class ProfilingFrameworkTests {
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
     public void testHeapProfileKillswitchEnabled() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        disableRateLimiter();
 
         overrideHeapProfileDeviceConfigValues(true, ONE_SECOND_MS, FIVE_SECONDS_MS, TEN_SECONDS_MS);
 
@@ -759,6 +794,8 @@ public final class ProfilingFrameworkTests {
     public void testStackSamplingKillswitchEnabled() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
+        disableRateLimiter();
+
         overrideStackSamplingDeviceConfigValues(true, ONE_SECOND_MS, FIVE_SECONDS_MS,
                 TEN_SECONDS_MS);
 
@@ -785,6 +822,8 @@ public final class ProfilingFrameworkTests {
     @RequiresFlagsEnabled({Flags.FLAG_TELEMETRY_APIS, Flags.FLAG_REDACTION_ENABLED})
     public void testSystemTraceKillswitchEnabled() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        disableRateLimiter();
 
         overrideSystemTraceDeviceConfigValues(true, ONE_SECOND_MS, FIVE_SECONDS_MS, TEN_SECONDS_MS);
 
@@ -819,6 +858,8 @@ public final class ProfilingFrameworkTests {
     public void testAddGeneralListenerNoCurrentListeners() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
+        disableRateLimiter();
+
         // Setup for no current listener - mProfilingService should be null and mCallbacks empty.
         mProfilingManager.mProfilingService = null;
         mProfilingManager.mCallbacks.clear();
@@ -846,6 +887,8 @@ public final class ProfilingFrameworkTests {
     @RequiresFlagsEnabled({Flags.FLAG_TELEMETRY_APIS})
     public void testAddSpecificListenerNoCurrentListeners() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        disableRateLimiter();
 
         overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
                 FIVE_SECONDS_MS);
@@ -879,6 +922,8 @@ public final class ProfilingFrameworkTests {
     public void testAddGeneralListenerWithCurrentListener() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
+        disableRateLimiter();
+
         mProfilingManager.mProfilingService = spy(new ProfilingService(mContext));
 
         AppCallback callback = new AppCallback();
@@ -903,6 +948,8 @@ public final class ProfilingFrameworkTests {
     @RequiresFlagsEnabled({Flags.FLAG_TELEMETRY_APIS})
     public void testAddSpecificListenerWithCurrentListener() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        disableRateLimiter();
 
         overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
                 FIVE_SECONDS_MS);
@@ -937,6 +984,8 @@ public final class ProfilingFrameworkTests {
     @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void testSystemTriggeredProfiling() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        disableRateLimiter();
 
         // First add a trigger
         ProfilingTrigger trigger = new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANR)
@@ -987,6 +1036,8 @@ public final class ProfilingFrameworkTests {
     public void testSystemTriggeredProfilingRemove() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
+        disableRateLimiter();
+
         // First add a trigger
         ProfilingTrigger trigger = new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANR)
                 .setRateLimitingPeriodHours(1)
@@ -1034,6 +1085,8 @@ public final class ProfilingFrameworkTests {
     @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void testSystemTriggeredProfilingClear() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        disableRateLimiter();
 
         // First add a trigger
         ProfilingTrigger trigger = new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANR)
@@ -1105,18 +1158,174 @@ public final class ProfilingFrameworkTests {
         assertTrue(result.equals(resultFromParcel));
     }
 
+    /**
+     * Test that profiling request fails system rate limiter when cost exceeds max.
+     *
+     * This test in particular will fail the hour bucket just to verify end to end a system deny.
+     * Testing for each time bucket is covered in service side tests.
+     */
+    @Test
+    @RequiresFlagsEnabled({Flags.FLAG_TELEMETRY_APIS, Flags.FLAG_REDACTION_ENABLED})
+    public void testRateLimiterDenySystem() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        enableRateLimiter();
+
+        // Override rate limiter values such that the system trace cost is more than the system
+        // limits but less than the process limits.
+        overrideSystemTraceDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, 10);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, 10);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, 10);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, 1000);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR, 1000);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_7_DAY, 1000);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.COST_SYSTEM_TRACE, 100);
+
+        AppCallback callback = new AppCallback();
+
+        // Now kick off the request.
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                null,
+                null,
+                new ProfilingTestUtils.ImmediateExecutor(),
+                callback);
+
+        // Wait until callback#onAccept is triggered so we can confirm the result.
+        waitForCallback(callback);
+
+        // Assert request failed with system rate limiting error.
+        assertEquals(ProfilingResult.ERROR_FAILED_RATE_LIMIT_SYSTEM,
+                callback.mResult.getErrorCode());
+    }
+
+    /**
+     * Test that profiling request fails process rate limiter when cost exceeds max.
+     *
+     * This test in particular will fail the hour bucket just to verify end to end a process deny.
+     * Testing for each time bucket is covered in service side tests.
+     */
+    @Test
+    @RequiresFlagsEnabled({Flags.FLAG_TELEMETRY_APIS, Flags.FLAG_REDACTION_ENABLED})
+    public void testRateLimiterDenyProcess() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        enableRateLimiter();
+
+        // Override rate limiter values such that the system trace cost is more than the process
+        // limits but less than the system limits.
+        overrideSystemTraceDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, 1000);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, 1000);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, 1000);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, 10);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR, 10);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_7_DAY, 10);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.COST_SYSTEM_TRACE, 100);
+
+        AppCallback callback = new AppCallback();
+
+        // Now kick off the request.
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                null,
+                null,
+                new ProfilingTestUtils.ImmediateExecutor(),
+                callback);
+
+        // Wait until callback#onAccept is triggered so we can confirm the result.
+        waitForCallback(callback);
+
+        // Assert request failed with process rate limiting error.
+        assertEquals(ProfilingResult.ERROR_FAILED_RATE_LIMIT_PROCESS,
+                callback.mResult.getErrorCode());
+    }
+
+    /** Test that profiling request passes system rate limiter. */
+    @Test
+    @RequiresFlagsEnabled({Flags.FLAG_TELEMETRY_APIS, Flags.FLAG_REDACTION_ENABLED})
+    public void testRateLimiterAllow() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        enableRateLimiter();
+
+        // Override rate limiter values such that the system trace cost is less than both the system
+        // and process limits.
+        overrideSystemTraceDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, 1000);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, 1000);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, 1000);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, 1000);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR, 1000);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_7_DAY, 1000);
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.COST_SYSTEM_TRACE, 100);
+
+        AppCallback callback = new AppCallback();
+
+        // Now kick off the request.
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                null,
+                null,
+                new ProfilingTestUtils.ImmediateExecutor(),
+                callback);
+
+        // Wait until callback#onAccept is triggered so we can confirm the result.
+        waitForCallback(callback);
+
+        // Assert request returned with no error indicating that the rate limiter allowed the run.
+        assertEquals(ProfilingResult.ERROR_NONE, callback.mResult.getErrorCode());
+    }
+
     /** Disable the rate limiter and wait long enough for the update to be picked up. */
-    private void disableRateLimiter() {
-        SystemUtil.runShellCommand(
-                "device_config put profiling_testing rate_limiter.disabled true");
+    private void disableRateLimiter() throws Exception {
+        overrideRateLimiter(true);
+    }
+
+    /** Enable the rate limiter and wait long enough for the update to be picked up. */
+    private void enableRateLimiter() throws Exception {
+        overrideRateLimiter(false);
+    }
+
+    /**
+     * Override the rate limiter to the provided value and wait long enough for the update to be
+     * picked up.
+     */
+    private void overrideRateLimiter(boolean disable) throws Exception {
+        executeShellCmd(
+                "device_config put profiling_testing rate_limiter.disabled %s", disable);
         for (int i = 0; i < RATE_LIMITER_WAIT_TIME_INCREMENTS_COUNT; i++) {
             sleep(RATE_LIMITER_WAIT_TIME_INCREMENT_MS);
-            String output = SystemUtil.runShellCommand(
+            String output = executeShellCmd(
                     "device_config get profiling_testing rate_limiter.disabled");
-            if (Boolean.parseBoolean(output.trim())) {
+            if (Boolean.parseBoolean(output.trim()) == disable) {
                 return;
             }
-
         }
     }
 
