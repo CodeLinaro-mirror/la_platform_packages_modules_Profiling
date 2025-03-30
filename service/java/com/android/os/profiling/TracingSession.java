@@ -126,10 +126,15 @@ public final class TracingSession {
     }
     // LINT.ThenChange(:to_proto)
 
+    /** Generates the config for this request and converts to bytes. */
     public byte[] getConfigBytes() throws IllegalArgumentException {
         return Configs.generateConfigForRequest(mProfilingType, mParams, mPackageName);
     }
 
+    /**
+     * Gets the amount of time before the system should start checking whether the profiling is
+     * complete so that post processing can begin.
+     */
     public int getPostProcessingScheduleDelayMs() throws IllegalArgumentException {
         return Configs.getInitialProfilingTimeMs(mProfilingType, mParams);
     }
@@ -147,6 +152,7 @@ public final class TracingSession {
         return mMaxProfilingTimeAllowedMs;
     }
 
+    /** Get the tracing session unique key which was provided by {@link ProfilingManager}. */
     @Nullable
     public String getKey() {
         if (mKey == null) {
