@@ -20,6 +20,7 @@ import static android.os.profiling.ProfilingService.TracingState;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -92,6 +93,7 @@ public final class ProfilingServiceTests {
     private static final String OVERRIDE_DEVICE_CONFIG_INT = "device_config put %s %s %d";
     private static final String GET_DEVICE_CONFIG = "device_config get %s %s";
     private static final String DELETE_DEVICE_CONFIG = "device_config delete %s %s";
+    private static final String RESET_NAMESPACE = "device_config reset trusted_defaults %s";
 
     private static final String PERSIST_TEST_DIR = "testdir";
     private static final String PERSIST_TEST_FILE = "testfile";
@@ -112,6 +114,15 @@ public final class ProfilingServiceTests {
 
     private static final int RATE_LIMITING_0_HOURS_BETWEEN = 0;
 
+    private static final int DEFAULT_LIMIT_PROCESS_HOUR = 5;
+    private static final int DEFAULT_LIMIT_PROCESS_DAY = 20;
+    private static final int DEFAULT_LIMIT_PROCESS_WEEK = 50;
+    private static final int DEFAULT_LIMIT_SYSTEM_HOUR = 10;
+    private static final int DEFAULT_LIMIT_SYSTEM_DAY = 50;
+    private static final int DEFAULT_LIMIT_SYSTEM_WEEK = 100;
+    private static final int DEFAULT_PROFILING_RUN_COST = 1;
+    private static final int DEFAULT_PERSIST_TO_DISK_FREQUENCY = 0;
+
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
     @Rule public final SetFlagsRule mSetFlagsRule = new SetFlagsRule();
@@ -124,9 +135,13 @@ public final class ProfilingServiceTests {
     private RateLimiter mRateLimiter;
 
     @Before
-    public void setUp() {
+    public void setUp() throws Exception {
         MockitoAnnotations.initMocks(this);
         mInstrumentation = InstrumentationRegistry.getInstrumentation();
+
+        executeShellCmd(RESET_NAMESPACE, DeviceConfigHelper.NAMESPACE);
+        executeShellCmd(RESET_NAMESPACE, DeviceConfigHelper.NAMESPACE_TESTING);
+
         mContext = spy(ApplicationProvider.getApplicationContext());
         mProfilingService = spy(new ProfilingService(mContext));
         mRateLimiter = spy(new RateLimiter(new RateLimiter.HandlerCallback() {
@@ -684,7 +699,155 @@ public final class ProfilingServiceTests {
         assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
     }
 
-    // TODO: b/333579817 - Add more rate limiter tests
+    /** Test that rate limiter check for request allows as expected. */
+    @Test
+    public void testRateLimiter_RequestAllow() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // Send a request for profiling.
+        int result = mRateLimiter.isProfilingRequestAllowed(
+                FAKE_UID, ProfilingManager.PROFILING_TYPE_HEAP_PROFILE, false, null);
+
+        // Confirm request passes as allowed.
+        assertEquals(RateLimiter.RATE_LIMIT_RESULT_ALLOWED, result);
+    }
+
+    /** Test that rate limiter check for request denies for process hour limit as expected. */
+    @Test
+    public void testRateLimiter_RequestDeny_ProcessHour() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // Add a fake run to the same UID with a cost value equal to the process limit but lower
+        // than system limit for this time bucket so that it passes system but fails process.
+        mRateLimiter.mPastRunsHour.add(FAKE_UID, DEFAULT_LIMIT_PROCESS_HOUR,
+                System.currentTimeMillis());
+
+        // Send a request for profiling.
+        int result = mRateLimiter.isProfilingRequestAllowed(
+                FAKE_UID, ProfilingManager.PROFILING_TYPE_HEAP_PROFILE, false, null);
+
+        // Confirm request is denied with process reason.
+        assertEquals(RateLimiter.RATE_LIMIT_RESULT_BLOCKED_PROCESS, result);
+    }
+
+    /** Test that rate limiter check for request denies for process day limit as expected. */
+    @Test
+    public void testRateLimiter_RequestDeny_ProcessDay() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // Add a fake run to the same UID with a cost value equal to the process limit but lower
+        // than system limit for this time bucket so that it passes system but fails process.
+        mRateLimiter.mPastRunsDay.add(FAKE_UID, DEFAULT_LIMIT_PROCESS_DAY,
+                System.currentTimeMillis());
+
+        // Send a request for profiling.
+        int result = mRateLimiter.isProfilingRequestAllowed(
+                FAKE_UID, ProfilingManager.PROFILING_TYPE_HEAP_PROFILE, false, null);
+
+        // Confirm request is denied with process reason.
+        assertEquals(RateLimiter.RATE_LIMIT_RESULT_BLOCKED_PROCESS, result);
+    }
+
+    /** Test that rate limiter check for request denies for process week limit as expected. */
+    @Test
+    public void testRateLimiter_RequestDeny_ProcessWeek() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // Add a fake run to the same UID with a cost value equal to the process limit but lower
+        // than system limit for this time bucket so that it passes system but fails process.
+        mRateLimiter.mPastRunsWeek.add(FAKE_UID, DEFAULT_LIMIT_PROCESS_WEEK,
+                System.currentTimeMillis());
+
+        // Send a request for profiling.
+        int result = mRateLimiter.isProfilingRequestAllowed(
+                FAKE_UID, ProfilingManager.PROFILING_TYPE_HEAP_PROFILE, false, null);
+
+        // Confirm request is denied with process reason.
+        assertEquals(RateLimiter.RATE_LIMIT_RESULT_BLOCKED_PROCESS, result);
+    }
+
+    /** Test that rate limiter check for request denies for system hour limit as expected. */
+    @Test
+    public void testRateLimiter_RequestDeny_SystemHour() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // Add a fake run to a different UID than will be used for the request, with a cost value
+        // equal to the system limit for this time bucket.
+        mRateLimiter.mPastRunsHour.add(FAKE_UID_2, DEFAULT_LIMIT_SYSTEM_HOUR,
+                System.currentTimeMillis());
+
+        // Send a request for profiling.
+        int result = mRateLimiter.isProfilingRequestAllowed(
+                FAKE_UID, ProfilingManager.PROFILING_TYPE_HEAP_PROFILE, false, null);
+
+        // Confirm request is denied with system reason.
+        assertEquals(RateLimiter.RATE_LIMIT_RESULT_BLOCKED_SYSTEM, result);
+    }
+
+    /** Test that rate limiter check for request denies for system day limit as expected. */
+    @Test
+    public void testRateLimiter_RequestDeny_SystemDay() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // Add a fake run to a different UID than will be used for the request, with a cost value
+        // equal to the system limit for this time bucket.
+        mRateLimiter.mPastRunsDay.add(FAKE_UID_2, DEFAULT_LIMIT_SYSTEM_DAY,
+                System.currentTimeMillis());
+
+        // Send a request for profiling.
+        int result = mRateLimiter.isProfilingRequestAllowed(
+                FAKE_UID, ProfilingManager.PROFILING_TYPE_HEAP_PROFILE, false, null);
+
+        // Confirm request is denied with system reason.
+        assertEquals(RateLimiter.RATE_LIMIT_RESULT_BLOCKED_SYSTEM, result);
+    }
+
+    /** Test that rate limiter check for request denies for system week limit as expected. */
+    @Test
+    public void testRateLimiter_RequestDeny_SystemWeek() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // Add a fake run to a different UID than will be used for the request, with a cost value
+        // equal to the system limit for this time bucket.
+        mRateLimiter.mPastRunsWeek.add(FAKE_UID_2, DEFAULT_LIMIT_SYSTEM_WEEK,
+                System.currentTimeMillis());
+
+        // Send a request for profiling.
+        int result = mRateLimiter.isProfilingRequestAllowed(
+                FAKE_UID, ProfilingManager.PROFILING_TYPE_HEAP_PROFILE, false, null);
+
+        // Confirm request is denied with system reason.
+        assertEquals(RateLimiter.RATE_LIMIT_RESULT_BLOCKED_SYSTEM, result);
+    }
+
+    /** Test that rate limiter check for trigger allows as expected. */
+    @Test
+    public void testRateLimiter_TriggeredAllow() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // Send a request for a trigger.
+        int result = mRateLimiter.isProfilingRequestAllowed(FAKE_UID,
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE, true, null);
+
+        // Confirm request passes as allowed.
+        assertEquals(RateLimiter.RATE_LIMIT_RESULT_ALLOWED, result);
+    }
+
+    /** Test that rate limiter check for trigger denies when expected. */
+    @Test
+    public void testRateLimiter_TriggerDeny() throws Exception {
+        overrideRateLimiterDefaults();
+
+        // Add a fake run with a high cost value.
+        mRateLimiter.mPastRunsHour.add(FAKE_UID, 1000, System.currentTimeMillis());
+
+        // Send a request for a trigger.
+        int result = mRateLimiter.isProfilingRequestAllowed(
+                FAKE_UID, ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE, true, null);
+
+        // Confirm request does not pass as allowed.
+        assertNotEquals(RateLimiter.RATE_LIMIT_RESULT_ALLOWED, result);
+    }
 
     /** Test that advancing state in forward direction works as expected. */
     @Test
@@ -1989,39 +2152,34 @@ public final class ProfilingServiceTests {
     private void overrideRateLimiterDefaults() throws Exception {
         // Update DeviceConfig defaults to general high enough limits, cost of 1, and persist
         // frequency 0.
-        overrideRateLimiterDefaults(5, 10, 20, 50, 50, 100, 1, 1, 1, 1, 1, 0);
+        overrideRateLimiterDefaults(
+                DEFAULT_LIMIT_SYSTEM_HOUR,
+                DEFAULT_LIMIT_PROCESS_HOUR,
+                DEFAULT_LIMIT_SYSTEM_DAY,
+                DEFAULT_LIMIT_PROCESS_DAY,
+                DEFAULT_LIMIT_SYSTEM_WEEK,
+                DEFAULT_LIMIT_PROCESS_WEEK,
+                DEFAULT_PROFILING_RUN_COST,
+                DEFAULT_PROFILING_RUN_COST,
+                DEFAULT_PROFILING_RUN_COST,
+                DEFAULT_PROFILING_RUN_COST,
+                DEFAULT_PROFILING_RUN_COST,
+                DEFAULT_PERSIST_TO_DISK_FREQUENCY);
     }
 
     private void overrideRateLimiterDefaults(int systemHour, int processHour, int systemDay,
             int processDay, int systemWeek, int processWeek, int costHeapDump, int costHeapProfile,
             int costStackSampling, int costSystemTrace, int costSystemTriggeredSystemProfiling,
-            int persistToDiskFrequency)
-            throws Exception {
-        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, systemHour);
-        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, processHour);
-        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, systemDay);
-        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR, processDay);
-        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, systemWeek);
-        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_PROCESS_7_DAY, processWeek);
-        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.COST_JAVA_HEAP_DUMP, costHeapDump);
-        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.COST_HEAP_PROFILE, costHeapProfile);
-        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.COST_STACK_SAMPLING, costStackSampling);
-        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.COST_SYSTEM_TRACE, costSystemTrace);
-        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.COST_SYSTEM_TRIGGERED_SYSTEM_TRACE,
-                costSystemTriggeredSystemProfiling);
-        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS, persistToDiskFrequency);
+            int persistToDiskFrequency) {
+        mRateLimiter.mPastRunsHour.maybeUpdateMaxCosts(systemHour, processHour);
+        mRateLimiter.mPastRunsDay.maybeUpdateMaxCosts(systemDay, processDay);
+        mRateLimiter.mPastRunsWeek.maybeUpdateMaxCosts(systemWeek, processWeek);
+        mRateLimiter.mCostJavaHeapDump = costHeapDump;
+        mRateLimiter.mCostHeapProfile = costHeapProfile;
+        mRateLimiter.mCostStackSampling = costStackSampling;
+        mRateLimiter.mCostSystemTrace = costSystemTrace;
+        mRateLimiter.mCostSystemTriggeredSystemTrace = costSystemTriggeredSystemProfiling;
+        mRateLimiter.mPersistToDiskFrequency = persistToDiskFrequency;
     }
 
     @FormatMethod

@@ -135,7 +135,7 @@ public final class Configs {
         sSystemTraceSizeKbDefault = properties.getInt(
                 DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_DEFAULT, 32768);
         sSystemTraceSizeKbMin = properties.getInt(
-                DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_MIN, 4);
+                DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_MIN, 64);
         sSystemTraceSizeKbMax = properties.getInt(
                 DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_MAX, 32768);
 
@@ -159,7 +159,7 @@ public final class Configs {
         sJavaHeapDumpSizeKbDefault = properties.getInt(
                 DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_DEFAULT, 256000);
         sJavaHeapDumpSizeKbMin = properties.getInt(
-                DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_MIN, 4);
+                DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_MIN, 8192 /* 8 MB */);
         sJavaHeapDumpSizeKbMax = properties.getInt(
                 DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_MAX, 256000);
 
@@ -189,7 +189,7 @@ public final class Configs {
         sHeapProfileSizeKbDefault = properties.getInt(
                 DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_DEFAULT, 65536);
         sHeapProfileSizeKbMin = properties.getInt(
-                DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MIN, 4);
+                DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MIN, 256);
         sHeapProfileSizeKbMax = properties.getInt(
                 DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MAX, 65536);
         sHeapProfileSamplingIntervalBytesDefault = properties.getLong(
@@ -223,7 +223,7 @@ public final class Configs {
         sStackSamplingSizeKbDefault = properties.getInt(
                 DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_DEFAULT, 65536);
         sStackSamplingSizeKbMin = properties.getInt(
-                DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_MIN, 4);
+                DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_MIN, 64);
         sStackSamplingSizeKbMax = properties.getInt(
                 DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_MAX, 65536);
         sStackSamplingSamplingFrequencyDefault = properties.getInt(
