@@ -80,19 +80,20 @@ import java.util.function.Consumer;
  *
  * <p>
  * For local testing, profiling results can be accessed more easily by enabling debug mode. This
- * will retain output files in a temporary system directory, which is accessible by adb shell. The
- * locations of the retained files will be available in logcat. The behavior and command varies by
- * version:
+ * will retain output files in a temporary system directory. The locations of the retained files
+ * will be available in logcat. The behavior and command varies by version:
  * <ul>
  * <li>For Android versions 16 and above, debug mode will retain both unredacted (where applicable)
  * and redacted results in the temporary directory. It can be enabled with the shell command
  * {@code device_config put profiling_testing delete_temporary_results.disabled true} and disabled
- * be setting that same value back to false.
+ * by setting that same value back to false. Retained results are accessible on all build types.
  * </li>
  * <li>For Android version 15, debug mode will retain only the unredacted result (where applicable)
  * in the temporary directory. It can be enabled with the shell command
  * {@code device_config put profiling_testing delete_unredacted_trace.disabled true} and disabled
- * be setting that same value back to false.
+ * by setting that same value back to false. The retained unredacted file can only be accessed on
+ * builds with root access. To access the redacted output file on an unrooted device, apps can copy
+ * the file from {@code /pkg/files/profiling/file.type} to {@code /pkg/cache/file.type}.
  * </li>
  * </ul>
  * </p>
@@ -105,7 +106,8 @@ import java.util.function.Consumer;
  * <li>Ensure that a background trace is running.</li>
  * <li>Allow all triggers for the provided package name to pass the system level rate limiter.
  *     This mode will continue until manually stopped with the shell command
- *     {@code device_config delete profiling_testing system_triggered_profiling.testing_package_name}.
+ *     {@code device_config delete profiling_testing
+ *     system_triggered_profiling.testing_package_name}.
  *     </li>
  * </ul>
  * </p>
@@ -223,8 +225,10 @@ public final class ProfilingManager {
      *
      * <p class="note">
      *   Note: use of this API directly is not recommended for most use cases.
-     *   Consider using the higher level wrappers provided by AndroidX that will construct the
-     *   request correctly, supporting available options with simplified request parameters
+     *   Consider using the
+     *   <a href="https://developer.android.com/reference/androidx/core/os/Profiling">higher level
+     *   wrappers provided by AndroidX</a> that will construct the request correctly, supporting
+     *   available options with simplified request parameters.
      * </p>
      *
      * <p>
@@ -255,7 +259,9 @@ public final class ProfilingManager {
      *                  {@link android.os.ProfilingResult#ERROR_FAILED_INVALID_REQUEST}. If the
      *                  values for the parameters are out of supported range, the closest possible
      *                  in range value will be chosen.
-     *                  Use of androidx wrappers is recommended over generating this directly.
+     *                  Use of <a href=
+     *                  "https://developer.android.com/reference/androidx/core/os/Profiling">
+     *                  androidx wrappers</a> is recommended over generating this directly.
      * @param tag Caller defined data to help identify the output.
      *                  The first 20 alphanumeric characters, plus dashes, will be lowercased
      *                  and included in the output filename.
@@ -435,13 +441,18 @@ public final class ProfilingManager {
     }
 
     /**
+     * <p>
      * Register the provided list of triggers for this process.
+     * </p>
      *
-     * Profiling triggers are system triggered events that an app can register interest in receiving
-     * profiling of. There is no guarantee that these triggers will be filled. Results, if
-     * available, will be delivered only to a global listener added using
-     * {@link #registerForAllProfilingResults}.
+     * <p>
+     * Profiling triggers are system events that an app can register interest in, and then receive
+     * profiling data when any of the registered triggers occur. There is no guarantee that these
+     * triggers will be filled. Results, if available, will be delivered only to a global listener
+     * added using {@link #registerForAllProfilingResults}.
+     *</p>
      *
+     * <p>
      * Only one of each trigger type can be added at a time.
      * <ul>
      * <li>If the provided list contains a trigger type that is already registered then the new one
@@ -449,6 +460,13 @@ public final class ProfilingManager {
      * <li>If the provided list contains more than one trigger object for a trigger type then only
      *     one will be kept.</li>
      * </ul>
+     * </p>
+     *
+     * <p>
+     * Apps can define their own per-trigger rate limiting to help ensure they receive results
+     * aligned with their needs. More details can be found at
+     * {@link ProfilingTrigger.Builder#setRateLimitingPeriodHours}.
+     * </p>
      */
     @FlaggedApi(Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void addProfilingTriggers(@NonNull List<ProfilingTrigger> triggers) {
