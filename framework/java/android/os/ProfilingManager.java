@@ -486,6 +486,7 @@ public final class ProfilingManager {
 
             String packageName = mContext.getPackageName();
             if (packageName == null) {
+                // This should never happen.
                 if (DEBUG) Log.d(TAG, "Failed to resolve package name.");
                 return;
             }
@@ -494,7 +495,49 @@ public final class ProfilingManager {
                 service.addProfilingTriggers(toValueParcelList(triggers), packageName);
             } catch (RemoteException e) {
                 if (DEBUG) Log.d(TAG, "Binder exception processing request", e);
-                throw new RuntimeException("Unable to add profiling triggers.");
+                e.rethrowAsRuntimeException();
+            }
+        }
+    }
+
+    /**
+     * <p>
+     * Register this process for all triggers.
+     * </p>
+     *
+     * <p>
+     * Registering for all triggers is in addition to any specific triggers registered. Any triggers
+     * already registered when this is called, along with their parameters, will not be impacted.
+     * Any triggers specifically registered after calling this, along with any parameters set on
+     * them, will take precedence over what is set here.
+     * </p>
+     *
+     * <p>
+     * See {@link #addProfilingTriggers} for more on triggers.
+     * </p>
+     */
+    @FlaggedApi(Flags.FLAG_PROFILING_25Q4)
+    public void addAllProfilingTriggers() {
+        synchronized (mLock) {
+            final IProfilingService service = getOrCreateIProfilingServiceLocked(false);
+            if (service == null) {
+                // If we can't access service then we can't do anything. Throw.
+                if (DEBUG) Log.d(TAG, "ProfilingService is not available.");
+                throw new RuntimeException("ProfilingService is not available");
+            }
+
+            String packageName = mContext.getPackageName();
+            if (packageName == null) {
+                // This should never happen.
+                if (DEBUG) Log.d(TAG, "Failed to resolve package name.");
+                throw new RuntimeException("Failed to resolve package name");
+            }
+
+            try {
+                service.addAllProfilingTriggers(packageName);
+            } catch (RemoteException e) {
+                if (DEBUG) Log.d(TAG, "Binder exception processing request", e);
+                e.rethrowAsRuntimeException();
             }
         }
     }
@@ -570,6 +613,46 @@ public final class ProfilingManager {
             } catch (RemoteException e) {
                 if (DEBUG) Log.d(TAG, "Binder exception processing request", e);
                 throw new RuntimeException("Unable to clear profiling triggers.");
+            }
+        }
+    }
+
+    /**
+     * <p>
+     * Request a snapshot of a background trace, if one is running.
+     * </p>
+     *
+     * <p>
+     * This request sends a {@link ProfilingTrigger#TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE} trigger.
+     * Apps must register interest in this trigger in order to receive the result using either
+     * {@link #addProfilingTriggers} or {@link #addAllProfilingTriggers()}.
+     * </p>
+     */
+    @FlaggedApi(Flags.FLAG_PROFILING_25Q4)
+    public void requestRunningSystemTrace(@Nullable String tag) {
+        synchronized (mLock) {
+            final IProfilingService service = getOrCreateIProfilingServiceLocked(false);
+            if (service == null) {
+                // If we can't access service then we can't do anything. Return.
+                if (DEBUG) {
+                    Log.d(TAG, "ProfilingService is not available, requestRunningSystemTrace "
+                            + "ignored.");
+                }
+                return;
+            }
+
+            String packageName = mContext.getPackageName();
+            if (packageName == null) {
+                if (DEBUG) Log.d(TAG, "Failed to resolve package name.");
+                return;
+            }
+
+            try {
+                service.processTrigger(Binder.getCallingUid(), packageName,
+                        ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE, tag);
+            } catch (RemoteException e) {
+                if (DEBUG) Log.d(TAG, "Binder exception processing request", e);
+                e.rethrowAsRuntimeException();
             }
         }
     }

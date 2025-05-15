@@ -1976,7 +1976,7 @@ public final class ProfilingServiceTests {
 
         // Now process the trigger.
         mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME,
-                ProfilingTrigger.TRIGGER_TYPE_ANR);
+                ProfilingTrigger.TRIGGER_TYPE_ANR, null);
 
         // Get the new trigger time and make sure it's later than the fake one, indicating it ran.
         long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
@@ -2017,7 +2017,7 @@ public final class ProfilingServiceTests {
 
         // Now process the trigger.
         mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME,
-                ProfilingTrigger.TRIGGER_TYPE_ANR);
+                ProfilingTrigger.TRIGGER_TYPE_ANR, null);
 
         // Get the new trigger time and make sure it's equal to the fake one, indicating it did not
         // run.
@@ -2047,7 +2047,7 @@ public final class ProfilingServiceTests {
 
         // Now process the trigger.
         mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME,
-                ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN);
+                ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN, null);
 
         // Get the new trigger time and make sure it's later than 0, indicating it ran.
         long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
@@ -2082,7 +2082,7 @@ public final class ProfilingServiceTests {
 
         // Now process the trigger.
         mProfilingService.processTriggerInternal(FAKE_UID, APP_PACKAGE_NAME,
-                ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN);
+                ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN, null);
 
         // Get the new trigger time and make sure it's equal to 0, indicating it did not run.
         long newTriggerTime = mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
@@ -2132,6 +2132,99 @@ public final class ProfilingServiceTests {
         // made. We don't confirm that it actually started as we can't actually start the trace from
         // this context.
         verify(mProfilingService, times(1)).startSystemTriggeredTrace();
+    }
+
+    /**
+     * Test that the all trigger type works correctly, not impacting or being impacted by adding
+     * individual triggers.
+     */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_PROFILING_25Q4)
+    public void testSystemTriggeredProfiling_AddTriggerAll() throws Exception {
+        // First, clear the data structure.
+        mProfilingService.mAppTriggers.getMap().clear();
+
+        // Add a trigger.
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_KILL_RECENTS, 0);
+
+        // Verify that the trigger is added.
+        assertTrue(mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
+                .contains(ProfilingTrigger.TRIGGER_TYPE_KILL_RECENTS));
+
+        // Add all profiling triggers.
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME,
+                ProfilingTriggerData.TRIGGER_ALL, 0);
+
+        // Verify that the all trigger was added and that previously registered one remained.
+        assertEquals(2, mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID).size());
+        assertTrue(mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
+                .contains(ProfilingTriggerData.TRIGGER_ALL));
+        assertTrue(mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
+                .contains(ProfilingTrigger.TRIGGER_TYPE_KILL_RECENTS));
+
+        // Add another trigger.
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_KILL_TASK_MANAGER, 0);
+
+        // Verify that the new trigger was added, and that the previously present all and specific
+        // triggers remain.
+        assertEquals(3, mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID).size());
+        assertTrue(mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
+                .contains(ProfilingTriggerData.TRIGGER_ALL));
+        assertTrue(mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
+                .contains(ProfilingTrigger.TRIGGER_TYPE_KILL_TASK_MANAGER));
+        assertTrue(mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
+                .contains(ProfilingTrigger.TRIGGER_TYPE_KILL_RECENTS));
+    }
+
+    /**
+     * Test that getTriggerDataObject returns the correct object for different states. See method
+     * javadoc for more details.
+     */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_PROFILING_25Q4)
+    public void testSystemTriggeredProfiling_GetTriggerDataObject() throws Exception {
+        // First, clear the data structure.
+        mProfilingService.mAppTriggers.getMap().clear();
+
+        // Get the trigger object for any trigger type.
+        ProfilingTriggerData trigger = mProfilingService.getTriggerDataObject(
+                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_KILL_FORCE_STOP);
+
+        // Verify that the trigger object is null.
+        assertNull(trigger);
+
+        // Add all profiling triggers.
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME,
+                ProfilingTriggerData.TRIGGER_ALL, 0);
+
+        // Get the trigger object for any trigger type.
+        trigger = mProfilingService.getTriggerDataObject(
+                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_KILL_FORCE_STOP);
+
+        // Verify that the all triggers object is returned.
+        assertEquals(ProfilingTriggerData.TRIGGER_ALL, trigger.getTriggerType());
+
+        // Now add a specific trigger.
+        mProfilingService.addTrigger(FAKE_UID, APP_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_KILL_FORCE_STOP, 0);
+
+        // Get the trigger object for the added trigger type.
+        trigger = mProfilingService.getTriggerDataObject(
+                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_KILL_FORCE_STOP);
+
+        // Verify that the correct specific trigger type object is returned, and not the all
+        // triggers object is not returned.
+        assertNotEquals(ProfilingTriggerData.TRIGGER_ALL, trigger.getTriggerType());
+        assertEquals(ProfilingTrigger.TRIGGER_TYPE_KILL_FORCE_STOP, trigger.getTriggerType());
+
+        // Get the trigger object for a different not added trigger type.
+        trigger = mProfilingService.getTriggerDataObject(
+                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_KILL_RECENTS);
+
+        // Verify that the all triggers object is returned.
+        assertEquals(ProfilingTriggerData.TRIGGER_ALL, trigger.getTriggerType());
     }
 
     private File createAndConfirmFileExists(File directory, String fileName) throws Exception {

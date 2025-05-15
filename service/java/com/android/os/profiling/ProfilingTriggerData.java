@@ -20,6 +20,9 @@ import android.annotation.NonNull;
 import android.os.ProfilingTriggersWrapper;
 
 public final class ProfilingTriggerData {
+
+    public static final int TRIGGER_ALL = -1;
+
     // LINT.IfChange(params)
     private final int mUid;
     @NonNull private final String mPackageName;
