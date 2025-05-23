@@ -71,7 +71,7 @@ public final class ProfilingTrigger {
      *
      * System will provide a snapshot of a running system trace in response to this trigger.
      */
-    @FlaggedApi(Flags.FLAG_PROFILING_25Q4)
+    @FlaggedApi(Flags.FLAG_PROFILING_TRIGGER_KILL_RECENTS)
     public static final int TRIGGER_TYPE_KILL_RECENTS = 5;
 
     /**
@@ -212,7 +212,7 @@ public final class ProfilingTrigger {
             || triggerType == TRIGGER_TYPE_ANR
             || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE)
             || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_KILL_FORCE_STOP)
-            || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_KILL_RECENTS)
+            || (Flags.profilingTriggerKillRecents() && triggerType == TRIGGER_TYPE_KILL_RECENTS)
             || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_KILL_TASK_MANAGER);
     }
 }
