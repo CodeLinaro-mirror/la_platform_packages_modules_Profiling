@@ -1184,6 +1184,11 @@ public class ProfilingService extends IProfilingService.Stub {
         }
     }
 
+    /** Add an all profiling trigger for the provided package name and the callers uid. */
+    public void addAllProfilingTriggers(String packageName) {
+        addTrigger(Binder.getCallingUid(), packageName, ProfilingTriggerData.TRIGGER_ALL, 0);
+    }
+
     /**
      * Remove the provided list of validated trigger codes from a process with the provided package
      * name and the uid of the caller.
@@ -1602,7 +1607,8 @@ public class ProfilingService extends IProfilingService.Stub {
      * Cloning will fork the running trace, stop the new forked trace, and output the result to a
      * separate file. This leaves the original trace running.
      */
-    public void processTrigger(int uid, @NonNull String packageName, int triggerType) {
+    public void processTrigger(int uid, @NonNull String packageName, int triggerType,
+            @Nullable String tag) {
         if (!Flags.systemTriggeredProfilingNew()) {
             // Flag disabled.
             return;
@@ -1612,7 +1618,7 @@ public class ProfilingService extends IProfilingService.Stub {
         getHandler().post(new Runnable() {
             @Override
             public void run() {
-                processTriggerInternal(uid, packageName, triggerType);
+                processTriggerInternal(uid, packageName, triggerType, tag);
             }
         });
     }
@@ -1621,7 +1627,8 @@ public class ProfilingService extends IProfilingService.Stub {
      * Internal call to process trigger, not to be called on the thread that passed the trigger in.
      */
     @VisibleForTesting
-    public void processTriggerInternal(int uid, @NonNull String packageName, int triggerType) {
+    public void processTriggerInternal(int uid, @NonNull String packageName, int triggerType,
+            @Nullable String tag) {
         synchronized (mLock) {
             if (mSystemTriggeredTraceUniqueSessionName == null) {
                 // If we don't have the session name then we don't know how to clone the trace so
@@ -1649,55 +1656,18 @@ public class ProfilingService extends IProfilingService.Stub {
             }
         }
 
-        // Then check if the app has registered interest in this combo.
-        SparseArray<ProfilingTriggerData> perProcessTriggers = mAppTriggers.get(packageName, uid);
-        if (perProcessTriggers == null) {
-            // This uid hasn't registered any triggers.
-            if (DEBUG) {
-                Log.d(TAG, String.format("Profiling triggered for uid %d with no registered "
-                        + "triggers", uid));
-            }
-            return;
-        }
-
-        ProfilingTriggerData trigger = perProcessTriggers.get(triggerType);
+        ProfilingTriggerData trigger = getTriggerDataObject(uid, packageName, triggerType);
         if (trigger == null) {
-            // This uid hasn't registered a trigger for this type.
-            if (DEBUG) {
-                Log.d(TAG, String.format("Profiling triggered for uid %d and trigger %d, but "
-                        + "app has not registered for this trigger type.", uid, triggerType));
-            }
+            // No trigger object, process isn't registered for this trigger.
             return;
         }
 
-        // Now apply system and app provided rate limiting.
-        if (System.currentTimeMillis() - trigger.getLastTriggeredTimeMs()
-                < trigger.getRateLimitingPeriodHours() * 60L * 60L * 1000L) {
-            // App provided rate limiting doesn't allow for this run, return.
-            if (DEBUG) {
-                Log.d(TAG, String.format("Profiling triggered for uid %d and trigger %d but blocked"
-                        + " by app provided rate limiting ", uid, triggerType));
-            }
+        // Then check rate limiting, both app and system.
+        if (!isTriggerRateLimitingAllowed(trigger, ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE)) {
             return;
         }
 
-        // If this is from the test package, skip system rate limiting.
-        if (!packageName.equals(mTestPackageName)) {
-            int systemRateLimiterResult = getRateLimiter().isProfilingRequestAllowed(uid,
-                    ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE, true, null);
-            if (systemRateLimiterResult != RateLimiter.RATE_LIMIT_RESULT_ALLOWED) {
-                // Blocked by system rate limiter, return. Since this is system triggered there is
-                // no callback and therefore no need to distinguish between per app and system
-                // denials within the system rate limiter.
-                if (DEBUG) {
-                    Log.d(TAG, String.format("Profiling triggered for uid %d and trigger %d but "
-                            + "blocked by system rate limiting ", uid, triggerType));
-                }
-                return;
-            }
-        }
-
-        // Now that it's approved by both rate limiters, update their values.
+        // Now that it's approved by both rate limiters, update the last run value.
         trigger.setLastTriggeredTimeMs(System.currentTimeMillis());
 
         // If we made it this far, a trace is running, the app has registered interest in this
@@ -1745,7 +1715,7 @@ public class ProfilingService extends IProfilingService.Stub {
         // If we get here the clone was successful. Create a new TracingSession to track this and
         // continue moving it along the processing process.
         TracingSession session = new TracingSession(
-                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE, uid, packageName, triggerType);
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE, uid, packageName, triggerType, tag);
         session.setRedactedFileName(baseFileName + OUTPUT_FILE_TRACE_SUFFIX);
         session.setFileName(unredactedFullName);
         session.setProfilingStartTimeMs(System.currentTimeMillis());
@@ -1753,6 +1723,87 @@ public class ProfilingService extends IProfilingService.Stub {
         advanceTracingSession(session, TracingState.PROFILING_FINISHED);
 
         maybePersistToDisk();
+    }
+
+    /**
+     * Get trigger data object for a specific process/trigger combo.
+     *
+     * Return object:
+     * - With type matching provided triggerType if the provided process has explicitly registered
+     *      for that trigger.
+     * - With type of TRIGGER_ALL if the provided process has registered for all triggers and has
+     *      not explicitly registered for the provided trigger type.
+     * - Null if the provied process has not registered for the specific provided triggerType nor
+     *      for all trigger types.
+     */
+    @Nullable
+    @VisibleForTesting
+    public ProfilingTriggerData getTriggerDataObject(int uid, @NonNull String packageName,
+            int triggerType) {
+        SparseArray<ProfilingTriggerData> perProcessTriggers = mAppTriggers.get(packageName, uid);
+        if (perProcessTriggers == null) {
+            // This uid/package hasn't registered any triggers.
+            if (DEBUG) {
+                Log.d(TAG, String.format("Profiling triggered for uid %d with no registered "
+                        + "triggers", uid));
+            }
+            return null;
+        }
+
+        ProfilingTriggerData trigger = perProcessTriggers.get(triggerType);
+
+        if (trigger == null) {
+            // This uid hasn't registered a trigger for this type. Check if they've registered for
+            // all triggers.
+            trigger = perProcessTriggers.get(ProfilingTriggerData.TRIGGER_ALL);
+
+            if (trigger == null) {
+                // This uid hasn't registered a trigger for this type or for all types.
+                if (DEBUG) {
+                    Log.d(TAG, String.format("Profiling triggered for uid %d and trigger %d, but "
+                            + "app has not registered for this trigger type or all triggers.",
+                            uid, triggerType));
+                }
+                return null;
+            }
+        }
+
+        return trigger;
+    }
+
+    /** Check rate limiting for a potential system triggered profiling run. */
+    private boolean isTriggerRateLimitingAllowed(ProfilingTriggerData trigger, int profilingType) {
+        // Check app provided rate limiting.
+        if (System.currentTimeMillis() - trigger.getLastTriggeredTimeMs()
+                < trigger.getRateLimitingPeriodHours() * 60L * 60L * 1000L) {
+            // App provided rate limiting doesn't allow for this run, return.
+            if (DEBUG) {
+                Log.d(TAG, String.format("Profiling triggered for uid %d and trigger %d but blocked"
+                        + " by app provided rate limiting ", trigger.getUid(),
+                        trigger.getTriggerType()));
+            }
+            return false;
+        }
+
+        // Only perform system rate limiting if this is not the test package.
+        if (!trigger.getPackageName().equals(mTestPackageName)) {
+            // Lastly, check system rate limiting.
+            int systemRateLimiterResult = getRateLimiter().isProfilingRequestAllowed(
+                    trigger.getUid(), profilingType, true, null);
+            if (systemRateLimiterResult != RateLimiter.RATE_LIMIT_RESULT_ALLOWED) {
+                // Blocked by system rate limiter, return. Since this is system triggered there is
+                // no callback and therefore no need to distinguish between per app and system
+                // denials within the system rate limiter.
+                if (DEBUG) {
+                    Log.d(TAG, String.format("Profiling triggered for uid %d and trigger %d but "
+                            + "blocked by system rate limiting ", trigger.getUid(),
+                            trigger.getTriggerType()));
+                }
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /** Add a profiling trigger to the supporting data structure. */

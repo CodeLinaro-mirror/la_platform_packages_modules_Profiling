@@ -61,13 +61,14 @@ public final class TracingSession {
     private long mRedactionStartTimeMs;
     private int mMaxProfilingTimeAllowedMs = 0;
 
-    public TracingSession(int profilingType,  int uid, String packageName, int triggerType) {
+    public TracingSession(int profilingType,  int uid, String packageName, int triggerType,
+            String tag) {
         this(
                 profilingType,
                 null,
                 uid,
                 packageName,
-                null,
+                tag,
                 0L,
                 0L,
                 triggerType);

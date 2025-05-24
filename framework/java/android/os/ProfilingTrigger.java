@@ -32,20 +32,68 @@ public final class ProfilingTrigger {
     /** No trigger. Used in {@link ProfilingResult} for non trigger caused results. */
     public static final int TRIGGER_TYPE_NONE = 0;
 
-    /** Trigger occurs after {@link Activity#reportFullyDrawn} is called for a cold start. */
+    /**
+     * Trigger occurs after {@link Activity#reportFullyDrawn} is called for a cold start.
+     *
+     * System will provide a snapshot of a running system trace in response to this trigger.
+     */
     public static final int TRIGGER_TYPE_APP_FULLY_DRAWN = 1;
 
     /**
      * Trigger occurs after an ANR has been identified, but before the system would attempt to kill
      * the app. The trigger does not necessarily indicate that the app was killed due to the ANR.
+     *
+     * System will provide a snapshot of a running system trace in response to this trigger.
      */
     public static final int TRIGGER_TYPE_ANR = 2;
+
+    /**
+     * Trigger occurs when an app requests the actively running trace by calling
+     * {@link ProfilingManager#requestRunningSystemTrace}.
+     *
+     * System will provide a snapshot of a running system trace in response to this trigger.
+     */
+    @FlaggedApi(Flags.FLAG_PROFILING_25Q4)
+    public static final int TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE = 3;
+
+    /**
+     * Trigger occurs when an app is killed due to the user clicking the "Force stop" button of the
+     * App info page in Settings.
+     *
+     * System will provide a snapshot of a running system trace in response to this trigger.
+     */
+    @FlaggedApi(Flags.FLAG_PROFILING_25Q4)
+    public static final int TRIGGER_TYPE_KILL_FORCE_STOP = 4;
+
+    /**
+     * Trigger occurs when an app is killed due to the user removing it in the <a
+     * href="https://developer.android.com/guide/components/activities/recents">Recents screen</a>.
+     *
+     * System will provide a snapshot of a running system trace in response to this trigger.
+     */
+    @FlaggedApi(Flags.FLAG_PROFILING_25Q4)
+    public static final int TRIGGER_TYPE_KILL_RECENTS = 5;
+
+    /**
+     * Trigger occurs when an app is killed due to the user clicking the "Stop" button for the
+     * application in <a href=
+     * "https://developer.android.com/develop/background-work/services/fgs/handle-user-stopping">
+     * Task Manager</a>.
+     *
+     * System will provide a snapshot of a running system trace in response to this trigger.
+     */
+    @FlaggedApi(Flags.FLAG_PROFILING_25Q4)
+    public static final int TRIGGER_TYPE_KILL_TASK_MANAGER = 6;
 
     /** @hide */
     @IntDef(value = {
         TRIGGER_TYPE_NONE,
         TRIGGER_TYPE_APP_FULLY_DRAWN,
         TRIGGER_TYPE_ANR,
+        TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE,
+        TRIGGER_TYPE_KILL_FORCE_STOP,
+        TRIGGER_TYPE_KILL_RECENTS,
+        TRIGGER_TYPE_KILL_TASK_MANAGER,
     })
     @Retention(RetentionPolicy.SOURCE)
     @interface TriggerType {}
@@ -77,6 +125,7 @@ public final class ProfilingTrigger {
          *
          * Requires a trigger type. An app can only have one registered trigger per trigger type.
          * Adding a new trigger with the same type will override the previously set one.
+         *
          *
          * @throws IllegalArgumentException if the trigger type is not valid.
          */
@@ -160,7 +209,10 @@ public final class ProfilingTrigger {
      */
     public static boolean isValidRequestTriggerType(int triggerType) {
         return triggerType == TRIGGER_TYPE_APP_FULLY_DRAWN
-                || triggerType == TRIGGER_TYPE_ANR;
+            || triggerType == TRIGGER_TYPE_ANR
+            || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE)
+            || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_KILL_FORCE_STOP)
+            || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_KILL_RECENTS)
+            || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_KILL_TASK_MANAGER);
     }
-
 }

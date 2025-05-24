@@ -149,6 +149,8 @@ public final class ProfilingFrameworkTests {
         mProfilingManager = mContext.getSystemService(ProfilingManager.class);
         mInstrumentation = InstrumentationRegistry.getInstrumentation();
 
+        mProfilingManager.clearProfilingTriggers();
+
         executeShellCmd(RESET_NAMESPACE, DeviceConfigHelper.NAMESPACE);
         executeShellCmd(RESET_NAMESPACE, DeviceConfigHelper.NAMESPACE_TESTING);
 
@@ -1025,6 +1027,98 @@ public final class ProfilingFrameworkTests {
     }
 
     /**
+     * Test add all profiling triggers and receiving a result works correctly.
+     *
+     * This is done by: adding all triggers through the public api, force starting a system
+     * triggered trace, sending a fake trigger as if from the system, and then confirming the result
+     * is received.
+     */
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_PROFILING_25Q4)
+    public void testSystemTriggeredProfilingAddAll() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        disableRateLimiter();
+
+        mProfilingManager.addAllProfilingTriggers();
+
+        // And add a global listener
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(
+                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
+
+        // Then start the system triggered trace for testing.
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_STRING,
+                DeviceConfigHelper.NAMESPACE_TESTING,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_TEST_PACKAGE_NAME,
+                REAL_PACKAGE_NAME);
+
+        // Wait a bit so the trace can get started and actually collect something.
+        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+
+        // Now fake a system trigger.
+        ProfilingServiceHelper.getInstance().onProfilingTriggerOccurred(Binder.getCallingUid(),
+                REAL_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_KILL_FORCE_STOP);
+
+        // Wait for the trace to process.
+        waitForCallback(callbackGeneral);
+
+        // Finally, confirm that a result was received.
+        confirmCollectionSuccess(callbackGeneral.mResult, OUTPUT_FILE_TRACE_SUFFIX,
+                ProfilingTrigger.TRIGGER_TYPE_KILL_FORCE_STOP);
+    }
+
+    /**
+     * Test request running trace trigger.
+     *
+     * This is done by: adding the app request trigger through the public api, force starting a
+     * system triggered trace, calling the app requested trace api, and then confirming the result
+     * is received.
+     */
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_PROFILING_25Q4)
+    public void testSystemTriggeredProfilingRequestRunningTrace() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        disableRateLimiter();
+
+        // First add a trigger
+        ProfilingTrigger trigger = new ProfilingTrigger
+                .Builder(ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE).build();
+        mProfilingManager.addProfilingTriggers(List.of(trigger));
+
+        // And add a global listener
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(
+                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
+
+        // Then start the system triggered trace for testing.
+        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_STRING,
+                DeviceConfigHelper.NAMESPACE_TESTING,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_TEST_PACKAGE_NAME,
+                REAL_PACKAGE_NAME);
+
+        // Wait a bit so the trace can get started and actually collect something.
+        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+
+        String tag = "some_tag";
+
+        // Now request the running trace.
+        mProfilingManager.requestRunningSystemTrace(tag);
+
+        // Wait for the trace to process.
+        waitForCallback(callbackGeneral);
+
+        // Finally, confirm that a result was received.
+        confirmCollectionSuccess(callbackGeneral.mResult, OUTPUT_FILE_TRACE_SUFFIX,
+                ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE);
+        assertTrue(tag.equals(callbackGeneral.mResult.getTag()));
+    }
+
+    /**
      * Test removing profiling trigger.
      *
      * There is no way to check the data structure from this context and that specifically is tested
@@ -1300,6 +1394,30 @@ public final class ProfilingFrameworkTests {
 
         // Assert request returned with no error indicating that the rate limiter allowed the run.
         assertEquals(ProfilingResult.ERROR_NONE, callback.mResult.getErrorCode());
+    }
+
+    /**
+     * Test that registering a trigger with an invalid trigger type fails with the correct
+     * exception. The invalid type used here is value 1000 which is noted in docs to be reserved,
+     * thus this test covers both that invalid triggers fail and that the reserved value isn't
+     * used.
+     */
+    @Test
+    public void testInvalidTriggerType() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        try {
+            ProfilingTrigger trigger =
+                    new ProfilingTrigger.Builder(-1 /* Invalid value reserved for all */).build();
+
+            // This is not expected to happen as trigger type -1 should throw an exception.
+            fail("Invalid trigger type did not throw Exception");
+        } catch (IllegalArgumentException e) {
+            // Do nothing, this is what we want.
+        } catch (Exception e) {
+            // Wrong exception type thrown, fail.
+            fail("Invalid trigger type did not throw correct Exception");
+        }
     }
 
     /** Disable the rate limiter and wait long enough for the update to be picked up. */
