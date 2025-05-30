@@ -83,7 +83,7 @@ public class ProfilingServiceHelper {
     public void onProfilingTriggerOccurred(int uid, @NonNull String packageName, int triggerType) {
         synchronized (mLock) {
             try {
-                mProfilingService.processTrigger(uid, packageName, triggerType);
+                mProfilingService.processTrigger(uid, packageName, triggerType, null);
             } catch (RemoteException e) {
                 // Exception sending trigger to service. Nothing to do here, trigger will be lost.
                 if (DEBUG) Log.e(TAG, "Exception sending trigger", e);
