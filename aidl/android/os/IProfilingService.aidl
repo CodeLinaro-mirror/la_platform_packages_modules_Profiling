@@ -43,8 +43,10 @@ interface IProfilingService {
 
     oneway void removeProfilingTriggers(in int[] triggers, String packageName);
 
+    oneway void addAllProfilingTriggers(String packageName);
+
     oneway void clearProfilingTriggers(String packageName);
 
-    oneway void processTrigger(int uid, String packageName, int triggerType);
+    oneway void processTrigger(int uid, String packageName, int triggerType, String tag);
 
 }
