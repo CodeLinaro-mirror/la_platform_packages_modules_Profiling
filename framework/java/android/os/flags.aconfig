@@ -59,3 +59,11 @@ flag {
      description: "Enables new functionality for 25Q4 including new triggers and add all triggers api."
      bug: "406809160"
 }
+
+flag {
+     name: "profiling_trigger_kill_recents"
+     namespace: "system_performance"
+     is_exported: true
+     description: "Enables the kill recents trigger."
+     bug: "406809160"
+}

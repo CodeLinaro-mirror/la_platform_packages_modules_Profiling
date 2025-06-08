@@ -2139,7 +2139,8 @@ public final class ProfilingServiceTests {
      * individual triggers.
      */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_PROFILING_25Q4)
+    @EnableFlags({android.os.profiling.Flags.FLAG_PROFILING_25Q4,
+            android.os.profiling.Flags.FLAG_PROFILING_TRIGGER_KILL_RECENTS})
     public void testSystemTriggeredProfiling_AddTriggerAll() throws Exception {
         // First, clear the data structure.
         mProfilingService.mAppTriggers.getMap().clear();
@@ -2183,7 +2184,8 @@ public final class ProfilingServiceTests {
      * javadoc for more details.
      */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_PROFILING_25Q4)
+    @EnableFlags({android.os.profiling.Flags.FLAG_PROFILING_25Q4,
+            android.os.profiling.Flags.FLAG_PROFILING_TRIGGER_KILL_RECENTS})
     public void testSystemTriggeredProfiling_GetTriggerDataObject() throws Exception {
         // First, clear the data structure.
         mProfilingService.mAppTriggers.getMap().clear();
