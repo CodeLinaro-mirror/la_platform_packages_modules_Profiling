@@ -224,6 +224,11 @@ public final class TracingSession {
     }
 
     @Nullable
+    public Bundle getParams() {
+        return mParams;
+    }
+
+    @Nullable
     public Process getActiveTrace() {
         return mActiveTrace;
     }
