@@ -463,6 +463,14 @@ public final class ProfilingManager {
      * </p>
      *
      * <p>
+     * The filename of the file placed in app storage will contain the trigger type for which it was
+     * collected in the form: "trigger-type-x", where x is equal to the API value of the trigger
+     * type, found in {@link ProfilingTrigger}.
+     * Example filename for {@link ProfilingTrigger#TRIGGER_TYPE_ANR}:
+     *     profile_trigger-type-2_2025-01-23-04-56-12.perfetto-trace
+     * </p>
+     *
+     * <p>
      * Apps can define their own per-trigger rate limiting to help ensure they receive results
      * aligned with their needs. More details can be found at
      * {@link ProfilingTrigger.Builder#setRateLimitingPeriodHours}.
