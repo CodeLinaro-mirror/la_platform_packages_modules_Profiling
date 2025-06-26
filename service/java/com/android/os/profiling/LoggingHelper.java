@@ -176,6 +176,13 @@ public final class LoggingHelper {
                 backgroundTraceState);
     }
 
+    /** Log a global listener registration. */
+    public static void logGlobalListenerRegister(int uid) {
+        ProfilingStatsLog.write(
+                ProfilingStatsLog.PROFILING_GLOBAL_LISTENER_REGISTER,
+                uid);
+    }
+
     /**
      * Convert API profiling type value to logging enum value.
      *
