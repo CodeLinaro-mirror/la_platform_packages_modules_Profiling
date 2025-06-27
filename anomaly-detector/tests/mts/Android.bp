@@ -1,0 +1,56 @@
+/*
+ * Copyright (C) 2025 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+    default_team: "trendy_team_system_performance",
+}
+
+android_test {
+    name: "MtsAnomalyDetectorTests",
+    static_libs: [
+        "androidx.test.rules",
+        "androidx.test.ext.truth",
+        "compatibility-device-util-axt",
+        "ctstestrunner-axt",
+        "cts-wm-util",
+        "service-anomaly-detector.impl",
+        "anomaly-detector-aconfig-flags-lib",
+        "framework-anomaly-detector.impl",
+        "testng",
+        "services.core",
+    ],
+    libs: [
+        "android.test.runner.stubs.system",
+        "android.test.base.stubs.system",
+        "android.test.mock.stubs.system",
+        "junit",
+    ],
+    compile_multilib: "both",
+    srcs: [
+        "src/**/*.java",
+    ],
+    jarjar_rules: "jarjar-rules.txt",
+    test_mainline_modules: ["com.google.android.profiling.apex"],
+    test_suites: [
+        "mts",
+        "general-tests",
+        "mts-profiling",
+    ],
+    test_config: "AndroidTest.xml",
+    min_sdk_version: "36",
+    sdk_version: "module_current",
+}

@@ -1,0 +1,80 @@
+/*
+ * Copyright (C) 2025 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package {
+    default_visibility: [":__pkg__"],
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+filegroup {
+    name: "framework-anomaly-detector-sources",
+    defaults: ["framework-sources-module-defaults"],
+    srcs: [
+        "java/**/*.java",
+        ":framework-anomaly-detector-aidl-sources",
+    ],
+    visibility: ["//packages/modules/Profiling/anomaly-detector/framework:__subpackages__"],
+}
+
+java_sdk_library {
+    name: "framework-anomaly-detector",
+    defaults: ["framework-module-defaults"],
+    installable: true,
+
+    jarjar_rules: "jarjar-rules.txt",
+
+    srcs: [
+        ":framework-anomaly-detector-sources",
+    ],
+
+    libs: [
+        "androidx.annotation_annotation",
+    ],
+
+    aconfig_declarations: [
+        "android.os.profiling.anomaly.flags-aconfig",
+    ],
+
+    static_libs: [
+        "anomaly-detector-aconfig-flags-lib",
+    ],
+
+    permitted_packages: [
+        "android.app",
+        "android.os",
+        "android.util",
+        "com.android.modules.utils.build",
+        "com.android.internal.profiling.anomaly",
+    ],
+
+    api_packages: [
+        "android.app",
+        "android.os",
+        "android.util",
+    ],
+
+    hostdex: true, // for hiddenapi check
+
+    impl_library_visibility: [
+        "//packages/modules/Profiling/anomaly-detector/service:__subpackages__",
+        "//packages/modules/Profiling/anomaly-detector/tests:__subpackages__",
+    ],
+
+    apex_available: [
+        "com.android.profiling",
+    ],
+    min_sdk_version: "36",
+}

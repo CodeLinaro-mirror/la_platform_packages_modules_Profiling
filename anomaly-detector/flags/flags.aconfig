@@ -1,0 +1,10 @@
+package: "android.os.profiling.anomaly.flags"
+container: "com.android.profiling"
+
+flag {
+   name: "anomaly_detector_core"
+   namespace: "backstage_power"
+   is_exported: true
+   description: "Flag for the anomaly detection service"
+   bug: "418225779"
+}
