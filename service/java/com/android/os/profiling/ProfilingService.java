@@ -781,7 +781,7 @@ public class ProfilingService extends IProfilingService.Stub {
                         || session.getProcessResultRunnable() == null) {
                     // This really should not happen, but if profiling is not in correct started
                     // state then try to stop and continue processing it.
-                    stopProfiling(session);
+                    stopProfiling(session, LoggingHelper.PROFILING_STOPPED_REASON_UNSPECIFIED);
                 } // else: do nothing. The runnable we just verified exists will return us to this
                 // method when profiling is finished.
                 break;
@@ -977,7 +977,9 @@ public class ProfilingService extends IProfilingService.Stub {
             if (DEBUG) Log.d(TAG, "Invalid request profiling type: " + profilingType);
             processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
                     ProfilingResult.ERROR_FAILED_INVALID_REQUEST, null, tag,
-                    "Invalid request profiling type", getTriggerTypeNone());
+                    "Invalid request profiling type", getTriggerTypeNone(), profilingType);
+            LoggingHelper.logProfilingRequest(uid, profilingType, params,
+                    LoggingHelper.REQUEST_RESULT_INVALID);
             return;
         }
 
@@ -988,14 +990,18 @@ public class ProfilingService extends IProfilingService.Stub {
             if (areAnyTracesRunning()) {
                 processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
                         ProfilingResult.ERROR_FAILED_PROFILING_IN_PROGRESS, null, tag, null,
-                        getTriggerTypeNone());
+                        getTriggerTypeNone(), profilingType);
+                LoggingHelper.logProfilingRequest(uid, profilingType, params,
+                        LoggingHelper.REQUEST_RESULT_PROFILING_IN_PROGRESS);
                 return;
             }
         } catch (RuntimeException e) {
             if (DEBUG) Log.d(TAG, "Error communicating with perfetto", e);
             processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
                     ProfilingResult.ERROR_UNKNOWN, null, tag, "Error communicating with perfetto",
-                    getTriggerTypeNone());
+                    getTriggerTypeNone(), profilingType);
+            LoggingHelper.logProfilingRequest(uid, profilingType, params,
+                    LoggingHelper.REQUEST_RESULT_ERROR);
             return;
         }
 
@@ -1004,7 +1010,9 @@ public class ProfilingService extends IProfilingService.Stub {
             if (DEBUG) Log.d(TAG, "PackageName is null");
             processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
                     ProfilingResult.ERROR_UNKNOWN, null, tag, "Couldn't determine package name",
-                    getTriggerTypeNone());
+                    getTriggerTypeNone(), profilingType);
+            LoggingHelper.logProfilingRequest(uid, profilingType, params,
+                    LoggingHelper.REQUEST_RESULT_ERROR);
             return;
         }
 
@@ -1014,7 +1022,9 @@ public class ProfilingService extends IProfilingService.Stub {
             if (DEBUG) Log.d(TAG, "Failed to resolve package name");
             processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
                     ProfilingResult.ERROR_UNKNOWN, null, tag, "Couldn't determine package name",
-                    getTriggerTypeNone());
+                    getTriggerTypeNone(), profilingType);
+            LoggingHelper.logProfilingRequest(uid, profilingType, params,
+                    LoggingHelper.REQUEST_RESULT_ERROR);
             return;
         }
 
@@ -1030,7 +1040,10 @@ public class ProfilingService extends IProfilingService.Stub {
             if (DEBUG) Log.d(TAG, "Package name not associated with calling uid");
             processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
                     ProfilingResult.ERROR_FAILED_INVALID_REQUEST, null, tag,
-                    "Package name not associated with calling uid.", getTriggerTypeNone());
+                    "Package name not associated with calling uid.", getTriggerTypeNone(),
+                    profilingType);
+            LoggingHelper.logProfilingRequest(uid, profilingType, params,
+                    LoggingHelper.REQUEST_RESULT_INVALID);
             return;
         }
 
@@ -1055,21 +1068,30 @@ public class ProfilingService extends IProfilingService.Stub {
                 }
                 processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
                         ProfilingResult.ERROR_FAILED_INVALID_REQUEST, null, tag, e.getMessage(),
-                        getTriggerTypeNone());
+                        getTriggerTypeNone(), profilingType);
+                LoggingHelper.logProfilingRequest(uid, profilingType, params,
+                        LoggingHelper.REQUEST_RESULT_INVALID);
                 return;
             } catch (RuntimeException e) {
                 // Perfetto error. Systems fault.
                 if (DEBUG) Log.d(TAG, "Perfetto error", e);
                 processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
                         ProfilingResult.ERROR_UNKNOWN, null, tag, "Perfetto error",
-                        getTriggerTypeNone());
+                        getTriggerTypeNone(), profilingType);
+                LoggingHelper.logProfilingRequest(uid, profilingType, params,
+                        LoggingHelper.REQUEST_RESULT_ERROR);
                 return;
             }
         } else {
             // Rate limiter denied, notify caller.
             if (DEBUG) Log.d(TAG, "Request denied with status: " + status);
             processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                    RateLimiter.statusToResult(status), null, tag, null, getTriggerTypeNone());
+                    RateLimiter.statusToResult(status), null, tag, null, getTriggerTypeNone(),
+                    profilingType);
+            int rateLimitType = status == RateLimiter.RATE_LIMIT_RESULT_BLOCKED_PROCESS
+                        ? LoggingHelper.REQUEST_RESULT_RATE_LIMIT_PROCESS
+                        : LoggingHelper.REQUEST_RESULT_RATE_LIMIT_SYSTEM;
+            LoggingHelper.logProfilingRequest(uid, profilingType, params, rateLimitType);
         }
     }
 
@@ -1168,7 +1190,7 @@ public class ProfilingService extends IProfilingService.Stub {
             }
             return;
         }
-        stopProfiling(key);
+        stopProfiling(key, LoggingHelper.PROFILING_STOPPED_REASON_APP_REQUESTED);
     }
 
     /**
@@ -1384,7 +1406,8 @@ public class ProfilingService extends IProfilingService.Stub {
         boolean succeeded = processResultCallback(session.getUid(), session.getKeyMostSigBits(),
                 session.getKeyLeastSigBits(), session.getErrorStatus(),
                 session.getDestinationFileName(OUTPUT_FILE_RELATIVE_PATH),
-                session.getTag(), session.getErrorMessage(), session.getTriggerType());
+                session.getTag(), session.getErrorMessage(), session.getTriggerType(),
+                session.getProfilingType());
 
         if (continueAdvancing && succeeded) {
             advanceTracingSession(session, TracingState.NOTIFIED_REQUESTER);
@@ -1404,7 +1427,7 @@ public class ProfilingService extends IProfilingService.Stub {
      */
     private boolean processResultCallback(int uid, long keyMostSigBits, long keyLeastSigBits,
             int status, @Nullable String fileResultPathAndName, @Nullable String tag,
-            @Nullable String error, int triggerType) {
+            @Nullable String error, int triggerType, int profilingType) {
         List<IProfilingResultCallback> perUidCallbacks = mResultCallbacks.get(uid);
         if (perUidCallbacks == null || perUidCallbacks.isEmpty()) {
             // No callbacks, nowhere to notify with result or failure.
@@ -1434,6 +1457,8 @@ public class ProfilingService extends IProfilingService.Stub {
             }
         }
 
+        LoggingHelper.logProfilingResultCallbackSent(uid, profilingType, triggerType, status);
+
         return succeeded;
     }
 
@@ -1461,6 +1486,9 @@ public class ProfilingService extends IProfilingService.Stub {
             // Request couldn't be processed. This shouldn't happen.
             if (DEBUG) Log.d(TAG, "Request couldn't be processed", e);
             session.setError(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, e.getMessage());
+
+            LoggingHelper.logProfilingRequest(session.getUid(), session.getProfilingType(),
+                    session.getParams(), LoggingHelper.REQUEST_RESULT_INVALID);
             // Don't bother adding the session to the queue as there is no real value in trying to
             // deliver this error callback again later in the case that the app no longer has a
             // registered listener.
@@ -1489,8 +1517,15 @@ public class ProfilingService extends IProfilingService.Stub {
             session.setActiveTrace(activeProfiling);
             session.setProfilingStartTimeMs(System.currentTimeMillis());
             mActiveTracingSessions.put(session.getKey(), session);
+
+            LoggingHelper.logProfilingRequest(session.getUid(), session.getProfilingType(),
+                    session.getParams(), LoggingHelper.REQUEST_RESULT_PROFILING_STARTED);
         } else {
             session.setError(ProfilingResult.ERROR_FAILED_EXECUTING, "Trace couldn't be started");
+
+            LoggingHelper.logProfilingRequest(session.getUid(), session.getProfilingType(),
+                    session.getParams(), LoggingHelper.REQUEST_RESULT_ERROR);
+
             // Don't bother adding the session to the queue as there is no real value in trying to
             // deliver this error callback again later in the case that the app no longer has a
             // registered listener.
@@ -1529,6 +1564,8 @@ public class ProfilingService extends IProfilingService.Stub {
             if (DEBUG) {
                 Log.d(TAG, "System triggered trace not started due to app triggers not loaded.");
             }
+            LoggingHelper.logProfilingBackgroundTraceState(
+                    LoggingHelper.BACKGROUND_TRACE_STATE_NOT_STARTED_TRIGGERS_NOT_LOADED);
             return;
         }
 
@@ -1544,6 +1581,8 @@ public class ProfilingService extends IProfilingService.Stub {
                     Log.d(TAG, "System triggered trace not started due to a system triggered trace "
                             + "already in progress.");
                 }
+                LoggingHelper.logProfilingBackgroundTraceState(
+                        LoggingHelper.BACKGROUND_TRACE_STATE_NOT_STARTED_ALREADY_RUNNING);
                 return;
             }
 
@@ -1555,6 +1594,8 @@ public class ProfilingService extends IProfilingService.Stub {
                     Log.d(TAG, "System triggered trace not started due to no apps registering "
                             + "interest");
                 }
+                LoggingHelper.logProfilingBackgroundTraceState(
+                        LoggingHelper.BACKGROUND_TRACE_STATE_NOT_STARTED_NO_TRIGGERS_REGISTERED);
                 return;
             }
 
@@ -1573,6 +1614,8 @@ public class ProfilingService extends IProfilingService.Stub {
                 mSystemTriggeredTraceProcess = activeTrace;
                 mSystemTriggeredTraceUniqueSessionName = uniqueSessionName;
                 mLastStartedSystemTriggeredTraceMs = System.currentTimeMillis();
+                LoggingHelper.logProfilingBackgroundTraceState(
+                        LoggingHelper.BACKGROUND_TRACE_STATE_STARTED);
             }
         }
     }
@@ -1640,6 +1683,9 @@ public class ProfilingService extends IProfilingService.Stub {
                     Log.d(TAG, "Requested clone system triggered trace but we don't have the "
                             + "session name.");
                 }
+
+                LoggingHelper.logProfilingTriggerSent(uid, triggerType,
+                        LoggingHelper.TRIGGER_STATUS_NOT_RUNNING);
                 return;
             }
 
@@ -1652,6 +1698,9 @@ public class ProfilingService extends IProfilingService.Stub {
                 if (DEBUG) {
                     Log.d(TAG, "Requested clone system triggered trace but no trace active.");
                 }
+
+                LoggingHelper.logProfilingTriggerSent(uid, triggerType,
+                        LoggingHelper.TRIGGER_STATUS_NOT_RUNNING);
                 return;
             }
         }
@@ -1659,11 +1708,14 @@ public class ProfilingService extends IProfilingService.Stub {
         ProfilingTriggerData trigger = getTriggerDataObject(uid, packageName, triggerType);
         if (trigger == null) {
             // No trigger object, process isn't registered for this trigger.
+            LoggingHelper.logProfilingTriggerSent(uid, triggerType,
+                    LoggingHelper.TRIGGER_STATUS_NOT_REGISTERED);
             return;
         }
 
         // Then check rate limiting, both app and system.
         if (!isTriggerRateLimitingAllowed(trigger, ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE)) {
+            // Logging for this return case is done within {@link isTriggerRateLimitingAllowed}.
             return;
         }
 
@@ -1702,6 +1754,8 @@ public class ProfilingService extends IProfilingService.Stub {
                 if (!clone.waitFor(mPerfettoDestroyTimeoutMs, TimeUnit.MILLISECONDS)) {
                     // Nothing more to do, result won't be ready so return.
                     if (DEBUG) Log.d(TAG, "Cloned system triggered trace timed out.");
+                    LoggingHelper.logProfilingTriggerSent(uid, triggerType,
+                            LoggingHelper.TRIGGER_STATUS_ERROR);
                     return;
                 }
             }
@@ -1709,8 +1763,13 @@ public class ProfilingService extends IProfilingService.Stub {
             // Failed. There's nothing to clean up as we haven't created a session for this clone
             // yet so just fail quietly. The result for this trigger instance combo will be lost.
             if (DEBUG) Log.d(TAG, "Failed to clone running system triggered trace.", e);
+            LoggingHelper.logProfilingTriggerSent(uid, triggerType,
+                    LoggingHelper.TRIGGER_STATUS_ERROR);
             return;
         }
+
+        LoggingHelper.logProfilingTriggerSent(uid, triggerType,
+                LoggingHelper.TRIGGER_STATUS_FULFILLED);
 
         // If we get here the clone was successful. Create a new TracingSession to track this and
         // continue moving it along the processing process.
@@ -1782,6 +1841,8 @@ public class ProfilingService extends IProfilingService.Stub {
                         + " by app provided rate limiting ", trigger.getUid(),
                         trigger.getTriggerType()));
             }
+            LoggingHelper.logProfilingTriggerSent(trigger.getUid(), trigger.getTriggerType(),
+                    LoggingHelper.TRIGGER_STATUS_RATE_LIMIT_APP);
             return false;
         }
 
@@ -1799,6 +1860,13 @@ public class ProfilingService extends IProfilingService.Stub {
                             + "blocked by system rate limiting ", trigger.getUid(),
                             trigger.getTriggerType()));
                 }
+
+                int rateLimitType =
+                        systemRateLimiterResult == RateLimiter.RATE_LIMIT_RESULT_BLOCKED_PROCESS
+                                ? LoggingHelper.TRIGGER_STATUS_RATE_LIMIT_PROCESS
+                                : LoggingHelper.TRIGGER_STATUS_RATE_LIMIT_SYSTEM;
+                LoggingHelper.logProfilingTriggerSent(trigger.getUid(), trigger.getTriggerType(),
+                        rateLimitType);
                 return false;
             }
         }
@@ -1840,6 +1908,8 @@ public class ProfilingService extends IProfilingService.Stub {
         // triggers of this type registered for this uid.
         perProcessTriggers.put(trigger.getTriggerType(), trigger);
 
+        LoggingHelper.logProfilingTriggerRegister(trigger.getUid(), trigger.getTriggerType(), null);
+
         if (maybePersist) {
             maybePersistToDisk();
         }
@@ -1875,9 +1945,12 @@ public class ProfilingService extends IProfilingService.Stub {
                 && processingTimeRemaining < 0) {
             // still running but exceeded max allotted processing time, stop profiling and deliver
             // what results are available.
-            stopProfiling(session.getKey());
+            stopProfiling(session.getKey(), LoggingHelper.PROFILING_STOPPED_REASON_TIMED_OUT);
         } else {
             // complete, process results and deliver.
+            LoggingHelper.logProfilingStopped(session.getUid(), session.getProfilingType(),
+                    session.getTriggerType(),
+                    LoggingHelper.PROFILING_STOPPED_REASON_TIMED_OUT);
             session.setProcessResultRunnable(null);
             moveSessionToQueue(session, true);
             advanceTracingSession(session, TracingState.PROFILING_FINISHED);
@@ -1885,7 +1958,7 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     /** Stop any active profiling sessions belonging to the provided uid. */
-    private void stopAllProfilingForUid(int uid) {
+    private void stopAllProfilingForUid(int uid, int loggingReason) {
         if (mActiveTracingSessions.isEmpty()) {
             // If there are no active traces, then there are none for this uid.
             return;
@@ -1896,19 +1969,19 @@ public class ProfilingService extends IProfilingService.Stub {
         for (int i = 0; i < mActiveTracingSessions.size(); i++) {
             TracingSession session = mActiveTracingSessions.valueAt(i);
             if (session.getUid() == uid) {
-                stopProfiling(session);
+                stopProfiling(session, loggingReason);
             }
         }
     }
 
     /** Stop active profiling for the given session key. */
-    private void stopProfiling(String key) {
+    private void stopProfiling(String key, int loggingReason) {
         TracingSession session = mActiveTracingSessions.get(key);
-        stopProfiling(session);
+        stopProfiling(session, loggingReason);
     }
 
     /** Stop active profiling for the given session. */
-    private void stopProfiling(TracingSession session) {
+    private void stopProfiling(TracingSession session, int loggingReason) {
         if (session == null || session.getActiveTrace() == null) {
             if (DEBUG) Log.d(TAG, "No active trace, nothing to stop.");
             return;
@@ -1938,6 +2011,9 @@ public class ProfilingService extends IProfilingService.Stub {
             if (DEBUG) Log.d(TAG, "Stopping of running trace error occurred.", e);
             return;
         }
+
+        LoggingHelper.logProfilingStopped(session.getUid(), session.getProfilingType(),
+                session.getTriggerType(), loggingReason);
 
         // If we made it here the result is ready, now run the post processing runnable.
         getHandler().post(session.getProcessResultRunnable());
@@ -1983,7 +2059,8 @@ public class ProfilingService extends IProfilingService.Stub {
         // If we have any sessions to stop, now is the time.
         if (!sessionsToStop.isEmpty()) {
             for (int i = 0; i < sessionsToStop.size(); i++) {
-                stopProfiling(sessionsToStop.get(i));
+                stopProfiling(sessionsToStop.get(i),
+                        LoggingHelper.PROFILING_STOPPED_REASON_UNSPECIFIED);
             }
         }
     }
@@ -2733,6 +2810,8 @@ public class ProfilingService extends IProfilingService.Stub {
         if (mSystemTriggeredTraceProcess != null) {
             if (mSystemTriggeredTraceProcess.isAlive()) {
                 mSystemTriggeredTraceProcess.destroyForcibly();
+                LoggingHelper.logProfilingBackgroundTraceState(
+                        LoggingHelper.BACKGROUND_TRACE_STATE_STOPPED);
             }
             mSystemTriggeredTraceProcess = null;
         }
@@ -2775,7 +2854,7 @@ public class ProfilingService extends IProfilingService.Stub {
                 // step that requires the now dead binder objects. The failure will result in the
                 // session being added to {@link mQueueTracingResults} and being delivered to the
                 // app the next time it registers a general listener.
-                stopAllProfilingForUid(mUid);
+                stopAllProfilingForUid(mUid, LoggingHelper.PROFILING_STOPPED_REASON_APP_DIED);
             }
         }
     }
