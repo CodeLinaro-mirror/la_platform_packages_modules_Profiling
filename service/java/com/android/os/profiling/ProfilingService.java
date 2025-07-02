@@ -1128,9 +1128,11 @@ public class ProfilingService extends IProfilingService.Stub {
             if (DEBUG) Log.d(TAG, "Exception linking death recipient", e);
         }
 
-        // Only handle queued results when a new general listener has been added.
+        // When a new general listener has been added, call through to {@link generalListenerAdded}.
+        // This method is called directly by manager if the callback was already registered before
+        // the general listener added.
         if (isGeneralCallback) {
-            handleQueuedResults(callingUid);
+            generalListenerAdded();
         }
     }
 
@@ -1175,7 +1177,9 @@ public class ProfilingService extends IProfilingService.Stub {
      * through the existing callback object.
      */
     public void generalListenerAdded() {
-        handleQueuedResults(Binder.getCallingUid());
+        int callingUid = Binder.getCallingUid();
+        handleQueuedResults(callingUid);
+        LoggingHelper.logGlobalListenerRegister(callingUid);
     }
 
     /**
