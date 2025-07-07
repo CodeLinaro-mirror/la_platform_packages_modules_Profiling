@@ -164,7 +164,7 @@ public final class ProfilingFrameworkTests {
     public void cleanup() throws Exception {
         mProfilingManager.mProfilingService = null;
         executeShellCmd(COMMAND_DELETE_DEVICE_CONFIG_STRING, DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_TEST_PACKAGE_NAME);
+                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME);
     }
 
     /** Check and see if we can get a reference to the ProfilingManager service. */
@@ -1007,7 +1007,7 @@ public final class ProfilingFrameworkTests {
         // Then start the system triggered trace for testing.
         executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_STRING,
                 DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_TEST_PACKAGE_NAME,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
                 REAL_PACKAGE_NAME);
 
         // Wait a bit so the trace can get started and actually collect something.
@@ -1051,7 +1051,7 @@ public final class ProfilingFrameworkTests {
         // Then start the system triggered trace for testing.
         executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_STRING,
                 DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_TEST_PACKAGE_NAME,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
                 REAL_PACKAGE_NAME);
 
         // Wait a bit so the trace can get started and actually collect something.
@@ -1098,7 +1098,7 @@ public final class ProfilingFrameworkTests {
         // Then start the system triggered trace for testing.
         executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_STRING,
                 DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_TEST_PACKAGE_NAME,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
                 REAL_PACKAGE_NAME);
 
         // Wait a bit so the trace can get started and actually collect something.
@@ -1146,7 +1146,7 @@ public final class ProfilingFrameworkTests {
         // Then start the system triggered trace for testing.
         executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_STRING,
                 DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_TEST_PACKAGE_NAME,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
                 REAL_PACKAGE_NAME);
 
         // Wait a bit so the trace can get started and actually collect something.
@@ -1196,7 +1196,7 @@ public final class ProfilingFrameworkTests {
         // Then start the system triggered trace for testing.
         executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_STRING,
                 DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_TEST_PACKAGE_NAME,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
                 REAL_PACKAGE_NAME);
 
         // Wait a bit so the trace can get started and actually collect something.
