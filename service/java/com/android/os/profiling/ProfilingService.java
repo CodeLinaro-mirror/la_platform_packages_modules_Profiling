@@ -216,8 +216,8 @@ public class ProfilingService extends IProfilingService.Stub {
     private AtomicInteger mSystemTriggeredTraceMaxPeriodSeconds;
 
     /**
-     * Package name of app being tested, or null if no app is being tested. To be used both for
-     * automated testing and developer manual testing.
+     * Package name of app being debugged, or null if no app is being debugged. To be used both for
+     * automated testing and developer manual debugging.
      *
      * Setting this package name will:
      * - Ensure a system triggered trace is always running.
@@ -228,7 +228,7 @@ public class ProfilingService extends IProfilingService.Stub {
      *
      * There is no time limit on how long this can be left enabled for.
      */
-    private String mTestPackageName = null;
+    private String mDebugPackageName = null;
 
     /**
      * State the {@link TracingSession} is in.
@@ -352,9 +352,9 @@ public class ProfilingService extends IProfilingService.Stub {
                                     DeviceConfigHelper.DISABLE_DELETE_TEMPORARY_RESULTS, false);
                             getRateLimiter().maybeUpdateRateLimiterDisabled(properties);
 
-                            String newTestPackageName = properties.getString(
-                                    DeviceConfigHelper.SYSTEM_TRIGGERED_TEST_PACKAGE_NAME, null);
-                            handleTestPackageChangeLocked(newTestPackageName);
+                            String newDebugPackageName = properties.getString(
+                                    DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME, null);
+                            handleDebugPackageChangeLocked(newDebugPackageName);
                         }
                     }
                 });
@@ -1609,7 +1609,7 @@ public class ProfilingService extends IProfilingService.Stub {
 
             byte[] config = Configs.generateSystemTriggeredTraceConfig(uniqueSessionName,
                     packageNames,
-                    mTestPackageName != null);
+                    mDebugPackageName != null);
             String outputFile = TEMP_TRACE_PATH + SYSTEM_TRIGGERED_SESSION_NAME_PREFIX
                     + OUTPUT_FILE_IN_PROGRESS + OUTPUT_FILE_UNREDACTED_TRACE_SUFFIX;
 
@@ -1850,8 +1850,8 @@ public class ProfilingService extends IProfilingService.Stub {
             return false;
         }
 
-        // Only perform system rate limiting if this is not the test package.
-        if (!trigger.getPackageName().equals(mTestPackageName)) {
+        // Only perform system rate limiting if this is not the debug package.
+        if (!trigger.getPackageName().equals(mDebugPackageName)) {
             // Lastly, check system rate limiting.
             int systemRateLimiterResult = getRateLimiter().isProfilingRequestAllowed(
                     trigger.getUid(), profilingType, true, null);
@@ -2774,31 +2774,31 @@ public class ProfilingService extends IProfilingService.Stub {
         }
     }
 
-    /** Handle updates to test package config value. */
+    /** Handle updates to debug package config value. */
     @GuardedBy("mLock")
-    private void handleTestPackageChangeLocked(String newTestPackageName) {
-        if (newTestPackageName == null) {
+    private void handleDebugPackageChangeLocked(String newDebugPackageName) {
+        if (newDebugPackageName == null) {
 
-            // Test package has been set to null, check whether it was null previously.
-            if (mTestPackageName != null) {
+            // Debug package has been set to null, check whether it was null previously.
+            if (mDebugPackageName != null) {
 
-                // New null state is a changed from previous state, disable test mode.
-                mTestPackageName = null;
+                // New null state is a changed from previous state, disable debug mode.
+                mDebugPackageName = null;
                 stopSystemTriggeredTraceLocked();
             }
             // If new state is unchanged from previous null state, do nothing.
         } else {
 
-            // Test package has been set with a value. Stop running system triggered trace if
+            // Debug package has been set with a value. Stop running system triggered trace if
             // applicable so we can start a new one that will have most up to date package names.
-            // This should not be called when the new test package name matches the old one as
+            // This should not be called when the debug package name matches the old one as
             // device config should not be sending an update for a value change when the value
             // remains the same, but no need to check as the best experience for caller is to always
             // stop the current trace and start a new one for most up to date package list.
             stopSystemTriggeredTraceLocked();
 
-            // Now update the test package name and start the system triggered trace.
-            mTestPackageName = newTestPackageName;
+            // Now update the debug package name and start the system triggered trace.
+            mDebugPackageName = newDebugPackageName;
             startSystemTriggeredTrace();
         }
     }

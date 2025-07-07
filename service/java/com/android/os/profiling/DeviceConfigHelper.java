@@ -35,7 +35,10 @@ public final class DeviceConfigHelper {
     public static final String DISABLE_DELETE_TEMPORARY_RESULTS =
             "delete_temporary_results.disabled";
 
-    public static final String SYSTEM_TRIGGERED_TEST_PACKAGE_NAME =
+    // Name of variable doesn't match the config string as the variable name was updated for code
+    // clarity, but the config string is already released and changing it would result in developers
+    // needing to use a different value by module version which would be challenging.
+    public static final String SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME =
             "system_triggered_profiling.testing_package_name";
 
     // End section: Testing specific constants
