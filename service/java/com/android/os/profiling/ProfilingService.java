@@ -78,6 +78,7 @@ public class ProfilingService extends IProfilingService.Stub {
     private static final String TEMP_TRACE_PATH = "/data/misc/perfetto-traces/profiling/";
     private static final String OUTPUT_FILE_RELATIVE_PATH = "/profiling/";
     private static final String OUTPUT_FILE_SECTION_SEPARATOR = "_";
+    private static final String OUTPUT_FILE_FIELD_SEPARATOR = "-";
     private static final String OUTPUT_FILE_PREFIX = "profile";
     // Keep in sync with {@link ProfilingFrameworkTests}.
     private static final String OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX = ".perfetto-java-heap-dump";
@@ -85,7 +86,7 @@ public class ProfilingService extends IProfilingService.Stub {
     private static final String OUTPUT_FILE_STACK_SAMPLING_SUFFIX = ".perfetto-stack-sample";
     private static final String OUTPUT_FILE_TRACE_SUFFIX = ".perfetto-trace";
     private static final String OUTPUT_FILE_UNREDACTED_TRACE_SUFFIX = ".perfetto-trace-unredacted";
-    private static final String OUTPUT_FILE_TRIGGER = "trigger";
+    private static final String OUTPUT_FILE_TRIGGER = "trigger-type";
     private static final String OUTPUT_FILE_IN_PROGRESS = "in-progress";
 
     private static final String PERSIST_SYSTEM_DIR = "system";
@@ -1728,7 +1729,7 @@ public class ProfilingService extends IProfilingService.Stub {
         // Create the file names
         String baseFileName = OUTPUT_FILE_PREFIX
                 + OUTPUT_FILE_SECTION_SEPARATOR + OUTPUT_FILE_TRIGGER
-                + OUTPUT_FILE_SECTION_SEPARATOR + triggerType
+                + OUTPUT_FILE_FIELD_SEPARATOR + triggerType
                 + OUTPUT_FILE_SECTION_SEPARATOR + getFormattedDate();
         String unredactedFullName = baseFileName + OUTPUT_FILE_UNREDACTED_TRACE_SUFFIX;
 
