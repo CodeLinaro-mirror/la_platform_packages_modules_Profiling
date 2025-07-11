@@ -782,7 +782,7 @@ public class ProfilingService extends IProfilingService.Stub {
                         || session.getProcessResultRunnable() == null) {
                     // This really should not happen, but if profiling is not in correct started
                     // state then try to stop and continue processing it.
-                    stopProfiling(session, LoggingHelper.PROFILING_STOPPED_REASON_UNSPECIFIED);
+                    stopProfiling(session, LoggingHelper.PROFILING_STOPPED_REASON_ERROR);
                 } // else: do nothing. The runnable we just verified exists will return us to this
                 // method when profiling is finished.
                 break;
@@ -1128,9 +1128,11 @@ public class ProfilingService extends IProfilingService.Stub {
             if (DEBUG) Log.d(TAG, "Exception linking death recipient", e);
         }
 
-        // Only handle queued results when a new general listener has been added.
+        // When a new general listener has been added, call through to {@link generalListenerAdded}.
+        // This method is called directly by manager if the callback was already registered before
+        // the general listener added.
         if (isGeneralCallback) {
-            handleQueuedResults(callingUid);
+            generalListenerAdded();
         }
     }
 
@@ -1175,7 +1177,9 @@ public class ProfilingService extends IProfilingService.Stub {
      * through the existing callback object.
      */
     public void generalListenerAdded() {
-        handleQueuedResults(Binder.getCallingUid());
+        int callingUid = Binder.getCallingUid();
+        handleQueuedResults(callingUid);
+        LoggingHelper.logGlobalListenerRegister(callingUid);
     }
 
     /**
@@ -1674,15 +1678,14 @@ public class ProfilingService extends IProfilingService.Stub {
     public void processTriggerInternal(int uid, @NonNull String packageName, int triggerType,
             @Nullable String tag) {
         synchronized (mLock) {
-            if (mSystemTriggeredTraceUniqueSessionName == null) {
-                // If we don't have the session name then we don't know how to clone the trace so
-                // stop it if it's still running and then return.
-                stopSystemTriggeredTraceLocked();
+            if (mSystemTriggeredTraceProcess == null || !mSystemTriggeredTraceProcess.isAlive()) {
+                // There is no active system triggered trace so there's nothing to clone, null out
+                // the session name just in case and return. This is an expected state as the
+                // background trace does not run all the time.
+                mSystemTriggeredTraceUniqueSessionName = null;
 
-                // There is no active system triggered trace so there's nothing to clone. Return.
                 if (DEBUG) {
-                    Log.d(TAG, "Requested clone system triggered trace but we don't have the "
-                            + "session name.");
+                    Log.d(TAG, "Requested clone system triggered trace but no trace active.");
                 }
 
                 LoggingHelper.logProfilingTriggerSent(uid, triggerType,
@@ -1690,18 +1693,18 @@ public class ProfilingService extends IProfilingService.Stub {
                 return;
             }
 
-            if (mSystemTriggeredTraceProcess == null || !mSystemTriggeredTraceProcess.isAlive()) {
-                // If we make it to this path then session name wasn't set to null but can't be used
-                // anymore as its associated trace is not running, so set to null now.
-                mSystemTriggeredTraceUniqueSessionName = null;
+            if (mSystemTriggeredTraceUniqueSessionName == null) {
+                // If we don't have the session name then we don't know how to clone the trace so
+                // stop it if it's still running and then return.
+                stopSystemTriggeredTraceLocked();
 
-                // There is no active system triggered trace so there's nothing to clone. Return.
                 if (DEBUG) {
-                    Log.d(TAG, "Requested clone system triggered trace but no trace active.");
+                    Log.d(TAG, "Requested clone system triggered trace but we don't have the "
+                            + "session name.");
                 }
 
                 LoggingHelper.logProfilingTriggerSent(uid, triggerType,
-                        LoggingHelper.TRIGGER_STATUS_NOT_RUNNING);
+                        LoggingHelper.TRIGGER_STATUS_MISSING_NAME);
                 return;
             }
         }
@@ -2057,11 +2060,12 @@ public class ProfilingService extends IProfilingService.Stub {
             }
         }
 
-        // If we have any sessions to stop, now is the time.
+        // If we have any sessions to stop, now is the time. This is not an expected state as
+        // sessions should be moved to queue if they reach this state.
         if (!sessionsToStop.isEmpty()) {
             for (int i = 0; i < sessionsToStop.size(); i++) {
                 stopProfiling(sessionsToStop.get(i),
-                        LoggingHelper.PROFILING_STOPPED_REASON_UNSPECIFIED);
+                        LoggingHelper.PROFILING_STOPPED_REASON_ERROR);
             }
         }
     }
