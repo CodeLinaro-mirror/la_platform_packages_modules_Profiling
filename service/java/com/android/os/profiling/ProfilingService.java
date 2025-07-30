@@ -167,7 +167,12 @@ public class ProfilingService extends IProfilingService.Stub {
     public String mSystemTriggeredTraceUniqueSessionName = null;
     private long mLastStartedSystemTriggeredTraceMs = 0;
 
-    // Map of uid + package name to a sparse array of trigger objects.
+    /**
+     * Map of uid + package name to a sparse array of trigger objects.
+     *
+     * Adding items to this data structure must only be done using
+     * {@link #addTrigger(ProfilingTriggerData, boolean)} which validates the added triggers.
+     */
     @VisibleForTesting
     public ProcessMap<SparseArray<ProfilingTriggerData>> mAppTriggers = new ProcessMap<>();
     @VisibleForTesting
@@ -590,7 +595,13 @@ public class ProfilingService extends IProfilingService.Stub {
         // Populate in memory app triggers store
         for (int i = 0; i < wrapper.getTriggersCount(); i++) {
             ProfilingTriggersWrapper.ProfilingTrigger triggerProto = wrapper.getTriggers(i);
-            addTrigger(new ProfilingTriggerData(triggerProto), false);
+            try {
+                addTrigger(new ProfilingTriggerData(triggerProto), false);
+            } catch (IllegalArgumentException e) {
+                // If this exception is thrown, then a trigger was added with an unsupported type.
+                // Ignore and continue.
+                if (DEBUG) Log.w(TAG, "Trigger loaded from storage with invalid type", e);
+            }
         }
 
         mAppTriggersLoaded = true;
@@ -1814,6 +1825,11 @@ public class ProfilingService extends IProfilingService.Stub {
         if (!Flags.systemTriggeredProfilingNew()) {
             // Flag disabled.
             return;
+        }
+
+        if (!ProfilingTrigger.isValidRequestTriggerType(trigger.getTriggerType())) {
+            Log.w(TAG, "Attempted to add invalid profiling trigger.");
+            throw new IllegalArgumentException("Trigger type is not supported");
         }
 
         SparseArray<ProfilingTriggerData> perProcessTriggers = mAppTriggers.get(
