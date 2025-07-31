@@ -975,11 +975,46 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     /**
+     * Enforce that the caller's UID matches the provided package name.
+     *
+     * @throws SecurityException if the package name does not match the calling UID.
+     */
+    private void enforceCallerMatchesPackageName(String packageName) {
+        if (packageName == null || packageName.isEmpty()) {
+            // Empty package cannot be valid.
+            throw new SecurityException("Package name empty, is not associated with caller.");
+        }
+
+        int callingUid = Binder.getCallingUid();
+        String[] uidPackages = mContext.getPackageManager().getPackagesForUid(callingUid);
+        if (uidPackages == null || uidPackages.length == 0) {
+            // Failed to get packages for this uid, cannot validate package name.
+            throw new SecurityException("Failed to resolve package name for uid: " + callingUid);
+        }
+
+        boolean packageNameInUidList = false;
+        for (int i = 0; i < uidPackages.length; i++) {
+            if (packageName.equals(uidPackages[i])) {
+                packageNameInUidList = true;
+                break;
+            }
+        }
+
+        if (!packageNameInUidList) {
+            // Package name is not associated with calling uid, reject request.
+            throw new SecurityException("Package name " + packageName + " not associated with "
+                    + "calling uid: " + callingUid);
+        }
+    }
+
+    /**
      * This method validates the request, arguments, whether the app is allowed to profile now,
      * and if so, starts the profiling.
      */
     public void requestProfiling(int profilingType, Bundle params, String tag,
             long keyMostSigBits, long keyLeastSigBits, String packageName) {
+        enforceCallerMatchesPackageName(packageName);
+
         int uid = Binder.getCallingUid();
 
         if (profilingType != ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP
@@ -1014,48 +1049,6 @@ public class ProfilingService extends IProfilingService.Stub {
                     getTriggerTypeNone(), profilingType);
             LoggingHelper.logProfilingRequest(uid, profilingType, params,
                     LoggingHelper.REQUEST_RESULT_ERROR);
-            return;
-        }
-
-        if (packageName == null) {
-            // This shouldn't happen as it should be checked on the app side.
-            if (DEBUG) Log.d(TAG, "PackageName is null");
-            processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                    ProfilingResult.ERROR_UNKNOWN, null, tag, "Couldn't determine package name",
-                    getTriggerTypeNone(), profilingType);
-            LoggingHelper.logProfilingRequest(uid, profilingType, params,
-                    LoggingHelper.REQUEST_RESULT_ERROR);
-            return;
-        }
-
-        String[] uidPackages = mContext.getPackageManager().getPackagesForUid(uid);
-        if (uidPackages == null || uidPackages.length == 0) {
-            // Failed to get uids for this package, can't validate package name.
-            if (DEBUG) Log.d(TAG, "Failed to resolve package name");
-            processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                    ProfilingResult.ERROR_UNKNOWN, null, tag, "Couldn't determine package name",
-                    getTriggerTypeNone(), profilingType);
-            LoggingHelper.logProfilingRequest(uid, profilingType, params,
-                    LoggingHelper.REQUEST_RESULT_ERROR);
-            return;
-        }
-
-        boolean packageNameInUidList = false;
-        for (int i = 0; i < uidPackages.length; i++) {
-            if (packageName.equals(uidPackages[i])) {
-                packageNameInUidList = true;
-                break;
-            }
-        }
-        if (!packageNameInUidList) {
-            // Package name is not associated with calling uid, reject request.
-            if (DEBUG) Log.d(TAG, "Package name not associated with calling uid");
-            processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                    ProfilingResult.ERROR_FAILED_INVALID_REQUEST, null, tag,
-                    "Package name not associated with calling uid.", getTriggerTypeNone(),
-                    profilingType);
-            LoggingHelper.logProfilingRequest(uid, profilingType, params,
-                    LoggingHelper.REQUEST_RESULT_INVALID);
             return;
         }
 
@@ -1215,6 +1208,8 @@ public class ProfilingService extends IProfilingService.Stub {
      */
     public void addProfilingTriggers(List<ProfilingTriggerValueParcel> triggers,
             String packageName) {
+        enforceCallerMatchesPackageName(packageName);
+
         int uid = Binder.getCallingUid();
         for (int i = 0; i < triggers.size(); i++) {
             ProfilingTriggerValueParcel trigger = triggers.get(i);
@@ -1224,6 +1219,8 @@ public class ProfilingService extends IProfilingService.Stub {
 
     /** Add an all profiling trigger for the provided package name and the callers uid. */
     public void addAllProfilingTriggers(String packageName) {
+        enforceCallerMatchesPackageName(packageName);
+
         addTrigger(Binder.getCallingUid(), packageName, ProfilingTriggerData.TRIGGER_ALL, 0);
     }
 
@@ -1232,6 +1229,8 @@ public class ProfilingService extends IProfilingService.Stub {
      * name and the uid of the caller.
      */
     public void removeProfilingTriggers(int[] triggerTypesToRemove, String packageName) {
+        enforceCallerMatchesPackageName(packageName);
+
         SparseArray<ProfilingTriggerData> triggers =
                 mAppTriggers.get(packageName, Binder.getCallingUid());
 
@@ -1252,6 +1251,8 @@ public class ProfilingService extends IProfilingService.Stub {
      * Remove all triggers from a process with the provided packagename and the uid of the caller.
      */
     public void clearProfilingTriggers(String packageName) {
+        enforceCallerMatchesPackageName(packageName);
+
         mAppTriggers.remove(packageName, Binder.getCallingUid());
     }
 
@@ -1671,6 +1672,12 @@ public class ProfilingService extends IProfilingService.Stub {
         if (!Flags.systemTriggeredProfilingNew()) {
             // Flag disabled.
             return;
+        }
+
+        if (triggerType == ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE) {
+            // If this trigger is for an app requesting the running background trace then enforce
+            // that the caller and the package match.
+            enforceCallerMatchesPackageName(packageName);
         }
 
         // Don't block the calling thread.
