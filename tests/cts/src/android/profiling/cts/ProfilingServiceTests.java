@@ -321,12 +321,13 @@ public final class ProfilingServiceTests {
         mProfilingService.registerResultsCallback(false, callback);
 
         // Kick off request.
-        mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, null);
-
-        // Confirm result matches failure expectation.
-        confirmResultCallback(callback, null, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
-                ProfilingResult.ERROR_UNKNOWN, REQUEST_TAG, true);
+        try {
+            mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
+                    REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, null);
+            fail("Request without package name did not throw exception");
+        } catch (SecurityException e) {
+            // Expected
+        }
     }
 
     /** Test that requesting with a package name not associated with the calling uid fails. */
@@ -337,12 +338,13 @@ public final class ProfilingServiceTests {
         mProfilingService.registerResultsCallback(false, callback);
 
         // Kick off request.
-        mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, "not.my.application");
-
-        // Confirm result matches failure expectation.
-        confirmResultCallback(callback, null, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
-                ProfilingResult.ERROR_FAILED_INVALID_REQUEST, REQUEST_TAG, true);
+        try {
+            mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
+                    REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, "not.my.application");
+            fail("Request with incorrect package name did not throw exception");
+        } catch (SecurityException e) {
+            // Expected
+        }
     }
 
     /** Test that failing rate limiting blocks trace from running. */
