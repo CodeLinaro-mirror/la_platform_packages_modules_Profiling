@@ -22,6 +22,9 @@
   "postsubmit": [
     {
       "name": "CtsProfilingModuleTests"
+    },
+    {
+      "name": "MtsAnomalyDetectorTests"
     }
   ]
 }
