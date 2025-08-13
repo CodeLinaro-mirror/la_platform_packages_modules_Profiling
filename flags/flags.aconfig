@@ -67,3 +67,14 @@ flag {
      description: "Enables the kill recents trigger."
      bug: "406809160"
 }
+
+flag {
+     name: "add_rate_limiter_disabled_to_result"
+     namespace: "system_performance"
+     is_exported: false
+     description: "Adds rate limiter disabled message to result error message."
+     bug: "435462552"
+     metadata {
+        purpose: PURPOSE_BUGFIX
+     }
+}

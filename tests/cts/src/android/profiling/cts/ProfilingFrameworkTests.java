@@ -1487,7 +1487,11 @@ public final class ProfilingFrameworkTests {
         assertEquals(ProfilingResult.ERROR_NONE, result.getErrorCode());
         assertNotNull(result.getResultFilePath());
         assertTrue(result.getResultFilePath().contains(suffix));
-        assertNull(result.getErrorMessage());
+        if (Flags.addRateLimiterDisabledToResult()) {
+            assertNotNull(result.getErrorMessage());
+        } else {
+            assertNull(result.getErrorMessage());
+        }
         assertEquals(triggerType, result.getTriggerType());
 
         // Confirm output file exists and is not empty.
@@ -1496,12 +1500,14 @@ public final class ProfilingFrameworkTests {
         assertFalse(file.length() == 0);
     }
 
-    /** Copies the trace to an /sdcard directory that will be collected by the test runner. */
+    /**
+     * Copies the trace to an /sdcard directory that will be collected by the test runner.
+     *
+     * Expected to be called only after validating that the profiling was successful.
+     */
     private void dumpTrace(ProfilingResult result) {
         assertNotNull(result);
-        assertEquals(ProfilingResult.ERROR_NONE, result.getErrorCode());
         assertNotNull(result.getResultFilePath());
-        assertNull(result.getErrorMessage());
 
         // Copy to dump directory
         Path path = Paths.get(result.getResultFilePath());
