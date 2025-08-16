@@ -50,7 +50,7 @@ java_sdk_library {
 
     static_libs: [
         "modules-utils-build",
-        "profiling_flags_lib",
+        "profiling_flags_not_exported_lib",
     ],
 
     permitted_packages: [
@@ -77,28 +77,4 @@ java_sdk_library {
         "com.android.profiling",
     ],
     min_sdk_version: "35",
-}
-
-aconfig_declarations {
-    name: "android.os.profiling.flags-aconfig",
-    package: "android.os.profiling",
-    container: "com.android.profiling",
-    exportable: true,
-    srcs: ["java/android/os/flags.aconfig"],
-}
-
-java_aconfig_library {
-    name: "profiling_flags_lib",
-    aconfig_declarations: "android.os.profiling.flags-aconfig",
-    apex_available: [
-        "com.android.profiling",
-        "//apex_available:platform",
-    ],
-    mode: "exported",
-    min_sdk_version: "35",
-    defaults: ["framework-minus-apex-aconfig-java-defaults"],
-    visibility: [
-        "//packages/modules/Profiling:__subpackages__",
-        "//frameworks/base/services/core",
-    ],
 }
