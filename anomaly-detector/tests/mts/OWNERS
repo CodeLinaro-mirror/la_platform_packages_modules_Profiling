@@ -1,4 +1,4 @@
-# Copyright (C) 2024 The Android Open Source Project
+# Copyright (C) 2025 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-rule com.android.modules.utils.** com.android.internal.profiling.@0
-rule com.google.protobuf.** android.os.protobuf.@1
-rule android.os.profiling.flags.** android.os.profiling.mts.flags.@1
-
+# Bug component: 1764240
+include platform/packages/modules/Profiling:/OWNERS

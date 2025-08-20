@@ -97,6 +97,9 @@ public class ProfilingService extends IProfilingService.Stub {
     // Used for unique session name only, not filename.
     private static final String SYSTEM_TRIGGERED_SESSION_NAME_PREFIX = "system_triggered_session_";
 
+    private static final String RATE_LIMITER_DISABLED_ERROR_MESSAGE =
+            "Rate limiter disabled manually via adb.";
+
     private static final int TAG_MAX_CHARS_FOR_FILENAME = 20;
 
     private static final int PERFETTO_DESTROY_DEFAULT_TIMEOUT_MS = 10 * 1000;
@@ -821,7 +824,13 @@ public class ProfilingService extends IProfilingService.Stub {
                 break;
             case COPIED_FILE:
                 // File has already been copied to app storage, proceed to callback.
-                session.setError(ProfilingResult.ERROR_NONE);
+                if (Flags.addRateLimiterDisabledToResult()) {
+                    // Set error using existing error message to retain message in case it was set
+                    // to indicate that rate limiter was disabled.
+                    session.setError(ProfilingResult.ERROR_NONE, session.getErrorMessage());
+                } else {
+                    session.setError(ProfilingResult.ERROR_NONE);
+                }
                 processTracingSessionResultCallback(session, true /* Continue advancing session */);
 
                 // This is a good place to persist the queue if possible because the processing work
@@ -1061,6 +1070,10 @@ public class ProfilingService extends IProfilingService.Stub {
             try {
                 TracingSession session = new TracingSession(profilingType, params, uid,
                         packageName, tag, keyMostSigBits, keyLeastSigBits, getTriggerTypeNone());
+                if (Flags.addRateLimiterDisabledToResult()
+                        && getRateLimiter().isRateLimiterDisabled()) {
+                    session.setErrorMessage(RATE_LIMITER_DISABLED_ERROR_MESSAGE);
+                }
                 advanceTracingSession(session, TracingState.APPROVED);
                 return;
             } catch (IllegalArgumentException e) {
@@ -1800,6 +1813,10 @@ public class ProfilingService extends IProfilingService.Stub {
         session.setRedactedFileName(baseFileName + OUTPUT_FILE_TRACE_SUFFIX);
         session.setFileName(unredactedFullName);
         session.setProfilingStartTimeMs(System.currentTimeMillis());
+        if (Flags.addRateLimiterDisabledToResult()
+                && packageName.equals(mDebugPackageName)) {
+            session.setErrorMessage(RATE_LIMITER_DISABLED_ERROR_MESSAGE);
+        }
         moveSessionToQueue(session, true);
         advanceTracingSession(session, TracingState.PROFILING_FINISHED);
 
