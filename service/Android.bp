@@ -39,7 +39,7 @@ java_library {
     ],
     static_libs: [
         "modules-utils-build",
-        "profiling_flags_lib",
+        "profiling_flags_not_exported_lib",
         "service-profiling-proto",
         "perfetto_config_java_protos_system_server_current",
     ],

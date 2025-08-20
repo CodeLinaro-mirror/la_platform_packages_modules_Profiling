@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 The Android Open Source Project
+ * Copyright (C) 2025 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,19 +20,18 @@ package {
 }
 
 android_test {
-    name: "CtsProfilingModuleTests",
-    defaults: ["cts_defaults"],
+    name: "MtsAnomalyDetectorTests",
     static_libs: [
         "androidx.test.rules",
         "androidx.test.ext.truth",
         "compatibility-device-util-axt",
         "ctstestrunner-axt",
         "cts-wm-util",
-        "modules-utils-build",
-        "service-profiling",
-        "profiling_flags_not_exported_lib",
-        "framework-profiling.impl",
+        "service-anomaly-detector.impl",
+        "anomaly-detector-aconfig-flags-lib",
+        "framework-anomaly-detector.impl",
         "testng",
+        "services.core",
     ],
     libs: [
         "android.test.runner.stubs.system",
@@ -40,22 +39,18 @@ android_test {
         "android.test.mock.stubs.system",
         "junit",
     ],
-    // include both the 32 and 64 bit versions
     compile_multilib: "both",
     srcs: [
-        "src/android/profiling/cts/*.java",
-    ],
-    jni_libs: [
-        "libcts_profiling_module_test_native",
+        "src/**/*.java",
     ],
     jarjar_rules: "jarjar-rules.txt",
     test_mainline_modules: ["com.google.android.profiling.apex"],
     test_suites: [
-        "cts",
+        "mts",
         "general-tests",
         "mts-profiling",
-        "mcts-profiling",
     ],
-    min_sdk_version: "35",
+    test_config: "AndroidTest.xml",
+    min_sdk_version: "36",
     sdk_version: "module_current",
 }

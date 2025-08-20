@@ -223,6 +223,11 @@ public final class TracingSession {
         mErrorMessage = message;
     }
 
+    /** Update error message only. */
+    public void setErrorMessage(String message) {
+        mErrorMessage = message;
+    }
+
     @Nullable
     public Bundle getParams() {
         return mParams;
