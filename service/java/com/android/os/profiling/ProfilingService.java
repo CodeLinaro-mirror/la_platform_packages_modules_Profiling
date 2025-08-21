@@ -1035,7 +1035,7 @@ public class ProfilingService extends IProfilingService.Stub {
                     ProfilingResult.ERROR_FAILED_INVALID_REQUEST, null, tag,
                     "Invalid request profiling type", getTriggerTypeNone(), profilingType);
             LoggingHelper.logProfilingRequest(uid, profilingType, params,
-                    LoggingHelper.REQUEST_RESULT_INVALID);
+                    LoggingHelper.REQUEST_RESULT_INVALID, mRateLimiter.isRateLimiterDisabled());
             return;
         }
 
@@ -1048,7 +1048,8 @@ public class ProfilingService extends IProfilingService.Stub {
                         ProfilingResult.ERROR_FAILED_PROFILING_IN_PROGRESS, null, tag, null,
                         getTriggerTypeNone(), profilingType);
                 LoggingHelper.logProfilingRequest(uid, profilingType, params,
-                        LoggingHelper.REQUEST_RESULT_PROFILING_IN_PROGRESS);
+                        LoggingHelper.REQUEST_RESULT_PROFILING_IN_PROGRESS,
+                        mRateLimiter.isRateLimiterDisabled());
                 return;
             }
         } catch (RuntimeException e) {
@@ -1057,7 +1058,7 @@ public class ProfilingService extends IProfilingService.Stub {
                     ProfilingResult.ERROR_UNKNOWN, null, tag, "Error communicating with perfetto",
                     getTriggerTypeNone(), profilingType);
             LoggingHelper.logProfilingRequest(uid, profilingType, params,
-                    LoggingHelper.REQUEST_RESULT_ERROR);
+                    LoggingHelper.REQUEST_RESULT_ERROR, mRateLimiter.isRateLimiterDisabled());
             return;
         }
 
@@ -1088,7 +1089,7 @@ public class ProfilingService extends IProfilingService.Stub {
                         ProfilingResult.ERROR_FAILED_INVALID_REQUEST, null, tag, e.getMessage(),
                         getTriggerTypeNone(), profilingType);
                 LoggingHelper.logProfilingRequest(uid, profilingType, params,
-                        LoggingHelper.REQUEST_RESULT_INVALID);
+                        LoggingHelper.REQUEST_RESULT_INVALID, mRateLimiter.isRateLimiterDisabled());
                 return;
             } catch (RuntimeException e) {
                 // Perfetto error. Systems fault.
@@ -1097,7 +1098,7 @@ public class ProfilingService extends IProfilingService.Stub {
                         ProfilingResult.ERROR_UNKNOWN, null, tag, "Perfetto error",
                         getTriggerTypeNone(), profilingType);
                 LoggingHelper.logProfilingRequest(uid, profilingType, params,
-                        LoggingHelper.REQUEST_RESULT_ERROR);
+                        LoggingHelper.REQUEST_RESULT_ERROR, mRateLimiter.isRateLimiterDisabled());
                 return;
             }
         } else {
@@ -1109,7 +1110,8 @@ public class ProfilingService extends IProfilingService.Stub {
             int rateLimitType = status == RateLimiter.RATE_LIMIT_RESULT_BLOCKED_PROCESS
                         ? LoggingHelper.REQUEST_RESULT_RATE_LIMIT_PROCESS
                         : LoggingHelper.REQUEST_RESULT_RATE_LIMIT_SYSTEM;
-            LoggingHelper.logProfilingRequest(uid, profilingType, params, rateLimitType);
+            LoggingHelper.logProfilingRequest(uid, profilingType, params, rateLimitType,
+                    mRateLimiter.isRateLimiterDisabled());
         }
     }
 
@@ -1518,7 +1520,8 @@ public class ProfilingService extends IProfilingService.Stub {
             session.setError(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, e.getMessage());
 
             LoggingHelper.logProfilingRequest(session.getUid(), session.getProfilingType(),
-                    session.getParams(), LoggingHelper.REQUEST_RESULT_INVALID);
+                    session.getParams(), LoggingHelper.REQUEST_RESULT_INVALID,
+                    mRateLimiter.isRateLimiterDisabled());
             // Don't bother adding the session to the queue as there is no real value in trying to
             // deliver this error callback again later in the case that the app no longer has a
             // registered listener.
@@ -1549,12 +1552,14 @@ public class ProfilingService extends IProfilingService.Stub {
             mActiveTracingSessions.put(session.getKey(), session);
 
             LoggingHelper.logProfilingRequest(session.getUid(), session.getProfilingType(),
-                    session.getParams(), LoggingHelper.REQUEST_RESULT_PROFILING_STARTED);
+                    session.getParams(), LoggingHelper.REQUEST_RESULT_PROFILING_STARTED,
+                    mRateLimiter.isRateLimiterDisabled());
         } else {
             session.setError(ProfilingResult.ERROR_FAILED_EXECUTING, "Trace couldn't be started");
 
             LoggingHelper.logProfilingRequest(session.getUid(), session.getProfilingType(),
-                    session.getParams(), LoggingHelper.REQUEST_RESULT_ERROR);
+                    session.getParams(), LoggingHelper.REQUEST_RESULT_ERROR,
+                    mRateLimiter.isRateLimiterDisabled());
 
             // Don't bother adding the session to the queue as there is no real value in trying to
             // deliver this error callback again later in the case that the app no longer has a
