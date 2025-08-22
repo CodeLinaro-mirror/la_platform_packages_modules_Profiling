@@ -78,3 +78,14 @@ flag {
         purpose: PURPOSE_BUGFIX
      }
 }
+
+flag {
+     name: "background_buffer_size_increase"
+     namespace: "system_performance"
+     is_exported: false
+     description: "Increases default background buffer size to 64mb."
+     bug: "415877375"
+     metadata {
+        purpose: PURPOSE_BUGFIX
+     }
+}
