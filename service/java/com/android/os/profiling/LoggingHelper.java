@@ -120,13 +120,14 @@ public final class LoggingHelper {
 
     /** Log that a profiling request was made. */
     public static void logProfilingRequest(int uid, int profilingType, @Nullable Bundle params,
-            @RequestResult int requestResult) {
+            @RequestResult int requestResult, boolean isRateLimiterDisabled) {
         ProfilingStatsLog.write(
                 ProfilingStatsLog.PROFILING_REQUEST,
                 uid,
                 profilingTypeToEnumValue(profilingType),
                 params != null && !params.isEmpty(),
-                requestResult);
+                requestResult,
+                isRateLimiterDisabled);
     }
 
     /** Log that a profiling session was stopped. */
