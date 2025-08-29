@@ -19,7 +19,7 @@ package android.os;
 /**
  * Binder interface to communicate with AnomalyDetectorService.
  *
- * {@hide}
+ * @hide
  */
 interface IAnomalyDetectorService {
 }
