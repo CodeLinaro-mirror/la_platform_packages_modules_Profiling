@@ -814,6 +814,26 @@ public class ProfilingService extends IProfilingService.Stub {
                 // method when profiling is finished.
                 break;
             case PROFILING_FINISHED:
+                if (!tempProfileExists(session)) {
+                    session.setError(ProfilingResult.ERROR_FAILED_EXECUTING);
+                    long profilingTime = System.currentTimeMillis()
+                                            - session.getProfilingStartTimeMs();
+                    if (DEBUG) {
+                        Log.d(TAG, "No profile data was produced by perfetto during "
+                                            + profilingTime + " ms profiling session");
+                    }
+                    if (profilingTime > 500) {
+                        session.setErrorMessage("No profile data was produced by perfetto.");
+                    } else {
+                        session.setErrorMessage("No profile data was produced by perfetto."
+                                                    + " Profiling session duration (ms): "
+                                                    + profilingTime
+                                                    + ". Profiling may have stopped too soon.");
+                    }
+                    advanceTracingSession(session, TracingState.ERROR_OCCURRED);
+                    return;
+                }
+
                 // Next step depends on whether or not the result requires redaction.
                 if (needsRedaction(session)) {
                     // Redaction needed, kick it off.
@@ -2580,6 +2600,20 @@ public class ProfilingService extends IProfilingService.Stub {
         if (maybePersist) {
             maybePersistToDisk();
         }
+    }
+
+    /**
+     * Checks whether a temporary profile has been saved for a tracing session.
+     *
+     * @param session Tracing session to evaluate.
+     * @return true if there is a temporary profile for tracing session, false otherwise.
+     */
+    public boolean tempProfileExists(TracingSession session) {
+        File perfettoOutputFile = new File(TEMP_TRACE_PATH + session.getFileName());
+        if (!perfettoOutputFile.exists()) {
+            return false;
+        }
+        return true;
     }
 
     private boolean needsRedaction(TracingSession session) {

@@ -46,6 +46,7 @@ import android.os.ProfilingResult;
 import android.os.ProfilingTrigger;
 import android.os.profiling.DeviceConfigHelper;
 import android.os.profiling.ProfilingService;
+import android.os.profiling.ProfilingService.TracingState;
 import android.os.profiling.ProfilingTriggerData;
 import android.os.profiling.RateLimiter;
 import android.os.profiling.TracingSession;
@@ -174,6 +175,8 @@ public final class ProfilingServiceTests {
         // Since we use mock files we can't rely on the setup call that would typically come from
         // initialization of rate limiter, so trigger setup manually.
         mRateLimiter.setupFromPersistedData();
+
+        doReturn(true).when(mProfilingService).tempProfileExists(any());
     }
 
     @After
@@ -1517,6 +1520,52 @@ public final class ProfilingServiceTests {
         assertTrue(callback.mFileRequested);
         assertTrue(callback.mResultSent);
         assertEquals(ProfilingResult.ERROR_FAILED_POST_PROCESSING, callback.mStatus);
+    }
+
+    /**
+     * Test that a queued result for a finished profiling session fails if no profile data
+     * was produced.
+     */
+    @Test
+    public void testQueuedResult_ProfilingFinished_NoTraceData_Fails() {
+        doReturn(false).when(mProfilingService).tempProfileExists(any());
+
+        // Clear all existing queued results.
+        mProfilingService.mQueuedTracingResults.clear();
+
+        int uid = Binder.getCallingUid();
+
+        // Add a in progress session to queue with too many retries
+        List<TracingSession> queue = new ArrayList<TracingSession>();
+        TracingSession session = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
+                new Bundle(),
+                uid,
+                APP_PACKAGE_NAME,
+                REQUEST_TAG,
+                KEY_LEAST_SIG_BITS,
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
+        session.setState(TracingState.PROFILING_FINISHED);
+        queue.add(session);
+        mProfilingService.mQueuedTracingResults.put(uid, queue);
+
+        // Add a profiling result callback
+        ProfilingResultCallback callback = new ProfilingResultCallback();
+        mProfilingService.mResultCallbacks.put(uid, Arrays.asList(callback));
+
+        // Trigger handle queued results
+        mProfilingService.handleQueuedResults(uid);
+
+        // Confirm that it verifies for temp profile existence
+        verify(mProfilingService, times(1)).tempProfileExists(any());
+
+        // Confirm that it informs the user of error due to no profile data
+        // being written and that an error message is provided.
+        assertEquals(ProfilingResult.ERROR_FAILED_EXECUTING, callback.mStatus);
+        assertNotNull(callback.mError);
+
+        verify(mProfilingService, times(0)).beginMoveFileToAppStorage(any());
     }
 
     /**
