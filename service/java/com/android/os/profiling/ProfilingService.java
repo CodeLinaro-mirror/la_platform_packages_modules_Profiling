@@ -2222,6 +2222,19 @@ public class ProfilingService extends IProfilingService.Stub {
     /** Handle a result which required redaction by attempting to kick off redaction process. */
     @VisibleForTesting
     public void handleRedactionRequiredResult(TracingSession session) {
+        if (TextUtils.isEmpty(session.getFileName())) {
+            // This should not happen. If it does, then there is no file to redact. Set error and
+            // advance state.
+            if (DEBUG) {
+                Log.w(TAG, "Session requires redaction but has no file to redact.");
+            }
+            session.setError(
+                    ProfilingResult.ERROR_FAILED_POST_PROCESSING,
+                    "Redaction failed due to missing file.");
+            advanceTracingSession(session, TracingState.ERROR_OCCURRED);
+            return;
+        }
+
         try {
             // We need to create an empty file for the redaction process to write the output into.
             File emptyRedactedTraceFile = new File(TEMP_TRACE_PATH
