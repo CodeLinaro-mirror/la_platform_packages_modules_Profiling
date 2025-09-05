@@ -33,9 +33,10 @@ public final class ProfilingTrigger {
     public static final int TRIGGER_TYPE_NONE = 0;
 
     /**
-     * Trigger occurs after {@link Activity#reportFullyDrawn} is called for a cold start.
+     * Trigger occurs after {@link android.app.Activity#reportFullyDrawn} is called for a cold
+     * start.
      *
-     * System will provide a snapshot of a running system trace in response to this trigger.
+     * <p>System will provide a snapshot of a running system trace in response to this trigger.
      */
     public static final int TRIGGER_TYPE_APP_FULLY_DRAWN = 1;
 
