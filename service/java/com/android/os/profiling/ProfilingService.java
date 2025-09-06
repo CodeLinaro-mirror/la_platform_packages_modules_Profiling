@@ -750,11 +750,18 @@ public class ProfilingService extends IProfilingService.Stub {
      */
     @VisibleForTesting
     public void advanceTracingSession(TracingSession session, @Nullable TracingState newState) {
+        if (DEBUG) {
+            Log.d(TAG, "Advance Tracing State to "
+                    + (newState != null ? newState.getValue() : "null"));
+        }
         if (newState == null) {
             if (session.getRetryCount() == 0) {
                 // The new state should only be null if this is triggered from the queue in which
                 // case the retry count should be greater than 0. If retry count is 0 here then
                 // we're in an unexpected state. Cleanup and discard. Result will be lost.
+                if (DEBUG) {
+                    Log.d(TAG, "advanceTracingSession error: unexpected null state");
+                }
                 cleanupTracingSession(session);
                 return;
             }
@@ -764,12 +771,18 @@ public class ProfilingService extends IProfilingService.Stub {
             // loop. Terminate this attempt and increment the retry count to ensure there's a
             // path to breaking out of a potential infinite queue retries.
             session.incrementRetryCount();
+            if (DEBUG) {
+                Log.d(TAG, "advanceTracingSession error: trying to set same state as before");
+            }
             return;
         } else if (newState.getValue() < session.getState().getValue()) {
             // This should also never happen.
             // States should always move forward. If the state is trying to move backwards then
             // we don't actually know what to do next. Clean up the session and delete
             // everything. Results will be lost.
+            if (DEBUG) {
+                Log.d(TAG, "advanceTracingSession error: moving backwards");
+            }
             cleanupTracingSession(session);
             return;
         } else {
@@ -801,6 +814,26 @@ public class ProfilingService extends IProfilingService.Stub {
                 // method when profiling is finished.
                 break;
             case PROFILING_FINISHED:
+                if (!tempProfileExists(session)) {
+                    session.setError(ProfilingResult.ERROR_FAILED_EXECUTING);
+                    long profilingTime = System.currentTimeMillis()
+                                            - session.getProfilingStartTimeMs();
+                    if (DEBUG) {
+                        Log.d(TAG, "No profile data was produced by perfetto during "
+                                            + profilingTime + " ms profiling session");
+                    }
+                    if (profilingTime > 500) {
+                        session.setErrorMessage("No profile data was produced by perfetto.");
+                    } else {
+                        session.setErrorMessage("No profile data was produced by perfetto."
+                                                    + " Profiling session duration (ms): "
+                                                    + profilingTime
+                                                    + ". Profiling may have stopped too soon.");
+                    }
+                    advanceTracingSession(session, TracingState.ERROR_OCCURRED);
+                    return;
+                }
+
                 // Next step depends on whether or not the result requires redaction.
                 if (needsRedaction(session)) {
                     // Redaction needed, kick it off.
@@ -1595,6 +1628,9 @@ public class ProfilingService extends IProfilingService.Stub {
                     session.getParams(), LoggingHelper.REQUEST_RESULT_PROFILING_STARTED,
                     mRateLimiter.isRateLimiterDisabled());
         } else {
+            if (DEBUG) {
+                Log.d(TAG, "Failed to start profiling.");
+            }
             session.setError(ProfilingResult.ERROR_FAILED_EXECUTING, "Trace couldn't be started");
 
             LoggingHelper.logProfilingRequest(session.getUid(), session.getProfilingType(),
@@ -1703,6 +1739,9 @@ public class ProfilingService extends IProfilingService.Stub {
     @Nullable
     private Process startProfilingProcess(byte[] config, String outputFile) {
         try {
+            if (DEBUG) {
+                Log.d(TAG, "Starting perfetto process profile output file=" + outputFile);
+            }
             ProcessBuilder processBuilder = new ProcessBuilder("/system/bin/perfetto", "-o",
                     outputFile, "-c", "-");
             Process activeProfiling = processBuilder.start();
@@ -2028,6 +2067,11 @@ public class ProfilingService extends IProfilingService.Stub {
 
         if (session.getActiveTrace().isAlive()
                 && processingTimeRemaining >= 0) {
+            if (DEBUG) {
+                Log.d(TAG, "Profiling not yet finished. processingTimeRemaining="
+                        + processingTimeRemaining + " reschedule check in "
+                        + Math.min(mProfilingRecheckDelayMs, processingTimeRemaining));
+            }
             // still running and under max allotted processing time, reschedule the check.
             getHandler().postDelayed(session.getProcessResultRunnable(),
                     Math.min(mProfilingRecheckDelayMs, processingTimeRemaining));
@@ -2067,6 +2111,10 @@ public class ProfilingService extends IProfilingService.Stub {
     /** Stop active profiling for the given session key. */
     private void stopProfiling(String key, int loggingReason) {
         TracingSession session = mActiveTracingSessions.get(key);
+        if (DEBUG) {
+            Log.d(TAG, "stopProfiling for session="
+                        + session.getFileName() + " loggingReason=" + loggingReason);
+        }
         stopProfiling(session, loggingReason);
     }
 
@@ -2096,6 +2144,9 @@ public class ProfilingService extends IProfilingService.Stub {
                     TimeUnit.MILLISECONDS)) {
                 if (DEBUG) Log.d(TAG, "Stopping of running trace process timed out.");
                 return;
+            }
+            if (DEBUG) {
+                Log.d(TAG, "Stopped running trace process.");
             }
         } catch (InterruptedException e) {
             if (DEBUG) Log.d(TAG, "Stopping of running trace error occurred.", e);
@@ -2276,6 +2327,10 @@ public class ProfilingService extends IProfilingService.Stub {
         }
 
         try {
+            if (DEBUG) {
+                Log.d(TAG, "Start redaction, create empty file for redactor output="
+                                + session.getRedactedFileName());
+            }
             // We need to create an empty file for the redaction process to write the output into.
             File emptyRedactedTraceFile = new File(TEMP_TRACE_PATH
                     + session.getRedactedFileName());
@@ -2509,6 +2564,9 @@ public class ProfilingService extends IProfilingService.Stub {
      */
     private void cleanupTracingSession(TracingSession session,
             @Nullable List<TracingSession> queuedSessions) {
+        if (DEBUG) {
+            Log.d(TAG, "cleanupTracingSession for fileName=" + session.getFileName());
+        }
         synchronized (mLock) {
             if (mKeepResultInTempDir) {
                 // If {@link mKeepResultInTempDir} is enabled, don't cleanup anything. Continue
@@ -2543,6 +2601,9 @@ public class ProfilingService extends IProfilingService.Stub {
             boolean deleteUnredacted) {
         if (deleteRedacted) {
             try {
+                if (DEBUG) {
+                    Log.d(TAG, "delete redacted file=" + session.getRedactedFileName());
+                }
                 Files.deleteIfExists(Path.of(TEMP_TRACE_PATH + session.getRedactedFileName()));
             } catch (Exception exception) {
                 if (DEBUG) Log.e(TAG, "Failed to delete file.", exception);
@@ -2551,6 +2612,9 @@ public class ProfilingService extends IProfilingService.Stub {
 
         if (deleteUnredacted) {
             try {
+                if (DEBUG) {
+                    Log.d(TAG, "delete unredacted file session=" + session.getFileName());
+                }
                 Files.deleteIfExists(Path.of(TEMP_TRACE_PATH + session.getFileName()));
             } catch (Exception exception) {
                 if (DEBUG) Log.e(TAG, "Failed to delete file.", exception);
@@ -2579,6 +2643,10 @@ public class ProfilingService extends IProfilingService.Stub {
                     new Throwable());
         }
 
+        if (DEBUG) {
+            Log.d(TAG, "Add to queue session with file=" + session.getFileName());
+        }
+
         List<TracingSession> queuedResults = mQueuedTracingResults.get(session.getUid());
         if (queuedResults == null) {
             queuedResults = new ArrayList<TracingSession>();
@@ -2590,6 +2658,20 @@ public class ProfilingService extends IProfilingService.Stub {
         if (maybePersist) {
             maybePersistToDisk();
         }
+    }
+
+    /**
+     * Checks whether a temporary profile has been saved for a tracing session.
+     *
+     * @param session Tracing session to evaluate.
+     * @return true if there is a temporary profile for tracing session, false otherwise.
+     */
+    public boolean tempProfileExists(TracingSession session) {
+        File perfettoOutputFile = new File(TEMP_TRACE_PATH + session.getFileName());
+        if (!perfettoOutputFile.exists()) {
+            return false;
+        }
+        return true;
     }
 
     private boolean needsRedaction(TracingSession session) {
