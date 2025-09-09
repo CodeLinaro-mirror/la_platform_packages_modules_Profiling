@@ -45,6 +45,7 @@ import android.os.IProfilingResultCallback;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
 import android.os.ProfilingTrigger;
+import android.os.ProfilingTriggerValueParcel;
 import android.os.profiling.DeviceConfigHelper;
 import android.os.profiling.ProfilingService;
 import android.os.profiling.ProfilingService.TracingState;
@@ -1480,6 +1481,24 @@ public final class ProfilingServiceTests {
         expect.that(mProfilingService.mAppTriggers.getMap().size()).isEqualTo(0);
         expect.that(mProfilingService.mAppTriggersLoaded).isTrue();
         verify(mProfilingService, times(1)).deletePersistAppTriggersFile();
+    }
+
+    /**
+     * Test that attempting to add invalid profiling trigger directly to service throws an
+     * appropriate exception.
+     */
+    @Test
+    public void testAddProfilingTriggers_InvalidTriggerType() {
+        ProfilingTriggerValueParcel trigger = new ProfilingTriggerValueParcel();
+        trigger.triggerType = Integer.MAX_VALUE;
+
+        Throwable throwable =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () ->
+                                mProfilingService.addProfilingTriggers(
+                                        List.of(trigger), APP_PACKAGE_NAME));
+        assertEquals("Trigger type is not supported", throwable.getMessage());
     }
 
     /** Test that adding a specific listener does not trigger handling queued results. */
