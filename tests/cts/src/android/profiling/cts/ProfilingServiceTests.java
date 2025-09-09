@@ -484,6 +484,24 @@ public final class ProfilingServiceTests {
         assertEquals(getErrorMessageForPackageDoesNotMatchUid(), throwable.getMessage());
     }
 
+    /**
+     * Test that calling processTrigger with trigger other than request running trace trigger and a
+     * calling uid not belonging to the system fails.
+     */
+    @Test
+    public void testProcessTrigger_CallerNotSystem_Fails() {
+        Throwable throwable =
+                assertThrows(
+                        SecurityException.class,
+                        () ->
+                                mProfilingService.processTrigger(
+                                        FAKE_UID,
+                                        APP_PACKAGE_NAME,
+                                        ProfilingTrigger.TRIGGER_TYPE_ANR,
+                                        null));
+        assertEquals("Calling system only method from non system process.", throwable.getMessage());
+    }
+
     /** Test that checking if any traces are running works when trace is running. */
     @Test
     public void testAreAnyTracesRunning_True() {

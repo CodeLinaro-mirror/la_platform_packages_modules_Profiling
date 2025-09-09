@@ -16,6 +16,8 @@
 
 package android.os.profiling;
 
+import static android.os.Process.SYSTEM_UID;
+
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.Context;
@@ -1049,6 +1051,12 @@ public class ProfilingService extends IProfilingService.Stub {
         }
     }
 
+    private void enforceSystemCaller() {
+        if (Binder.getCallingUid() != SYSTEM_UID) {
+            throw new SecurityException("Calling system only method from non system process.");
+        }
+    }
+
     /**
      * This method validates the request, arguments, whether the app is allowed to profile now,
      * and if so, starts the profiling.
@@ -1775,6 +1783,11 @@ public class ProfilingService extends IProfilingService.Stub {
             // If this trigger is for an app requesting the running background trace then enforce
             // that the caller and the package match.
             enforceCallerMatchesPackageName(packageName);
+        } else if (mDebugPackageName == null || !packageName.equals(mDebugPackageName)) {
+            // If a debug package is set and equals to the package being supplied, then this is for
+            // test/debug and we do not need to validate the system caller. Otherwise, enfore that
+            // the caller is system.
+            enforceSystemCaller();
         }
 
         // Don't block the calling thread.
