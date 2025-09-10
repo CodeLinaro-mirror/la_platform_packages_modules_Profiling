@@ -353,17 +353,29 @@ public class ProfilingService extends IProfilingService.Stub {
                     DEFAULT_SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS));
         }
         // Now subscribe to updates on test config.
-        DeviceConfig.addOnPropertiesChangedListener(DeviceConfigHelper.NAMESPACE_TESTING,
-                mContext.getMainExecutor(), new DeviceConfig.OnPropertiesChangedListener() {
+        DeviceConfig.addOnPropertiesChangedListener(
+                DeviceConfigHelper.NAMESPACE_TESTING,
+                mContext.getMainExecutor(),
+                new DeviceConfig.OnPropertiesChangedListener() {
                     @Override
                     public void onPropertiesChanged(@NonNull DeviceConfig.Properties properties) {
                         synchronized (mLock) {
-                            mKeepResultInTempDir = properties.getBoolean(
-                                    DeviceConfigHelper.DISABLE_DELETE_TEMPORARY_RESULTS, false);
+                            // Update value, using the current value as the default to ensure that
+                            // the value is unchanged when the specific config is not present in the
+                            // update config.
+                            mKeepResultInTempDir =
+                                    properties.getBoolean(
+                                            DeviceConfigHelper.DISABLE_DELETE_TEMPORARY_RESULTS,
+                                            mKeepResultInTempDir);
+
                             getRateLimiter().maybeUpdateRateLimiterDisabled(properties);
 
-                            String newDebugPackageName = properties.getString(
-                                    DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME, null);
+                            // Use null as default since we're assigning to a new variable and
+                            // handleDebugPackageChangeLocked will handle null as unchanged.
+                            String newDebugPackageName =
+                                    properties.getString(
+                                            DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
+                                            null);
                             handleDebugPackageChangeLocked(newDebugPackageName);
                         }
                     }
