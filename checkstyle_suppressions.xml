@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suppressions PUBLIC "-//Puppy Crawl//DTD Suppressions 1.1//EN" "http://www.puppycrawl.com/dtds/suppressions_1_1.dtd">
+<suppressions>
+  <!-- checkstyle and google_java_format overlap only in these four checks,
+       but we still want the rest of checkstyle checks. -->
+    <suppress files=".*" checks="ImportOrder" />
+    <suppress files=".*" checks="Indentation" />
+    <suppress files=".*" checks="LineLength" />
+    <suppress files=".*" checks="LeftCurly" />
+</suppressions>

@@ -46,6 +46,7 @@ import android.os.ProfilingResult;
 import android.os.ProfilingTrigger;
 import android.os.profiling.DeviceConfigHelper;
 import android.os.profiling.ProfilingService;
+import android.os.profiling.ProfilingService.TracingState;
 import android.os.profiling.ProfilingTriggerData;
 import android.os.profiling.RateLimiter;
 import android.os.profiling.TracingSession;
@@ -61,6 +62,7 @@ import androidx.test.runner.AndroidJUnit4;
 
 import com.android.compatibility.common.util.SystemUtil;
 
+import com.google.common.truth.Expect;
 import com.google.errorprone.annotations.FormatMethod;
 
 import org.junit.After;
@@ -126,6 +128,7 @@ public final class ProfilingServiceTests {
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
     @Rule public final SetFlagsRule mSetFlagsRule = new SetFlagsRule();
+    @Rule public final Expect expect = Expect.create();
 
     @Mock private Process mActiveTrace;
 
@@ -174,6 +177,8 @@ public final class ProfilingServiceTests {
         // Since we use mock files we can't rely on the setup call that would typically come from
         // initialization of rate limiter, so trigger setup manually.
         mRateLimiter.setupFromPersistedData();
+
+        doReturn(true).when(mProfilingService).tempProfileExists(any());
     }
 
     @After
@@ -235,10 +240,10 @@ public final class ProfilingServiceTests {
                 REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, APP_PACKAGE_NAME);
 
         // Confirm callbacks was triggered for callback registered to this process.
-        assertTrue(callback.mResultSent);
+        expect.that(callback.mResultSent).isTrue();
 
         // Confirm callbacks was not triggered for callback registered to other process.
-        assertFalse(mockProcessCallback.mResultSent);
+        expect.that(mockProcessCallback.mResultSent).isFalse();
     }
 
     /** Test that multiple callbacks belonging to the requesting uid are all triggered. */
@@ -265,8 +270,8 @@ public final class ProfilingServiceTests {
                 REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, APP_PACKAGE_NAME);
 
         // Confirm callbacks was triggered for callback registered to this process.
-        assertTrue(callbackOne.mResultSent);
-        assertTrue(callbackTwo.mResultSent);
+        expect.that(callbackOne.mResultSent).isTrue();
+        expect.that(callbackTwo.mResultSent).isTrue();
     }
 
     /**
@@ -567,9 +572,9 @@ public final class ProfilingServiceTests {
         assertTrue(mRateLimiter.mDataLoaded.get());
 
         // Confirm records are still empty
-        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
-        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
-        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+        expect.that(mRateLimiter.mPastRunsHour.getEntriesCopy().length).isEqualTo(0);
+        expect.that(mRateLimiter.mPastRunsDay.getEntriesCopy().length).isEqualTo(0);
+        expect.that(mRateLimiter.mPastRunsWeek.getEntriesCopy().length).isEqualTo(0);
     }
 
     /**
@@ -606,9 +611,9 @@ public final class ProfilingServiceTests {
         assertTrue(mRateLimiter.mDataLoaded.get());
 
         // Confirm records are still empty
-        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
-        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
-        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+        expect.that(mRateLimiter.mPastRunsHour.getEntriesCopy().length).isEqualTo(0);
+        expect.that(mRateLimiter.mPastRunsDay.getEntriesCopy().length).isEqualTo(0);
+        expect.that(mRateLimiter.mPastRunsWeek.getEntriesCopy().length).isEqualTo(0);
     }
 
     /**
@@ -648,12 +653,15 @@ public final class ProfilingServiceTests {
         assertTrue(mRateLimiter.mDataLoaded.get());
 
         // Confirm fake records have been added
-        assertEquals(1, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
-        assertEquals(Integer.MAX_VALUE, mRateLimiter.mPastRunsHour.getEntriesCopy()[0].mCost);
-        assertEquals(1, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
-        assertEquals(Integer.MAX_VALUE, mRateLimiter.mPastRunsDay.getEntriesCopy()[0].mCost);
-        assertEquals(1, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
-        assertEquals(Integer.MAX_VALUE, mRateLimiter.mPastRunsWeek.getEntriesCopy()[0].mCost);
+        expect.that(mRateLimiter.mPastRunsHour.getEntriesCopy().length).isEqualTo(1);
+        expect.that(mRateLimiter.mPastRunsHour.getEntriesCopy()[0].mCost)
+                .isEqualTo(Integer.MAX_VALUE);
+        expect.that(mRateLimiter.mPastRunsDay.getEntriesCopy().length).isEqualTo(1);
+        expect.that(mRateLimiter.mPastRunsDay.getEntriesCopy()[0].mCost)
+                .isEqualTo(Integer.MAX_VALUE);
+        expect.that(mRateLimiter.mPastRunsWeek.getEntriesCopy().length).isEqualTo(1);
+        expect.that(mRateLimiter.mPastRunsWeek.getEntriesCopy()[0].mCost)
+                .isEqualTo(Integer.MAX_VALUE);
     }
 
     /**
@@ -696,9 +704,9 @@ public final class ProfilingServiceTests {
         assertFalse(mRateLimiter.mDataLoaded.get());
 
         // Confirm records are still empty
-        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
-        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
-        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+        expect.that(mRateLimiter.mPastRunsHour.getEntriesCopy().length).isEqualTo(0);
+        expect.that(mRateLimiter.mPastRunsDay.getEntriesCopy().length).isEqualTo(0);
+        expect.that(mRateLimiter.mPastRunsWeek.getEntriesCopy().length).isEqualTo(0);
     }
 
     /** Test that rate limiter check for request allows as expected. */
@@ -1307,8 +1315,8 @@ public final class ProfilingServiceTests {
 
         // Ensure that the triggers are still empty, that loaded was set to true, and that a delete
         // was not attempted as there was no file to delete.
-        assertEquals(0, mProfilingService.mAppTriggers.getMap().size());
-        assertTrue(mProfilingService.mAppTriggersLoaded);
+        expect.that(mProfilingService.mAppTriggers.getMap().size()).isEqualTo(0);
+        expect.that(mProfilingService.mAppTriggersLoaded).isTrue();
         verify(mProfilingService, times(0)).deletePersistAppTriggersFile();
     }
 
@@ -1334,8 +1342,8 @@ public final class ProfilingServiceTests {
 
         // Ensure that the triggers are still empty, that loaded was set to true, and that a delete
         // was attempted as expected for the bad file state.
-        assertEquals(0, mProfilingService.mAppTriggers.getMap().size());
-        assertTrue(mProfilingService.mAppTriggersLoaded);
+        expect.that(mProfilingService.mAppTriggers.getMap().size()).isEqualTo(0);
+        expect.that(mProfilingService.mAppTriggersLoaded).isTrue();
         verify(mProfilingService, times(1)).deletePersistAppTriggersFile();
     }
 
@@ -1363,8 +1371,8 @@ public final class ProfilingServiceTests {
 
         // Ensure that the triggers are still empty, that loaded was set to true, and that a delete
         // was attempted as expected for the bad file state.
-        assertEquals(0, mProfilingService.mAppTriggers.getMap().size());
-        assertTrue(mProfilingService.mAppTriggersLoaded);
+        expect.that(mProfilingService.mAppTriggers.getMap().size()).isEqualTo(0);
+        expect.that(mProfilingService.mAppTriggersLoaded).isTrue();
         verify(mProfilingService, times(1)).deletePersistAppTriggersFile();
     }
 
@@ -1434,8 +1442,8 @@ public final class ProfilingServiceTests {
         mProfilingService.handleQueuedResults(FAKE_UID);
 
         // Confirm that the in progress result was deleted without triggering the callback
-        assertFalse(mProfilingService.mQueuedTracingResults.contains(FAKE_UID));
-        assertFalse(callback.mResultSent);
+        expect.that(mProfilingService.mQueuedTracingResults.contains(FAKE_UID)).isFalse();
+        expect.that(callback.mResultSent).isFalse();
     }
 
     /**
@@ -1474,8 +1482,8 @@ public final class ProfilingServiceTests {
         mProfilingService.handleQueuedResults(FAKE_UID);
 
         // Confirm that the in progress result was deleted without triggering the callback
-        assertFalse(mProfilingService.mQueuedTracingResults.contains(FAKE_UID));
-        assertFalse(callback.mResultSent);
+        expect.that(mProfilingService.mQueuedTracingResults.contains(FAKE_UID)).isFalse();
+        expect.that(callback.mResultSent).isFalse();
     }
 
     /**
@@ -1514,9 +1522,55 @@ public final class ProfilingServiceTests {
         // because we cannot copy from this context.
         verify(mProfilingService, times(1)).beginMoveFileToAppStorage(any());
         verify(mProfilingService, times(1)).processTracingSessionResultCallback(any(), eq(false));
-        assertTrue(callback.mFileRequested);
-        assertTrue(callback.mResultSent);
-        assertEquals(ProfilingResult.ERROR_FAILED_POST_PROCESSING, callback.mStatus);
+        expect.that(callback.mFileRequested).isTrue();
+        expect.that(callback.mResultSent).isTrue();
+        expect.that(callback.mStatus).isEqualTo(ProfilingResult.ERROR_FAILED_POST_PROCESSING);
+    }
+
+    /**
+     * Test that a queued result for a finished profiling session fails if no profile data
+     * was produced.
+     */
+    @Test
+    public void testQueuedResult_ProfilingFinished_NoTraceData_Fails() {
+        doReturn(false).when(mProfilingService).tempProfileExists(any());
+
+        // Clear all existing queued results.
+        mProfilingService.mQueuedTracingResults.clear();
+
+        int uid = Binder.getCallingUid();
+
+        // Add a in progress session to queue with too many retries
+        List<TracingSession> queue = new ArrayList<TracingSession>();
+        TracingSession session = new TracingSession(
+                ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
+                new Bundle(),
+                uid,
+                APP_PACKAGE_NAME,
+                REQUEST_TAG,
+                KEY_LEAST_SIG_BITS,
+                KEY_MOST_SIG_BITS,
+                TRIGGER_TYPE_NONE);
+        session.setState(TracingState.PROFILING_FINISHED);
+        queue.add(session);
+        mProfilingService.mQueuedTracingResults.put(uid, queue);
+
+        // Add a profiling result callback
+        ProfilingResultCallback callback = new ProfilingResultCallback();
+        mProfilingService.mResultCallbacks.put(uid, Arrays.asList(callback));
+
+        // Trigger handle queued results
+        mProfilingService.handleQueuedResults(uid);
+
+        // Confirm that it verifies for temp profile existence
+        verify(mProfilingService, times(1)).tempProfileExists(any());
+
+        // Confirm that it informs the user of error due to no profile data
+        // being written and that an error message is provided.
+        assertEquals(ProfilingResult.ERROR_FAILED_EXECUTING, callback.mStatus);
+        assertNotNull(callback.mError);
+
+        verify(mProfilingService, times(0)).beginMoveFileToAppStorage(any());
     }
 
     /**
@@ -1552,8 +1606,8 @@ public final class ProfilingServiceTests {
         // Confirm that the correct path was called. Callback will be for failed post processing
         // because we cannot copy from this context.
         verify(mProfilingService, times(1)).handleRedactionRequiredResult(any());
-        assertTrue(callback.mResultSent);
-        assertEquals(ProfilingResult.ERROR_FAILED_POST_PROCESSING, callback.mStatus);
+        expect.that(callback.mResultSent).isTrue();
+        expect.that(callback.mStatus).isEqualTo(ProfilingResult.ERROR_FAILED_POST_PROCESSING);
     }
 
 
@@ -1591,9 +1645,9 @@ public final class ProfilingServiceTests {
         // Confirm that the correct path was called.
         verify(mProfilingService, times(1)).beginMoveFileToAppStorage(any());
         verify(mProfilingService, times(1)).processTracingSessionResultCallback(any(), eq(false));
-        assertTrue(callback.mFileRequested);
-        assertTrue(callback.mResultSent);
-        assertEquals(ProfilingResult.ERROR_FAILED_POST_PROCESSING, callback.mStatus);
+        expect.that(callback.mFileRequested).isTrue();
+        expect.that(callback.mResultSent).isTrue();
+        expect.that(callback.mStatus).isEqualTo(ProfilingResult.ERROR_FAILED_POST_PROCESSING);
     }
 
     /**
@@ -1670,8 +1724,8 @@ public final class ProfilingServiceTests {
 
         // Confirm that the correct path was called that an error callback was received.
         verify(mProfilingService, times(1)).processTracingSessionResultCallback(any(), eq(true));
-        assertTrue(callback.mResultSent);
-        assertEquals(ProfilingResult.ERROR_UNKNOWN, callback.mStatus);
+        expect.that(callback.mResultSent).isTrue();
+        expect.that(callback.mStatus).isEqualTo(ProfilingResult.ERROR_UNKNOWN);
     }
 
     /**
@@ -1708,8 +1762,8 @@ public final class ProfilingServiceTests {
 
         // Confirm that the correct path was called.
         verify(mProfilingService, times(1)).cleanupTracingSession(any());
-        assertFalse(mProfilingService.mQueuedTracingResults.contains(FAKE_UID));
-        assertFalse(callback.mResultSent);
+        expect.that(mProfilingService.mQueuedTracingResults.contains(FAKE_UID)).isFalse();
+        expect.that(callback.mResultSent).isFalse();
     }
 
     /**
@@ -1786,8 +1840,8 @@ public final class ProfilingServiceTests {
         // Finally, confirm that the 1 tracked file is still present and that the 2 non-tracked
         // files were deleted.
         confirmNonEmptyFileExists(trackedFile);
-        assertFalse(untrackedFile1.exists());
-        assertFalse(untrackedFile2.exists());
+        expect.that(untrackedFile1.exists()).isFalse();
+        expect.that(untrackedFile2.exists()).isFalse();
     }
 
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingService lock.
@@ -1860,8 +1914,8 @@ public final class ProfilingServiceTests {
         confirmNonEmptyFileExists(trackedFile1);
         confirmNonEmptyFileExists(trackedFile2);
         confirmNonEmptyFileExists(trackedFile3);
-        assertFalse(untrackedFile1.exists());
-        assertFalse(untrackedFile2.exists());
+        expect.that(untrackedFile1.exists()).isFalse();
+        expect.that(untrackedFile2.exists()).isFalse();
     }
 
     /** Test that result callbacks are correctly cleaned up when new callbacks are added. */
@@ -2172,13 +2226,26 @@ public final class ProfilingServiceTests {
 
         // Verify that the new trigger was added, and that the previously present all and specific
         // triggers remain.
-        assertEquals(3, mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID).size());
-        assertTrue(mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
-                .contains(ProfilingTriggerData.TRIGGER_ALL));
-        assertTrue(mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
-                .contains(ProfilingTrigger.TRIGGER_TYPE_KILL_TASK_MANAGER));
-        assertTrue(mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID)
-                .contains(ProfilingTrigger.TRIGGER_TYPE_KILL_RECENTS));
+        expect.that(mProfilingService.mAppTriggers.get(APP_PACKAGE_NAME, FAKE_UID).size())
+                .isEqualTo(3);
+        expect.that(
+                        mProfilingService
+                                .mAppTriggers
+                                .get(APP_PACKAGE_NAME, FAKE_UID)
+                                .contains(ProfilingTriggerData.TRIGGER_ALL))
+                .isTrue();
+        expect.that(
+                        mProfilingService
+                                .mAppTriggers
+                                .get(APP_PACKAGE_NAME, FAKE_UID)
+                                .contains(ProfilingTrigger.TRIGGER_TYPE_KILL_TASK_MANAGER))
+                .isTrue();
+        expect.that(
+                        mProfilingService
+                                .mAppTriggers
+                                .get(APP_PACKAGE_NAME, FAKE_UID)
+                                .contains(ProfilingTrigger.TRIGGER_TYPE_KILL_RECENTS))
+                .isTrue();
     }
 
     /**
@@ -2289,28 +2356,28 @@ public final class ProfilingServiceTests {
             RateLimiter.CollectionEntry[] collectionTwo) {
         assertEquals(collectionOne.length, collectionTwo.length);
         for (int i = 0; i < collectionOne.length; i++) {
-            assertEquals(collectionOne[i].mUid, collectionTwo[i].mUid);
-            assertEquals(collectionOne[i].mCost, collectionTwo[i].mCost);
-            assertEquals(collectionOne[i].mTimestamp, collectionTwo[i].mTimestamp);
+            expect.that(collectionOne[i].mUid).isEqualTo(collectionTwo[i].mUid);
+            expect.that(collectionOne[i].mCost).isEqualTo(collectionTwo[i].mCost);
+            expect.that(collectionOne[i].mTimestamp).isEqualTo(collectionTwo[i].mTimestamp);
         }
     }
 
     // LINT.IfChange(equals)
     private void confirmTracingSessionsEqual(TracingSession s1, TracingSession s2) {
-        assertEquals(s1.getProfilingType(), s2.getProfilingType());
-        assertEquals(s1.getUid(), s2.getUid());
-        assertEquals(s1.getPackageName(), s2.getPackageName());
-        assertEquals(s1.getTag(), s2.getTag());
-        assertEquals(s1.getKeyMostSigBits(), s2.getKeyMostSigBits());
-        assertEquals(s1.getKeyLeastSigBits(), s2.getKeyLeastSigBits());
-        assertEquals(s1.getFileName(), s2.getFileName());
-        assertEquals(s1.getRedactedFileName(), s2.getRedactedFileName());
-        assertEquals(s1.getState().getValue(), s2.getState().getValue());
-        assertEquals(s1.getRetryCount(), s2.getRetryCount());
-        assertEquals(s1.getErrorMessage(), s2.getErrorMessage());
-        assertEquals(s1.getErrorStatus(), s2.getErrorStatus());
-        assertEquals(s1.getTriggerType(), s2.getTriggerType());
-        assertEquals(s1.getProfilingStartTimeMs(), s2.getProfilingStartTimeMs());
+        expect.that(s1.getProfilingType()).isEqualTo(s2.getProfilingType());
+        expect.that(s1.getUid()).isEqualTo(s2.getUid());
+        expect.that(s1.getPackageName()).isEqualTo(s2.getPackageName());
+        expect.that(s1.getTag()).isEqualTo(s2.getTag());
+        expect.that(s1.getKeyMostSigBits()).isEqualTo(s2.getKeyMostSigBits());
+        expect.that(s1.getKeyLeastSigBits()).isEqualTo(s2.getKeyLeastSigBits());
+        expect.that(s1.getFileName()).isEqualTo(s2.getFileName());
+        expect.that(s1.getRedactedFileName()).isEqualTo(s2.getRedactedFileName());
+        expect.that(s1.getState().getValue()).isEqualTo(s2.getState().getValue());
+        expect.that(s1.getRetryCount()).isEqualTo(s2.getRetryCount());
+        expect.that(s1.getErrorMessage()).isEqualTo(s2.getErrorMessage());
+        expect.that(s1.getErrorStatus()).isEqualTo(s2.getErrorStatus());
+        expect.that(s1.getTriggerType()).isEqualTo(s2.getTriggerType());
+        expect.that(s1.getProfilingStartTimeMs()).isEqualTo(s2.getProfilingStartTimeMs());
     }
     // LINT.ThenChange(/service/proto/android/os/queue.proto:proto)
 
@@ -2322,11 +2389,11 @@ public final class ProfilingServiceTests {
     }
 
     private void confirmProfilingTriggerEquals(ProfilingTriggerData t1, ProfilingTriggerData t2) {
-        assertEquals(t1.getUid(), t2.getUid());
-        assertEquals(t1.getPackageName(), t2.getPackageName());
-        assertEquals(t1.getTriggerType(), t2.getTriggerType());
-        assertEquals(t1.getRateLimitingPeriodHours(), t2.getRateLimitingPeriodHours());
-        assertEquals(t1.getLastTriggeredTimeMs(), t2.getLastTriggeredTimeMs());
+        expect.that(t1.getUid()).isEqualTo(t2.getUid());
+        expect.that(t1.getPackageName()).isEqualTo(t2.getPackageName());
+        expect.that(t1.getTriggerType()).isEqualTo(t2.getTriggerType());
+        expect.that(t1.getRateLimitingPeriodHours()).isEqualTo(t2.getRateLimitingPeriodHours());
+        expect.that(t1.getLastTriggeredTimeMs()).isEqualTo(t2.getLastTriggeredTimeMs());
     }
     // LINT.ThenChange(/service/proto/android/os/trigger.proto:proto)
 
@@ -2334,15 +2401,16 @@ public final class ProfilingServiceTests {
     private void confirmResultCallback(ProfilingResultCallback callback, String resultFile,
             long keyMostSigBits, long keyLeastSigBits, int status, String tag,
             boolean errorExpected) {
-        assertEquals(resultFile, callback.mResultFile);
-        assertEquals(keyMostSigBits, callback.mKeyMostSigBits);
-        assertEquals(keyLeastSigBits, callback.mKeyLeastSigBits);
-        assertEquals(status, callback.mStatus);
-        assertEquals(tag, callback.mTag);
+        expect.that(callback.mResultFile).isEqualTo(resultFile);
+        expect.that(callback.mKeyMostSigBits).isEqualTo(keyMostSigBits);
+        expect.that(callback.mKeyLeastSigBits).isEqualTo(keyLeastSigBits);
+        expect.that(callback.mStatus).isEqualTo(status);
+        expect.that(callback.mTag).isEqualTo(tag);
+
         if (errorExpected) {
-            assertNotNull(callback.mError);
+            expect.that(callback.mError).isNotNull();
         } else {
-            assertNull(callback.mError);
+            expect.that(callback.mError).isNull();
         }
     }
 
