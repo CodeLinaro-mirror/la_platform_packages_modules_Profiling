@@ -23,6 +23,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
@@ -44,6 +45,7 @@ import android.os.IProfilingResultCallback;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
 import android.os.ProfilingTrigger;
+import android.os.ProfilingTriggerValueParcel;
 import android.os.profiling.DeviceConfigHelper;
 import android.os.profiling.ProfilingService;
 import android.os.profiling.ProfilingService.TracingState;
@@ -90,6 +92,7 @@ import java.util.concurrent.TimeUnit;
 public final class ProfilingServiceTests {
 
     private static final String APP_PACKAGE_NAME = "com.android.profiling.tests";
+    private static final String NOT_THIS_APP_PACKAGE_NAME = "not.my.application";
     private static final String REQUEST_TAG = "some unique string";
 
     private static final String OVERRIDE_DEVICE_CONFIG_INT = "device_config put %s %s %d";
@@ -326,13 +329,18 @@ public final class ProfilingServiceTests {
         mProfilingService.registerResultsCallback(false, callback);
 
         // Kick off request.
-        try {
-            mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                    REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, null);
-            fail("Request without package name did not throw exception");
-        } catch (SecurityException e) {
-            // Expected
-        }
+        Throwable throwable =
+                assertThrows(
+                        SecurityException.class,
+                        () ->
+                                mProfilingService.requestProfiling(
+                                        ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
+                                        null,
+                                        REQUEST_TAG,
+                                        KEY_MOST_SIG_BITS,
+                                        KEY_LEAST_SIG_BITS,
+                                        null));
+        assertEquals("Package name empty, is not associated with caller.", throwable.getMessage());
     }
 
     /** Test that requesting with a package name not associated with the calling uid fails. */
@@ -343,13 +351,18 @@ public final class ProfilingServiceTests {
         mProfilingService.registerResultsCallback(false, callback);
 
         // Kick off request.
-        try {
-            mProfilingService.requestProfiling(ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP, null,
-                    REQUEST_TAG, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS, "not.my.application");
-            fail("Request with incorrect package name did not throw exception");
-        } catch (SecurityException e) {
-            // Expected
-        }
+        Throwable throwable =
+                assertThrows(
+                        SecurityException.class,
+                        () ->
+                                mProfilingService.requestProfiling(
+                                        ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
+                                        null,
+                                        REQUEST_TAG,
+                                        KEY_MOST_SIG_BITS,
+                                        KEY_LEAST_SIG_BITS,
+                                        NOT_THIS_APP_PACKAGE_NAME));
+        assertEquals(getErrorMessageForPackageDoesNotMatchUid(), throwable.getMessage());
     }
 
     /** Test that failing rate limiting blocks trace from running. */
@@ -394,6 +407,100 @@ public final class ProfilingServiceTests {
         confirmResultCallback(callback, null, KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS,
                 ProfilingResult.ERROR_UNKNOWN, REQUEST_TAG, true);
         assertEquals("Error communicating with perfetto", callback.mError);
+    }
+
+    /**
+     * Test that calling addProfilingTriggers with a package name not associated with the calling
+     * uid fails.
+     */
+    @Test
+    public void testAddProfilingTriggers_PackageNameNotAssociatedWithCaller_Fails() {
+        Throwable throwable =
+                assertThrows(
+                        SecurityException.class,
+                        () ->
+                                mProfilingService.addProfilingTriggers(
+                                        new ArrayList(), NOT_THIS_APP_PACKAGE_NAME));
+        assertEquals(getErrorMessageForPackageDoesNotMatchUid(), throwable.getMessage());
+    }
+
+    /**
+     * Test that calling addAllProfilingTriggers with a package name not associated with the calling
+     * uid fails.
+     */
+    @Test
+    public void testAddAllProfilingTriggers_PackageNameNotAssociatedWithCaller_Fails() {
+        Throwable throwable =
+                assertThrows(
+                        SecurityException.class,
+                        () -> mProfilingService.addAllProfilingTriggers(NOT_THIS_APP_PACKAGE_NAME));
+        assertEquals(getErrorMessageForPackageDoesNotMatchUid(), throwable.getMessage());
+    }
+
+    /**
+     * Test that calling removeProfilingTriggers with a package name not associated with the calling
+     * uid fails.
+     */
+    @Test
+    public void testRemoveProfilingTriggers_PackageNameNotAssociatedWithCaller_Fails() {
+        Throwable throwable =
+                assertThrows(
+                        SecurityException.class,
+                        () ->
+                                mProfilingService.removeProfilingTriggers(
+                                        new int[ProfilingTrigger.TRIGGER_TYPE_ANR],
+                                        NOT_THIS_APP_PACKAGE_NAME));
+        assertEquals(getErrorMessageForPackageDoesNotMatchUid(), throwable.getMessage());
+    }
+
+    /**
+     * Test that calling clearProfilingTriggers with a package name not associated with the calling
+     * uid fails.
+     */
+    @Test
+    public void testClearProfilingTriggers_PackageNameNotAssociatedWithCaller_Fails() {
+        Throwable throwable =
+                assertThrows(
+                        SecurityException.class,
+                        () -> mProfilingService.clearProfilingTriggers(NOT_THIS_APP_PACKAGE_NAME));
+        assertEquals(getErrorMessageForPackageDoesNotMatchUid(), throwable.getMessage());
+    }
+
+    /**
+     * Test that calling processTrigger with request running trace trigger and a package name not
+     * associated with the calling uid fails.
+     */
+    @Test
+    @EnableFlags(android.os.profiling.Flags.FLAG_PROFILING_25Q4)
+    public void testProcessAppRequestTrigger_PackageNameNotAssociatedWithCaller_Fails() {
+        Throwable throwable =
+                assertThrows(
+                        SecurityException.class,
+                        () ->
+                                mProfilingService.processTrigger(
+                                        FAKE_UID,
+                                        NOT_THIS_APP_PACKAGE_NAME,
+                                        ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE,
+                                        null));
+        assertEquals(getErrorMessageForPackageDoesNotMatchUid(), throwable.getMessage());
+    }
+
+    /**
+     * Test that calling processTrigger with trigger other than request running trace trigger and a
+     * calling uid not belonging to the system fails.
+     */
+    @Test
+    public void testProcessTrigger_CallerNotSystem_Fails() {
+        Throwable throwable =
+                assertThrows(
+                        SecurityException.class,
+                        () ->
+                                mProfilingService.processTrigger(
+                                        FAKE_UID,
+                                        APP_PACKAGE_NAME,
+                                        ProfilingTrigger.TRIGGER_TYPE_ANR,
+                                        null));
+        assertEquals("Calling system only method from non system process.", throwable.getMessage());
     }
 
     /** Test that checking if any traces are running works when trace is running. */
@@ -1374,6 +1481,24 @@ public final class ProfilingServiceTests {
         expect.that(mProfilingService.mAppTriggers.getMap().size()).isEqualTo(0);
         expect.that(mProfilingService.mAppTriggersLoaded).isTrue();
         verify(mProfilingService, times(1)).deletePersistAppTriggersFile();
+    }
+
+    /**
+     * Test that attempting to add invalid profiling trigger directly to service throws an
+     * appropriate exception.
+     */
+    @Test
+    public void testAddProfilingTriggers_InvalidTriggerType() {
+        ProfilingTriggerValueParcel trigger = new ProfilingTriggerValueParcel();
+        trigger.triggerType = Integer.MAX_VALUE;
+
+        Throwable throwable =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () ->
+                                mProfilingService.addProfilingTriggers(
+                                        List.of(trigger), APP_PACKAGE_NAME));
+        assertEquals("Trigger type is not supported", throwable.getMessage());
     }
 
     /** Test that adding a specific listener does not trigger handling queued results. */
@@ -2442,6 +2567,14 @@ public final class ProfilingServiceTests {
         } catch (InterruptedException e) {
             // Do nothing.
         }
+    }
+
+    /** Generate the error message for package name does not belong to calling UID. */
+    private String getErrorMessageForPackageDoesNotMatchUid() {
+        return "Package name "
+                + NOT_THIS_APP_PACKAGE_NAME
+                + " not associated with calling uid: "
+                + Binder.getCallingUid();
     }
 
     public class ProfilingResultCallback extends IProfilingResultCallback.Stub {

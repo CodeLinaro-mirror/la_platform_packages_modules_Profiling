@@ -16,6 +16,8 @@
 
 package android.os.profiling;
 
+import static android.os.Process.SYSTEM_UID;
+
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.Context;
@@ -351,17 +353,29 @@ public class ProfilingService extends IProfilingService.Stub {
                     DEFAULT_SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS));
         }
         // Now subscribe to updates on test config.
-        DeviceConfig.addOnPropertiesChangedListener(DeviceConfigHelper.NAMESPACE_TESTING,
-                mContext.getMainExecutor(), new DeviceConfig.OnPropertiesChangedListener() {
+        DeviceConfig.addOnPropertiesChangedListener(
+                DeviceConfigHelper.NAMESPACE_TESTING,
+                mContext.getMainExecutor(),
+                new DeviceConfig.OnPropertiesChangedListener() {
                     @Override
                     public void onPropertiesChanged(@NonNull DeviceConfig.Properties properties) {
                         synchronized (mLock) {
-                            mKeepResultInTempDir = properties.getBoolean(
-                                    DeviceConfigHelper.DISABLE_DELETE_TEMPORARY_RESULTS, false);
+                            // Update value, using the current value as the default to ensure that
+                            // the value is unchanged when the specific config is not present in the
+                            // update config.
+                            mKeepResultInTempDir =
+                                    properties.getBoolean(
+                                            DeviceConfigHelper.DISABLE_DELETE_TEMPORARY_RESULTS,
+                                            mKeepResultInTempDir);
+
                             getRateLimiter().maybeUpdateRateLimiterDisabled(properties);
 
-                            String newDebugPackageName = properties.getString(
-                                    DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME, null);
+                            // Use null as default since we're assigning to a new variable and
+                            // handleDebugPackageChangeLocked will handle null as unchanged.
+                            String newDebugPackageName =
+                                    properties.getString(
+                                            DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
+                                            null);
                             handleDebugPackageChangeLocked(newDebugPackageName);
                         }
                     }
@@ -1046,6 +1060,12 @@ public class ProfilingService extends IProfilingService.Stub {
             // Package name is not associated with calling uid, reject request.
             throw new SecurityException("Package name " + packageName + " not associated with "
                     + "calling uid: " + callingUid);
+        }
+    }
+
+    private void enforceSystemCaller() {
+        if (Binder.getCallingUid() != SYSTEM_UID) {
+            throw new SecurityException("Calling system only method from non system process.");
         }
     }
 
@@ -1775,6 +1795,11 @@ public class ProfilingService extends IProfilingService.Stub {
             // If this trigger is for an app requesting the running background trace then enforce
             // that the caller and the package match.
             enforceCallerMatchesPackageName(packageName);
+        } else if (mDebugPackageName == null || !packageName.equals(mDebugPackageName)) {
+            // If a debug package is set and equals to the package being supplied, then this is for
+            // test/debug and we do not need to validate the system caller. Otherwise, enfore that
+            // the caller is system.
+            enforceSystemCaller();
         }
 
         // Don't block the calling thread.
