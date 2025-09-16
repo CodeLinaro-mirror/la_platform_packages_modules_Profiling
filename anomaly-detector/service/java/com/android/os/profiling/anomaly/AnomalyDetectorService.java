@@ -61,7 +61,7 @@ public final class AnomalyDetectorService extends SystemService {
     public AnomalyDetectorService(Context context) {
         super(context);
 
-        mAnomalyDetectorServiceImpl = new AnomalyDetectorServiceImpl();
+        mAnomalyDetectorServiceImpl = new AnomalyDetectorServiceImpl(context);
 
         mLocalManager = new Local();
     }
