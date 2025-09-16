@@ -26,6 +26,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.junit.Assume.assumeTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -145,6 +146,10 @@ public final class ProfilingServiceTests {
         MockitoAnnotations.initMocks(this);
         mInstrumentation = InstrumentationRegistry.getInstrumentation();
 
+        // The cts-tradefed harness enforces SELinux mode. This check is necessary
+        // for 'atest' runs which do not provide the same guarantee.
+        assumeTrue("SELinux should be in enforcing mode", isSELinuxEnforced());
+
         executeShellCmd(RESET_NAMESPACE, DeviceConfigHelper.NAMESPACE);
         executeShellCmd(RESET_NAMESPACE, DeviceConfigHelper.NAMESPACE_TESTING);
 
@@ -187,10 +192,10 @@ public final class ProfilingServiceTests {
     @After
     public void cleanup() throws Exception {
         // Delete any local persist files.
-        if (mRateLimiter.mPersistFile != null) {
+        if (mRateLimiter != null && mRateLimiter.mPersistFile != null) {
             mRateLimiter.mPersistFile.delete();
         }
-        if (mProfilingService.mPersistQueueFile != null) {
+        if (mRateLimiter != null && mProfilingService.mPersistQueueFile != null) {
             // This doesn't really do anything as the 2 file objects point to the same actual file
             // on disk, but just in case that changes try the delete here too.
             mProfilingService.mPersistQueueFile.delete();
@@ -2575,6 +2580,12 @@ public final class ProfilingServiceTests {
                 + NOT_THIS_APP_PACKAGE_NAME
                 + " not associated with calling uid: "
                 + Binder.getCallingUid();
+    }
+
+    private boolean isSELinuxEnforced() throws Exception {
+        return SystemUtil.runShellCommand(mInstrumentation, "getenforce")
+                .trim()
+                .equals("Enforcing");
     }
 
     public class ProfilingResultCallback extends IProfilingResultCallback.Stub {
