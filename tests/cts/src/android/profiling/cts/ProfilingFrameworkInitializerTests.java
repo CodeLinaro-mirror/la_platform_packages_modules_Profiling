@@ -43,9 +43,11 @@ public class ProfilingFrameworkInitializerTests {
     @Test
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
     public void testSetProfilingServiceManager() {
-        assertThrows(IllegalStateException.class,
-                () -> ProfilingFrameworkInitializer.setProfilingServiceManager(
-                        mock(ProfilingServiceManager.class)));
+        assertThrows(
+                IllegalStateException.class,
+                () ->
+                        ProfilingFrameworkInitializer.setProfilingServiceManager(
+                                mock(ProfilingServiceManager.class)));
     }
 
     /**

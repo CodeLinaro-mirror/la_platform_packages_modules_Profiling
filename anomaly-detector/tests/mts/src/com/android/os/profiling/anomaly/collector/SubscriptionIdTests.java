@@ -33,9 +33,7 @@ import org.junit.runner.RunWith;
 
 import java.util.UUID;
 
-/**
- * Tests for the {@link SubscriptionId} value object.
- */
+/** Tests for the {@link SubscriptionId} value object. */
 @RunWith(AndroidJUnit4.class)
 @RequiresFlagsEnabled(Flags.FLAG_ANOMALY_DETECTOR_CORE)
 public class SubscriptionIdTests {
@@ -116,7 +114,8 @@ public class SubscriptionIdTests {
 
     @Test
     public void constructor_nullUuid_throwsException() {
-        assertThrows("Constructor should throw NullPointerException for a null UUID",
+        assertThrows(
+                "Constructor should throw NullPointerException for a null UUID",
                 NullPointerException.class,
                 () -> new SubscriptionId(null));
     }

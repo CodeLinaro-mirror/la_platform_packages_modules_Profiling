@@ -28,8 +28,8 @@ import com.android.os.profiling.anomaly.collector.SignalCollectorConfig;
 import com.android.os.profiling.anomaly.collector.SignalCollectorData;
 
 /**
- * Defines a local interface for the AnomalyDetector service, primarily used by
- * other system server components to register {@link SignalCollector} instances.
+ * Defines a local interface for the AnomalyDetector service, primarily used by other system server
+ * components to register {@link SignalCollector} instances.
  *
  * @hide
  */
@@ -37,22 +37,22 @@ import com.android.os.profiling.anomaly.collector.SignalCollectorData;
 @FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE)
 public interface AnomalyDetectorManagerLocal {
     /**
-     * Registers a new {@link SignalCollector} with the AnomalyDetector service.
-     * This method allows other platform components to provide their data collection
-     * capabilities to the anomaly detector, enabling the anomaly detector to
-     * subscribe to various types of data for analysis.
+     * Registers a new {@link SignalCollector} with the AnomalyDetector service. This method allows
+     * other platform components to provide their data collection capabilities to the anomaly
+     * detector, enabling the anomaly detector to subscribe to various types of data for analysis.
      *
      * @param <T> The specific type of {@link SignalCollectorConfig} that this collector handles.
      * @param <U> The specific type of {@link SignalCollectorData} that this collector produces.
-     * @param configType The {@link Class} of the configuration object (extends
-     *                   {@link SignalCollectorConfig}) used by the collector. This, along
-     *                   with {@code dataType}, forms a unique key for registration.
-     * @param dataType The {@link Class} of the data object (extends
-     *                 {@link SignalCollectorData}) produced by the collector. This, along
-     *                 with {@code configType}, forms a unique key for registration.
+     * @param configType The {@link Class} of the configuration object (extends {@link
+     *     SignalCollectorConfig}) used by the collector. This, along with {@code dataType}, forms a
+     *     unique key for registration.
+     * @param dataType The {@link Class} of the data object (extends {@link SignalCollectorData})
+     *     produced by the collector. This, along with {@code configType}, forms a unique key for
+     *     registration.
      * @param collector The instance of the {@link SignalCollector} to be registered.
      */
-    <T extends SignalCollectorConfig, U extends SignalCollectorData>
-            void registerSignalCollector(@NonNull Class<T> configType, @NonNull Class<U> dataType,
-                @NonNull SignalCollector<T, U> collector);
+    <T extends SignalCollectorConfig, U extends SignalCollectorData> void registerSignalCollector(
+            @NonNull Class<T> configType,
+            @NonNull Class<U> dataType,
+            @NonNull SignalCollector<T, U> collector);
 }

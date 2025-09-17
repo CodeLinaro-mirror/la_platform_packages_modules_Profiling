@@ -29,8 +29,8 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Represents a unique identifier for a data subscription.
- * This is a value object that wraps a UUID for better type safety, and readability.
+ * Represents a unique identifier for a data subscription. This is a value object that wraps a UUID
+ * for better type safety, and readability.
  *
  * @hide
  */
@@ -41,6 +41,7 @@ public final class SubscriptionId {
 
     /**
      * Private constructor to enforce creation via static factory methods.
+     *
      * @param uuid The underlying UUID. Must not be null.
      * @throws NullPointerException if the provided UUID is null.
      */
@@ -52,6 +53,7 @@ public final class SubscriptionId {
 
     /**
      * Generates a new, unique, random SubscriptionId.
+     *
      * @return A new SubscriptionId instance.
      */
     @NonNull

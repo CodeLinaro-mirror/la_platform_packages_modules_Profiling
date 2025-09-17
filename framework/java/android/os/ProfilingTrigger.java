@@ -23,9 +23,7 @@ import android.os.profiling.Flags;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
-/**
- * Encapsulates a single profiling trigger.
- */
+/** Encapsulates a single profiling trigger. */
 @FlaggedApi(Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
 public final class ProfilingTrigger {
 
@@ -87,22 +85,27 @@ public final class ProfilingTrigger {
     public static final int TRIGGER_TYPE_KILL_TASK_MANAGER = 6;
 
     /** @hide */
-    @IntDef(value = {
-        TRIGGER_TYPE_NONE,
-        TRIGGER_TYPE_APP_FULLY_DRAWN,
-        TRIGGER_TYPE_ANR,
-        TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE,
-        TRIGGER_TYPE_KILL_FORCE_STOP,
-        TRIGGER_TYPE_KILL_RECENTS,
-        TRIGGER_TYPE_KILL_TASK_MANAGER,
-    })
+    @IntDef(
+            value = {
+                TRIGGER_TYPE_NONE,
+                TRIGGER_TYPE_APP_FULLY_DRAWN,
+                TRIGGER_TYPE_ANR,
+                TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE,
+                TRIGGER_TYPE_KILL_FORCE_STOP,
+                TRIGGER_TYPE_KILL_RECENTS,
+                TRIGGER_TYPE_KILL_TASK_MANAGER,
+            })
     @Retention(RetentionPolicy.SOURCE)
     @interface TriggerType {}
 
-    /** @see #getTriggerType */
+    /**
+     * @see #getTriggerType
+     */
     private final @TriggerType int mTriggerType;
 
-    /** @see #getRateLimitingPeriodHours  */
+    /**
+     * @see #getRateLimitingPeriodHours
+     */
     private final int mRateLimitingPeriodHours;
 
     private ProfilingTrigger(@TriggerType int triggerType, int rateLimitingPeriodHours) {
@@ -110,9 +113,7 @@ public final class ProfilingTrigger {
         mRateLimitingPeriodHours = rateLimitingPeriodHours;
     }
 
-    /**
-     * Builder class to create a {@link ProfilingTrigger} object.
-     */
+    /** Builder class to create a {@link ProfilingTrigger} object. */
     @FlaggedApi(Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public static final class Builder {
         // Trigger type has to be set, so make it an object and set to null.
@@ -140,8 +141,7 @@ public final class ProfilingTrigger {
         /** Build the {@link ProfilingTrigger} object. */
         @NonNull
         public ProfilingTrigger build() {
-            return new ProfilingTrigger(mBuilderTriggerType,
-                    mBuilderRateLimitingPeriodHours);
+            return new ProfilingTrigger(mBuilderTriggerType, mBuilderRateLimitingPeriodHours);
         }
 
         /**
@@ -210,10 +210,10 @@ public final class ProfilingTrigger {
      */
     public static boolean isValidRequestTriggerType(int triggerType) {
         return triggerType == TRIGGER_TYPE_APP_FULLY_DRAWN
-            || triggerType == TRIGGER_TYPE_ANR
-            || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE)
-            || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_KILL_FORCE_STOP)
-            || (Flags.profilingTriggerKillRecents() && triggerType == TRIGGER_TYPE_KILL_RECENTS)
-            || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_KILL_TASK_MANAGER);
+                || triggerType == TRIGGER_TYPE_ANR
+                || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE)
+                || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_KILL_FORCE_STOP)
+                || (Flags.profilingTriggerKillRecents() && triggerType == TRIGGER_TYPE_KILL_RECENTS)
+                || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_KILL_TASK_MANAGER);
     }
 }

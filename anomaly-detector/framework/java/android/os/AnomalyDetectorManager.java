@@ -34,9 +34,7 @@ public final class AnomalyDetectorManager {
     @SuppressWarnings("unused") // This will be used once APIs are implemented.
     private final IAnomalyDetectorService mService;
 
-    /**
-     * @hide
-     */
+    /** @hide */
     public AnomalyDetectorManager(Context context, IAnomalyDetectorService service) {
         mService = service;
     }
