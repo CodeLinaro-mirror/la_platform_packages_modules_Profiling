@@ -24,6 +24,8 @@ import android.content.Context;
 import android.icu.text.SimpleDateFormat;
 import android.icu.util.Calendar;
 import android.icu.util.TimeZone;
+import android.os.AnomalyProfilingManager;
+import android.os.AnomalyRequestResult;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.Environment;
@@ -31,6 +33,7 @@ import android.os.FileUtils;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
+import android.os.IProfilingAnomalyCallback;
 import android.os.IProfilingResultCallback;
 import android.os.IProfilingService;
 import android.os.IProfilingTriggerCallback;
@@ -71,6 +74,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
@@ -165,6 +169,9 @@ public class ProfilingService extends IProfilingService.Stub {
     @VisibleForTesting
     public SparseArray<List<IProfilingResultCallback>> mResultCallbacks = new SparseArray<>();
 
+    // Callback to anomaly detector for results and completion status updates on anomaly requests.
+    @Nullable private IProfilingAnomalyCallback mAnomalyCallback = null;
+
     // Request UUID key indexed storage of active tracing sessions. Currently only 1 active session
     // is supported at a time, but this will be used in future to support multiple.
     @VisibleForTesting
@@ -245,6 +252,8 @@ public class ProfilingService extends IProfilingService.Stub {
      * <p>There is no time limit on how long this can be left enabled for.
      */
     private String mDebugPackageName = null;
+
+    private AtomicBoolean mSkipEnforceSystemCaller = new AtomicBoolean(false);
 
     /**
      * State the {@link TracingSession} is in.
@@ -397,8 +406,11 @@ public class ProfilingService extends IProfilingService.Stub {
                             // Only process the new value for debug package name if it is present in
                             // properties, as we need to be able to differentiate between the value
                             // being set to null and the value not being present.
-                            if (properties.getKeyset().contains(
-                                        DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME)) {
+                            if (properties
+                                    .getKeyset()
+                                    .contains(
+                                            DeviceConfigHelper
+                                                    .SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME)) {
                                 // Assign property update value to new variable so that
                                 // handleDebugPackageChangeLocked can access both new and old
                                 // values.
@@ -409,6 +421,11 @@ public class ProfilingService extends IProfilingService.Stub {
                                                 null);
                                 handleDebugPackageChangeLocked(newDebugPackageName);
                             }
+
+                            mSkipEnforceSystemCaller.set(
+                                    properties.getBoolean(
+                                            DeviceConfigHelper.DISABLE_SYSTEM_CALLER_ENFORCEMENT,
+                                            mSkipEnforceSystemCaller.get()));
                         }
                     }
                 });
@@ -924,21 +941,32 @@ public class ProfilingService extends IProfilingService.Stub {
                     // Redaction needed, kick it off.
                     handleRedactionRequiredResult(session);
                 } else {
-                    // For results that don't require redaction, maybe log the location of the
-                    // retained result after profiling completes.
-                    handleRetainedTempFiles(session);
+                    if (session.isReturnToAnomalyDetectorOnly()) {
+                        session.setError(ProfilingResult.ERROR_NONE);
+                        sendSessionToAnomalyDetector(session);
+                    } else {
+                        // For results that don't require redaction, maybe log the location of the
+                        // retained result after profiling completes.
+                        handleRetainedTempFiles(session);
 
-                    // No redaction needed, move straight to copying to app storage.
-                    beginMoveFileToAppStorage(session);
+                        // No redaction needed, move straight to copying to app storage.
+                        beginMoveFileToAppStorage(session);
+                    }
                 }
                 break;
             case REDACTED:
-                // For results that require redaction, maybe log the location of the retained result
-                // after redaction completes.
-                handleRetainedTempFiles(session);
+                if (session.isReturnToAnomalyDetectorOnly()) {
+                    session.setError(ProfilingResult.ERROR_NONE);
+                    sendSessionToAnomalyDetector(session);
+                } else {
 
-                // Redaction completed, move on to copying to app storage.
-                beginMoveFileToAppStorage(session);
+                    // For results that require redaction, maybe log the location of the retained
+                    // result after redaction completes.
+                    handleRetainedTempFiles(session);
+
+                    // Redaction completed, move on to copying to app storage.
+                    beginMoveFileToAppStorage(session);
+                }
                 break;
             case COPIED_FILE:
                 // File has already been copied to app storage, proceed to callback.
@@ -1144,6 +1172,10 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     private void enforceSystemCaller() {
+        if (mSkipEnforceSystemCaller.get()) {
+            if (DEBUG) Log.d(TAG, "System caller enforcement disabled.", new Throwable());
+            return;
+        }
         if (Binder.getCallingUid() != SYSTEM_UID) {
             throw new SecurityException("Calling system only method from non system process.");
         }
@@ -1769,6 +1801,9 @@ public class ProfilingService extends IProfilingService.Stub {
                 // individual listeners without either a blocking binder call into the app or an
                 // extra binder call back from the app.
                 succeeded = true;
+
+                sendToAnomalyDetectorIfAnomalyTrigger(
+                        keyMostSigBits, keyLeastSigBits, uid, null, status, tag, triggerType);
             } catch (RemoteException e) {
                 // Failed to send result. Ignore.
                 if (DEBUG) Log.d(TAG, "Exception processing result callback", e);
@@ -2095,10 +2130,27 @@ public class ProfilingService extends IProfilingService.Stub {
         // If a future trigger requires starting a new trace rather than leveraging the existing
         // one, then an additional condition will need to be added to this check.
         if (profilingType == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE) {
-            processTriggerInternalRunningTrace(uid, packageName, triggerType, tag, callback);
+            processTriggerInternalRunningTrace(
+                    uid,
+                    packageName,
+                    triggerType,
+                    tag,
+                    0L, /* keyMostSigBits */
+                    0L, /* keyLeastSigBits */
+                    false, /* returnToAnomalyDetectorOnly */
+                    callback);
         } else {
             processTriggerInternalNewProfiling(
-                    uid, packageName, triggerType, profilingType, tag, callback);
+                    uid,
+                    packageName,
+                    triggerType,
+                    profilingType,
+                    tag,
+                    0L, /* keyMostSigBits */
+                    0L, /* keyLeastSigBits */
+                    false, /* returnToAnomalyDetectorOnly */
+                    null, /* params */
+                    callback);
         }
     }
 
@@ -2113,17 +2165,44 @@ public class ProfilingService extends IProfilingService.Stub {
             int triggerType,
             int profilingType,
             @Nullable String tag,
+            long keyMostSigBits,
+            long keyLeastSigBits,
+            boolean returnToAnomalyDetectorOnly,
+            @Nullable Bundle params,
             @Nullable IProfilingTriggerCallback callback) {
+        // All exits from this method which do not result from approving profiling should call both
+        // performTriggerCallback and sendToAnomalyDetectorIfAnomalyTrigger.
         if (!performTriggerRegistrationCheckAndRateLimiting(
                 uid, packageName, triggerType, profilingType, callback)) {
+            // If we fall into this case, then either rate limiting was denied or the trigger wasn't
+            // registered for the provided process. In the case of anomaly triggers, which bypass
+            // rate limiting, this means the trigger was not registered, so send the result with not
+            // registered error code to anomaly detector if this is for an anomaly trigger.
+            sendToAnomalyDetectorIfAnomalyTrigger(
+                    keyMostSigBits,
+                    keyLeastSigBits,
+                    uid,
+                    null,
+                    AnomalyRequestResult.ERROR_FAILED_TRIGGER_NOT_REGISTERED,
+                    tag,
+                    triggerType);
             return;
         }
 
         // Rate limiter approved, try to start the request.
         try {
             TracingSession session =
-                    new TracingSession(profilingType, uid, packageName, triggerType, tag);
+                    new TracingSession(
+                            profilingType,
+                            params,
+                            uid,
+                            packageName,
+                            tag,
+                            keyMostSigBits,
+                            keyLeastSigBits,
+                            triggerType);
             session.setProfilingTriggerCallback(callback);
+            session.setReturnToAnomalyDetectorOnly(returnToAnomalyDetectorOnly);
 
             if (Flags.addRateLimiterDisabledToResult() && packageName.equals(mDebugPackageName)) {
                 session.setErrorMessage(RATE_LIMITER_DISABLED_ERROR_MESSAGE);
@@ -2136,22 +2215,44 @@ public class ProfilingService extends IProfilingService.Stub {
             // This should not happen, it should have been caught when checking rate limiter. No
             // need to call back to app as this is a trigger and not an explicit request.
             performTriggerCallback(callback);
+
             if (DEBUG) {
                 Log.d(
                         TAG,
                         "Invalid request at config generation. This should not have happened.",
                         e);
             }
+
             LoggingHelper.logProfilingTriggerSent(
                     uid, triggerType, LoggingHelper.TRIGGER_STATUS_ERROR);
+
+            sendToAnomalyDetectorIfAnomalyTrigger(
+                    keyMostSigBits,
+                    keyLeastSigBits,
+                    uid,
+                    null,
+                    ProfilingResult.ERROR_FAILED_EXECUTING,
+                    tag,
+                    triggerType);
             return;
         } catch (RuntimeException e) {
             // Perfetto error. Systems fault. No need to call back to app as this is a trigger and
             // not an explicit request.
             performTriggerCallback(callback);
+
             if (DEBUG) Log.d(TAG, "Perfetto error", e);
+
             LoggingHelper.logProfilingTriggerSent(
                     uid, triggerType, LoggingHelper.TRIGGER_STATUS_ERROR);
+
+            sendToAnomalyDetectorIfAnomalyTrigger(
+                    keyMostSigBits,
+                    keyLeastSigBits,
+                    uid,
+                    null,
+                    ProfilingResult.ERROR_FAILED_EXECUTING,
+                    tag,
+                    triggerType);
             return;
         }
     }
@@ -2162,7 +2263,12 @@ public class ProfilingService extends IProfilingService.Stub {
             @NonNull String packageName,
             int triggerType,
             @Nullable String tag,
+            long keyMostSigBits,
+            long keyLeastSigBits,
+            boolean returnToAnomalyDetectorOnly,
             @Nullable IProfilingTriggerCallback callback) {
+        // All exits from this method which do not result from successful profiling should call both
+        // performTriggerCallback and sendToAnomalyDetectorIfAnomalyTrigger.
         synchronized (mLock) {
             if (mSystemTriggeredTraceUniqueSessionName == null) {
                 performTriggerCallback(callback);
@@ -2181,6 +2287,15 @@ public class ProfilingService extends IProfilingService.Stub {
 
                 LoggingHelper.logProfilingTriggerSent(
                         uid, triggerType, LoggingHelper.TRIGGER_STATUS_MISSING_NAME);
+
+                sendToAnomalyDetectorIfAnomalyTrigger(
+                        keyMostSigBits,
+                        keyLeastSigBits,
+                        uid,
+                        null,
+                        AnomalyRequestResult.ERROR_FAILED_BACKGROUND_TRACE_NOT_RUNNING,
+                        tag,
+                        triggerType);
                 return;
             }
 
@@ -2195,8 +2310,19 @@ public class ProfilingService extends IProfilingService.Stub {
                 if (DEBUG) {
                     Log.d(TAG, "Requested clone system triggered trace but no trace active.");
                 }
+
                 LoggingHelper.logProfilingTriggerSent(
                         uid, triggerType, LoggingHelper.TRIGGER_STATUS_NOT_RUNNING);
+
+                sendToAnomalyDetectorIfAnomalyTrigger(
+                        keyMostSigBits,
+                        keyLeastSigBits,
+                        uid,
+                        null,
+                        AnomalyRequestResult.ERROR_FAILED_BACKGROUND_TRACE_NOT_RUNNING,
+                        tag,
+                        triggerType);
+
                 return;
             }
         }
@@ -2207,6 +2333,15 @@ public class ProfilingService extends IProfilingService.Stub {
                 triggerType,
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
                 callback)) {
+
+            sendToAnomalyDetectorIfAnomalyTrigger(
+                    keyMostSigBits,
+                    keyLeastSigBits,
+                    uid,
+                    null,
+                    AnomalyRequestResult.ERROR_FAILED_TRIGGER_NOT_REGISTERED,
+                    tag,
+                    triggerType);
             return;
         }
 
@@ -2256,6 +2391,15 @@ public class ProfilingService extends IProfilingService.Stub {
                     if (DEBUG) Log.d(TAG, "Cloned system triggered trace timed out.");
                     LoggingHelper.logProfilingTriggerSent(
                             uid, triggerType, LoggingHelper.TRIGGER_STATUS_ERROR);
+
+                    sendToAnomalyDetectorIfAnomalyTrigger(
+                            keyMostSigBits,
+                            keyLeastSigBits,
+                            uid,
+                            null,
+                            ProfilingResult.ERROR_FAILED_EXECUTING,
+                            tag,
+                            triggerType);
                     return;
                 }
             }
@@ -2267,6 +2411,15 @@ public class ProfilingService extends IProfilingService.Stub {
             if (DEBUG) Log.d(TAG, "Failed to clone running system triggered trace.", e);
             LoggingHelper.logProfilingTriggerSent(
                     uid, triggerType, LoggingHelper.TRIGGER_STATUS_ERROR);
+
+            sendToAnomalyDetectorIfAnomalyTrigger(
+                    keyMostSigBits,
+                    keyLeastSigBits,
+                    uid,
+                    null,
+                    ProfilingResult.ERROR_FAILED_EXECUTING,
+                    tag,
+                    triggerType);
             return;
         }
 
@@ -2280,14 +2433,22 @@ public class ProfilingService extends IProfilingService.Stub {
         TracingSession session =
                 new TracingSession(
                         ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                        null,
                         uid,
                         packageName,
-                        triggerType,
-                        tag);
+                        tag,
+                        keyMostSigBits,
+                        keyLeastSigBits,
+                        triggerType);
         session.setRedactedFileName(baseFileName + OUTPUT_FILE_TRACE_SUFFIX);
         session.setFileName(unredactedFullName);
         session.setProfilingStartTimeMs(System.currentTimeMillis());
-        if (Flags.addRateLimiterDisabledToResult() && packageName.equals(mDebugPackageName)) {
+        session.setReturnToAnomalyDetectorOnly(returnToAnomalyDetectorOnly);
+        if (Flags.addRateLimiterDisabledToResult()
+                && packageName.equals(mDebugPackageName)
+                && !ProfilingTrigger.isAnomalyTriggerType(triggerType)) {
+            // Don't add for anomaly type triggers because anomaly does not respect rate limiting,
+            // so whether rate limiting was disabled has no impact on anomaly sessions.
             session.setErrorMessage(RATE_LIMITER_DISABLED_ERROR_MESSAGE);
         }
         moveSessionToQueue(session, true);
@@ -2379,6 +2540,11 @@ public class ProfilingService extends IProfilingService.Stub {
             LoggingHelper.logProfilingTriggerSent(
                     uid, triggerType, LoggingHelper.TRIGGER_STATUS_NOT_REGISTERED);
             return false;
+        }
+
+        if (ProfilingTrigger.isAnomalyTriggerType(trigger.getTriggerType())) {
+            // Anomaly trigger are not rate limited.
+            return true;
         }
 
         // Check app provided rate limiting.
@@ -2485,6 +2651,166 @@ public class ProfilingService extends IProfilingService.Stub {
         }
     }
 
+    /** Check whether a trigger is registered to the specified process. */
+    public boolean isTriggerRegistered(int uid, @NonNull String packageName, int triggerType) {
+        if (!android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()) {
+            // If flag is disabled then this method cannot be used.
+            Log.e(
+                    TAG,
+                    "Called isTriggerRegistered with flag off which is not supported.",
+                    new Throwable());
+            throw new IllegalStateException(
+                    "Called isTriggerRegistered with anomaly flag off which is not supported.");
+        }
+
+        enforceSystemCaller();
+
+        return getTriggerDataObject(uid, packageName, triggerType) != null;
+    }
+
+    /**
+     * Send an anomaly to the specified process.
+     *
+     * <p>If the trigger type is not registered for the process, the request will not be fulfilled.
+     */
+    public void sendAnomalyProfile(
+            long keyMostSigBits,
+            long keyLeastSigBits,
+            int uid,
+            @NonNull String packageName,
+            int triggerType,
+            @Nullable String tag,
+            @NonNull String resultFileName) {
+        if (!android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()) {
+            // If flag is disabled then this method cannot be used.
+            Log.e(
+                    TAG,
+                    "Called sendAnomalyProfile with flag off which is not supported.",
+                    new Throwable());
+            return;
+        }
+
+        enforceSystemCaller();
+
+        enforceAnomalyTriggerType(triggerType);
+
+        if (DEBUG) Log.d(TAG, "sendAnomalyProfile passed validation.");
+
+        // Move off the calling thread.
+        getHandler()
+                .post(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                TracingSession session =
+                                        new TracingSession(
+                                                0, /* profilingType */
+                                                null, /* params */
+                                                uid,
+                                                packageName,
+                                                tag,
+                                                keyMostSigBits,
+                                                keyLeastSigBits,
+                                                triggerType);
+                                session.setFileName(resultFileName);
+                                moveSessionToQueue(session, true);
+                                advanceTracingSession(session, TracingState.PROFILING_FINISHED);
+                            }
+                        });
+    }
+
+    /**
+     * Collect profiling for an anomaly, and return with the output file location.
+     *
+     * <p>If the trigger type is not registered for the process, the request will not be fulfilled.
+     */
+    public void collectAnomalyProfile(
+            long keyMostSigBits,
+            long keyLeastSigBits,
+            int uid,
+            @NonNull String packageName,
+            int profilingType,
+            int triggerType,
+            boolean returnToAnomalyDetectorOnly,
+            @Nullable String tag,
+            @Nullable Bundle params) {
+        if (!android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()) {
+            // If flag is disabled then this method cannot be used.
+            Log.e(
+                    TAG,
+                    "Called collectAnomalyProfile with flag off which is not supported.",
+                    new Throwable());
+            return;
+        }
+
+        enforceSystemCaller();
+
+        enforceAnomalyTriggerType(triggerType);
+
+        if (DEBUG) Log.d(TAG, "collectAnomalyProfile passed validation.");
+
+        // Move off the calling thread.
+        getHandler()
+                .post(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                if (profilingType
+                                        == AnomalyProfilingManager
+                                                .PROFILING_TYPE_SYSTEM_TRACE_ONGOING) {
+                                    processTriggerInternalRunningTrace(
+                                            uid,
+                                            packageName,
+                                            triggerType,
+                                            tag,
+                                            keyMostSigBits,
+                                            keyLeastSigBits,
+                                            returnToAnomalyDetectorOnly,
+                                            null);
+                                } else {
+                                    processTriggerInternalNewProfiling(
+                                            uid,
+                                            packageName,
+                                            triggerType,
+                                            profilingType,
+                                            tag,
+                                            keyMostSigBits,
+                                            keyLeastSigBits,
+                                            returnToAnomalyDetectorOnly,
+                                            params,
+                                            null);
+                                }
+                            }
+                        });
+    }
+
+    /** Register a callback for anomaly profiling. This may only be called by the system process. */
+    public void registerAnomalyCallback(IProfilingAnomalyCallback callback) {
+        if (!android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()) {
+            // If flag is disabled then this method cannot be used.
+            Log.e(
+                    TAG,
+                    "Called registerAnomalyCallback with flag off which is not supported.",
+                    new Throwable());
+            return;
+        }
+
+        enforceSystemCaller();
+
+        if (mAnomalyCallback != null) {
+            if (DEBUG) {
+                Log.e(
+                        TAG,
+                        "Registering a new instance of AnomalyProfilingManager but there is an"
+                            + " instance already registered. Previously registered instance will no"
+                            + " longer receive callbacks.",
+                        new Throwable());
+            }
+        }
+
+        mAnomalyCallback = callback;
+    }
+
     /** Get a list of all package names which have registered profiling triggers. */
     private String[] getActiveTriggerPackageNames() {
         // Since only system trace is supported for triggers, we can simply grab the key set of the
@@ -2501,6 +2827,70 @@ public class ProfilingService extends IProfilingService.Stub {
         List<String> resultList = new ArrayList<>(packageNamesSet);
         resultList.add(mDebugPackageName);
         return resultList.toArray(new String[0]);
+    }
+
+    private void enforceAnomalyTriggerType(int triggerType) {
+        if (!ProfilingTrigger.isAnomalyTriggerType(triggerType)) {
+            throw new IllegalArgumentException(
+                    "Expected anomaly trigger type but received: " + triggerType);
+        }
+    }
+
+    /** Send the session result back to anomaly detector. */
+    private void sendSessionToAnomalyDetector(TracingSession session) {
+        if (!session.isReturnToAnomalyDetectorOnly()) {
+            // This should only be called if the session is supposed to be returned to the anomaly
+            // detector.
+            Log.w(
+                    TAG,
+                    "Tried sending a profiling result to anomaly detector that is not intended for"
+                            + " it.",
+                    new Throwable());
+        }
+
+        sendToAnomalyDetectorIfAnomalyTrigger(
+                session.getKeyMostSigBits(),
+                session.getKeyLeastSigBits(),
+                session.getUid(),
+                session.getDestinationFileName(TEMP_TRACE_PATH),
+                session.getErrorStatus(),
+                session.getTag(),
+                session.getTriggerType());
+    }
+
+    /**
+     * Send a status to anomaly detector if the trigger type is an anomaly trigger type. This should
+     * be used on completion of a session for both success and all failure cases so that anomaly
+     * detector can track their requests to completion.
+     */
+    private void sendToAnomalyDetectorIfAnomalyTrigger(
+            long keyMostSigBits,
+            long keyLeastSigBits,
+            int uid,
+            @Nullable String fileName,
+            int errorStatus,
+            @Nullable String tag,
+            int triggerType) {
+        if (!ProfilingTrigger.isAnomalyTriggerType(triggerType)) {
+            return;
+        }
+
+        if (mAnomalyCallback == null) {
+            if (DEBUG) {
+                Log.d(
+                        TAG,
+                        "Attempting to send a status to anomaly detector but no callback has been"
+                                + " registered.");
+            }
+            return;
+        }
+
+        try {
+            mAnomalyCallback.sendResult(
+                    fileName, keyMostSigBits, keyLeastSigBits, uid, errorStatus, tag, triggerType);
+        } catch (RemoteException e) {
+            // Ignore
+        }
     }
 
     /**
@@ -3124,6 +3514,14 @@ public class ProfilingService extends IProfilingService.Stub {
 
         if (DEBUG) {
             Log.d(TAG, "Add to queue session with file=" + session.getFileName());
+        }
+
+        if (session.isReturnToAnomalyDetectorOnly()) {
+            // Sessions that are returned directly to anomaly detector are not queued as we expect
+            // the service to be up. If the service is not up and able to receive the result, it
+            // will be lost.
+            if (DEBUG) Log.d(TAG, "Pulse specific session not added to queue");
+            return;
         }
 
         List<TracingSession> queuedResults = mQueuedTracingResults.get(session.getUid());

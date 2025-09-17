@@ -26,6 +26,7 @@ import static android.profiling.cts.ProfilingTestUtils.assertProfilingResultSucc
 import static android.profiling.cts.ProfilingTestUtils.getOneSecondDurationParamBundle;
 import static android.profiling.cts.ProfilingTestUtils.overrideDeviceConfig;
 import static android.profiling.cts.ProfilingTestUtils.overrideRateLimiter;
+import static android.profiling.cts.ProfilingTestUtils.overrideSystemCallerEnforcement;
 import static android.profiling.cts.ProfilingTestUtils.resetAllConfigs;
 import static android.profiling.cts.ProfilingTestUtils.sleep;
 import static android.profiling.cts.ProfilingTestUtils.startSystemTriggeredTraceForTesting;
@@ -47,6 +48,8 @@ import static org.mockito.Mockito.verify;
 import android.app.ApplicationErrorReport;
 import android.app.Instrumentation;
 import android.content.Context;
+import android.os.AnomalyProfilingManager;
+import android.os.AnomalyRequestResult;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.CancellationSignal;
@@ -85,6 +88,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -122,6 +126,8 @@ public final class ProfilingFrameworkTests {
             FileSystems.getDefault().getPath("/sdcard/ProfilesCollected/");
 
     private static final String REAL_PACKAGE_NAME = "com.android.profiling.tests";
+
+    private static final String REQUEST_TAG_TEXT = "some_tag";
 
     private static final int ONE_SECOND_MS = 1 * 1000;
     private static final int FIVE_SECONDS_MS = 5 * 1000;
@@ -1691,6 +1697,502 @@ public final class ProfilingFrameworkTests {
         }
     }
 
+    /**
+     * Test anomaly profiling manager method for checking trigger registration by registering 1 of
+     * the anomaly triggers, and then checking each of the anomaly triggers and confirming that the
+     * registered one shows as registered, and the other shows not registered.
+     */
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public void testAnomalyProfilingManagerIsTriggerRegistered() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideSystemCallerEnforcement();
+
+        // Register a trigger to this process.
+        ProfilingTrigger trigger =
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB).build();
+        mProfilingManager.addProfilingTriggers(List.of(trigger));
+
+        AnomalyProfilingManager anomalyProfilingManager = new AnomalyProfilingManager();
+        assertThat(anomalyProfilingManager).isNotNull();
+
+        // Check that the registered trigger is showing as registered to this process.
+        expect.that(
+                        anomalyProfilingManager.isTriggerRegistered(
+                                Binder.getCallingUid(),
+                                REAL_PACKAGE_NAME,
+                                ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB))
+                .isTrue();
+
+        // Check that another not-registered trigger is not showing as registered to this process.
+        expect.that(
+                        anomalyProfilingManager.isTriggerRegistered(
+                                Binder.getCallingUid(),
+                                REAL_PACKAGE_NAME,
+                                ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB))
+                .isFalse();
+    }
+
+    /**
+     * Test anomaly profiling manager send result method. Because we cannot write to the temp dir
+     * from this context, the test first requests a random profiling, then used that file to mimic
+     * the temp result that would be sent by anomaly detector.
+     */
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public void testAnomalyProfilingManagerSendResultSuccess() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideSystemCallerEnforcement();
+
+        // Disable rate limiter and set retain temporary files so that once we can get the filename
+        // of a file in the temp dir.
+        overrideRateLimiter(true);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE_TESTING,
+                DeviceConfigHelper.DISABLE_DELETE_TEMPORARY_RESULTS,
+                true);
+
+        // Register a trigger to this process.
+        ProfilingTrigger trigger =
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB).build();
+        mProfilingManager.addProfilingTriggers(List.of(trigger));
+
+        // Add a global listener
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
+
+        // Request profiling so that we can get a file written to temp dir.
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
+                getOneSecondDurationParamBundle(),
+                null,
+                null,
+                new ImmediateExecutor(),
+                callbackGeneral);
+
+        waitForCallback(callbackGeneral);
+
+        // Get the file name of the result file, this will match the name of the file in temp dir
+        // with only path changed.
+        String resultFile = callbackGeneral.mResult.getResultFilePath();
+        String[] filePathArray = resultFile.split("/");
+        String fileName = filePathArray[filePathArray.length - 1];
+
+        // Reset result on the global listener so we can wait on it again.
+        callbackGeneral.mResult = null;
+
+        // Add an anomaly result callback
+        AnomalyProfilingManager anomalyProfilingManager = new AnomalyProfilingManager();
+        assertThat(anomalyProfilingManager).isNotNull();
+        AnomalyCallback anomalyCallback = new AnomalyCallback();
+        anomalyProfilingManager.registerCallback(anomalyCallback);
+
+        // Send anomly with the file name we just obtained.
+        UUID key =
+                anomalyProfilingManager.sendAnomalyProfile(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        REQUEST_TAG_TEXT,
+                        fileName);
+
+        // Wait to receive the result.
+        waitForCallback(callbackGeneral);
+
+        // Confirm that result was received and is valid.
+        confirmCollectionSuccess(
+                callbackGeneral.mResult,
+                OUTPUT_FILE_STACK_SAMPLING_SUFFIX,
+                ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB);
+
+        // Confirm that anomaly results are as expected.
+        confirmAnomalyResult(
+                anomalyCallback, ProfilingResult.ERROR_NONE, key, REQUEST_TAG_TEXT, false);
+    }
+
+    /**
+     * Test that anomaly profiling manager collect profile method works for background profiling by
+     * ensuring that the profiling is received by anomaly callback and not by app callback.
+     */
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public void testAnomalyProfilingManagerCollectAndReturnBackgroundProfilingSuccess()
+            throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideSystemCallerEnforcement();
+
+        // Register a trigger to this process.
+        ProfilingTrigger trigger =
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB).build();
+        mProfilingManager.addProfilingTriggers(List.of(trigger));
+
+        // Add a global listener.
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
+
+        // Start the system triggered trace for testing.
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE_TESTING,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
+                REAL_PACKAGE_NAME);
+
+        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+
+        // Add an anomaly result callback.
+        AnomalyProfilingManager anomalyProfilingManager = new AnomalyProfilingManager();
+        assertThat(anomalyProfilingManager).isNotNull();
+        AnomalyCallback anomalyCallback = new AnomalyCallback();
+        anomalyProfilingManager.registerCallback(anomalyCallback);
+
+        // Send anomly request.
+        UUID key =
+                anomalyProfilingManager.collectAnomalyProfile(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        AnomalyProfilingManager.PROFILING_TYPE_SYSTEM_TRACE_ONGOING,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        REQUEST_TAG_TEXT,
+                        null);
+
+        // We can't wait for nothing to happen, so wait 10 seconds which should be long enough.
+        sleep(WAIT_TIME_FOR_TRIGGERED_PROFILING_NO_RESULT);
+
+        // Confirm that no result was received to the app callback.
+        expect.that(callbackGeneral.mResult).isNull();
+
+        // Confirm that anomaly results are as expected.
+        confirmAnomalyResult(
+                anomalyCallback, ProfilingResult.ERROR_NONE, key, REQUEST_TAG_TEXT, true);
+    }
+
+    /**
+     * Test that anomaly profiling manager collect profile method works for new profiling by
+     * ensuring that the profiling is received by anomaly callback and not by app callback.
+     */
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public void testAnomalyProfilingManagerCollectAndReturnNewProfilingSuccess() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // Register a trigger to this process.
+        ProfilingTrigger trigger =
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB).build();
+        mProfilingManager.addProfilingTriggers(List.of(trigger));
+
+        // Add a global listener.
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
+
+        overrideSystemCallerEnforcement();
+
+        // Add an anomaly result callback.
+        AnomalyProfilingManager anomalyProfilingManager = new AnomalyProfilingManager();
+        assertThat(anomalyProfilingManager).isNotNull();
+        AnomalyCallback anomalyCallback = new AnomalyCallback();
+        anomalyProfilingManager.registerCallback(anomalyCallback);
+
+        // Send anomaly request.
+        UUID key =
+                anomalyProfilingManager.collectAnomalyProfile(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        REQUEST_TAG_TEXT,
+                        getOneSecondDurationParamBundle());
+
+        // We can't wait for nothing to happen, so wait 10 seconds which should be long enough.
+        sleep(WAIT_TIME_FOR_TRIGGERED_PROFILING_NO_RESULT);
+
+        // Confirm that no result was received to the app callback.
+        expect.that(callbackGeneral.mResult).isNull();
+
+        // Confirm that anomaly results are as expected.
+        confirmAnomalyResult(
+                anomalyCallback, ProfilingResult.ERROR_NONE, key, REQUEST_TAG_TEXT, true);
+    }
+
+    /**
+     * Test that anomaly profiling manager collect and send profile method works for background
+     * profiling by ensuring that the profiling is received by the app callback and that anomaly
+     * callback receives the status update.
+     */
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public void testAnomalyProfilingManagerCollectAndSendBackgroundProfilingSuccess()
+            throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideSystemCallerEnforcement();
+
+        // Register a trigger to this process.
+        ProfilingTrigger trigger =
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB).build();
+        mProfilingManager.addProfilingTriggers(List.of(trigger));
+
+        // Add a global listener.
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
+
+        // Start the system triggered trace for testing.
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE_TESTING,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
+                REAL_PACKAGE_NAME);
+
+        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+
+        // Add an anomaly result callback.
+        AnomalyProfilingManager anomalyProfilingManager = new AnomalyProfilingManager();
+        assertThat(anomalyProfilingManager).isNotNull();
+        AnomalyCallback anomalyCallback = new AnomalyCallback();
+        anomalyProfilingManager.registerCallback(anomalyCallback);
+
+        // Send anomaly request.
+        UUID key =
+                anomalyProfilingManager.collectAndSendAnomalyProfile(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        AnomalyProfilingManager.PROFILING_TYPE_SYSTEM_TRACE_ONGOING,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        REQUEST_TAG_TEXT,
+                        null);
+
+        // Wait for the app to receive the result.
+        waitForCallback(callbackGeneral);
+
+        // Confirm that result received by app is as expected.
+        confirmCollectionSuccess(
+                callbackGeneral.mResult,
+                OUTPUT_FILE_TRACE_SUFFIX,
+                ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB);
+
+        // Confirm that anomaly results are as expected.
+        confirmAnomalyResult(
+                anomalyCallback, ProfilingResult.ERROR_NONE, key, REQUEST_TAG_TEXT, false);
+    }
+
+    /**
+     * Test that anomaly profiling manager collect and send profile method works for new profiling
+     * by ensuring that the profiling is received by the app callback and that anomaly callback
+     * receives the status update.
+     */
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public void testAnomalyProfilingManagerCollectAndSendNewProfilingSuccess() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // Register a trigger to this process.
+        ProfilingTrigger trigger =
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB).build();
+        mProfilingManager.addProfilingTriggers(List.of(trigger));
+
+        // Add a global listener.
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
+
+        overrideSystemCallerEnforcement();
+
+        // Add an anomaly result callback.
+        AnomalyProfilingManager anomalyProfilingManager = new AnomalyProfilingManager();
+        assertThat(anomalyProfilingManager).isNotNull();
+        AnomalyCallback anomalyCallback = new AnomalyCallback();
+        anomalyProfilingManager.registerCallback(anomalyCallback);
+
+        // Send anomaly request.
+        UUID key =
+                anomalyProfilingManager.collectAndSendAnomalyProfile(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        REQUEST_TAG_TEXT,
+                        getOneSecondDurationParamBundle());
+
+        waitForCallback(callbackGeneral);
+
+        // Confirm that result received by app is as expected.
+        confirmCollectionSuccess(
+                callbackGeneral.mResult,
+                OUTPUT_FILE_STACK_SAMPLING_SUFFIX,
+                ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB);
+
+        // Confirm that anomaly results are as expected.
+        confirmAnomalyResult(
+                anomalyCallback, ProfilingResult.ERROR_NONE, key, REQUEST_TAG_TEXT, false);
+    }
+
+    /**
+     * Test that anomaly profiling manager requests for new profiling of a process which has not
+     * registered the provided trigger fails and provides a result with the correct error code.
+     */
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public void testAnomalyProfilingManagerNewProfilingTriggerNotRegisteredFail() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // Do not register any triggers to this process.
+
+        // Add a global listener.
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
+
+        overrideSystemCallerEnforcement();
+
+        // Add an anomaly result callback.
+        AnomalyProfilingManager anomalyProfilingManager = new AnomalyProfilingManager();
+        assertThat(anomalyProfilingManager).isNotNull();
+        AnomalyCallback anomalyCallback = new AnomalyCallback();
+        anomalyProfilingManager.registerCallback(anomalyCallback);
+
+        // Send anomaly request.
+        UUID key =
+                anomalyProfilingManager.collectAnomalyProfile(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        REQUEST_TAG_TEXT,
+                        getOneSecondDurationParamBundle());
+
+        // We can't wait for nothing to happen, so wait 10 seconds which should be long enough.
+        sleep(WAIT_TIME_FOR_TRIGGERED_PROFILING_NO_RESULT);
+
+        // Confirm that no result was received to the app callback.
+        expect.that(callbackGeneral.mResult).isNull();
+
+        // Confirm that anomaly results are as expected.
+        confirmAnomalyResult(
+                anomalyCallback,
+                AnomalyRequestResult.ERROR_FAILED_TRIGGER_NOT_REGISTERED,
+                key,
+                REQUEST_TAG_TEXT,
+                false);
+    }
+
+    /**
+     * Test that anomaly profiling manager requests for background trace profiling of a process
+     * which has not registered the provided trigger fails and provides a result with the correct
+     * error code.
+     */
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public void testAnomalyProfilingManagerBackgroundTraceTriggerNotRegisteredFail()
+            throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // Do not register any triggers to this process.
+
+        // Add a global listener.
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
+
+        overrideSystemCallerEnforcement();
+
+        // Start the system triggered trace for testing.
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE_TESTING,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
+                REAL_PACKAGE_NAME);
+
+        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+
+        // Add an anomaly result callback.
+        AnomalyProfilingManager anomalyProfilingManager = new AnomalyProfilingManager();
+        assertThat(anomalyProfilingManager).isNotNull();
+        AnomalyCallback anomalyCallback = new AnomalyCallback();
+        anomalyProfilingManager.registerCallback(anomalyCallback);
+
+        // Send anomaly request.
+        UUID key =
+                anomalyProfilingManager.collectAndSendAnomalyProfile(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        AnomalyProfilingManager.PROFILING_TYPE_SYSTEM_TRACE_ONGOING,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        REQUEST_TAG_TEXT,
+                        getOneSecondDurationParamBundle());
+
+        // We can't wait for nothing to happen, so wait 10 seconds which should be long enough.
+        sleep(WAIT_TIME_FOR_TRIGGERED_PROFILING_NO_RESULT);
+
+        // Confirm that no result was received to the app callback.
+        expect.that(callbackGeneral.mResult).isNull();
+
+        // Confirm that anomaly results are as expected.
+        confirmAnomalyResult(
+                anomalyCallback,
+                AnomalyRequestResult.ERROR_FAILED_TRIGGER_NOT_REGISTERED,
+                key,
+                REQUEST_TAG_TEXT,
+                false);
+    }
+
+    /**
+     * Test that anomaly profiling manager requests for background trace when a background trace is
+     * not currently running fails and provides a result with the correct error code.
+     */
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public void testAnomalyProfilingManagerBackgroundProfilingNotRunningFail() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        overrideSystemCallerEnforcement();
+
+        // Register a trigger to this process.
+        ProfilingTrigger trigger =
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB).build();
+        mProfilingManager.addProfilingTriggers(List.of(trigger));
+
+        // Add a global listener.
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
+
+        // Don't start the system triggered background trace!
+
+        // Add an anomaly result callback.
+        AnomalyProfilingManager anomalyProfilingManager = new AnomalyProfilingManager();
+        assertThat(anomalyProfilingManager).isNotNull();
+        AnomalyCallback anomalyCallback = new AnomalyCallback();
+        anomalyProfilingManager.registerCallback(anomalyCallback);
+
+        // Send anomaly request.
+        UUID key =
+                anomalyProfilingManager.collectAndSendAnomalyProfile(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        AnomalyProfilingManager.PROFILING_TYPE_SYSTEM_TRACE_ONGOING,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        REQUEST_TAG_TEXT,
+                        null);
+
+        // We can't wait for nothing to happen, so wait 10 seconds which should be long enough.
+        sleep(WAIT_TIME_FOR_TRIGGERED_PROFILING_NO_RESULT);
+
+        // Confirm that no result was received to the app callback.
+        expect.that(callbackGeneral.mResult).isNull();
+
+        // Confirm that anomaly results are as expected.
+        confirmAnomalyResult(
+                anomalyCallback,
+                AnomalyRequestResult.ERROR_FAILED_BACKGROUND_TRACE_NOT_RUNNING,
+                key,
+                REQUEST_TAG_TEXT,
+                false);
+    }
+
     /** Disable the rate limiter and wait long enough for the update to be picked up. */
     private void disableRateLimiter() throws Exception {
         overrideRateLimiter(true);
@@ -1745,6 +2247,21 @@ public final class ProfilingFrameworkTests {
         File file = new File(result.getResultFilePath());
         assertTrue(file.exists());
         assertFalse(file.length() == 0);
+    }
+
+    /** Verify that results in anomaly callback match provided expectations. */
+    private void confirmAnomalyResult(
+            AnomalyCallback callback, int status, UUID key, String tag, boolean fileNotNull) {
+        assertNotNull(callback.mResult);
+        expect.that(callback.mResult.getErrorCode()).isEqualTo(status);
+        assertEquals(key, callback.mResult.getKey());
+        expect.that(callback.mResult.getTag()).isEqualTo(tag);
+        if (fileNotNull) {
+            expect.that(callback.mResult.getResultFilePath()).isNotNull();
+        } else {
+            expect.that(callback.mResult.getResultFilePath()).isNull();
+        }
+        expect.that(callback.mResult.getUid()).isEqualTo(Binder.getCallingUid());
     }
 
     /**
@@ -1855,6 +2372,16 @@ public final class ProfilingFrameworkTests {
 
         @Override
         public void accept(ProfilingResult result) {
+            mResult = result;
+        }
+    }
+
+    public static class AnomalyCallback implements Consumer<AnomalyRequestResult> {
+
+        public AnomalyRequestResult mResult;
+
+        @Override
+        public void accept(AnomalyRequestResult result) {
             mResult = result;
         }
     }

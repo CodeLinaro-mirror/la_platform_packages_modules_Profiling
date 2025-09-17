@@ -17,6 +17,7 @@
 package android.os;
 
 import android.os.Bundle;
+import android.os.IProfilingAnomalyCallback;
 import android.os.IProfilingResultCallback;
 import android.os.IProfilingTriggerCallback;
 import android.os.ProfilingTriggerValueParcel;
@@ -50,4 +51,11 @@ interface IProfilingService {
 
     oneway void processTrigger(int uid, String packageName, int triggerType, String tag, IProfilingTriggerCallback callback);
 
+    oneway void registerAnomalyCallback(IProfilingAnomalyCallback callbacks);
+
+    boolean isTriggerRegistered(int uid, String packageName, int triggerType);
+
+    oneway void sendAnomalyProfile(long keyMostSigBits, long keyLeastSigBits, int uid, String packageName, int triggerType, String tag, String resultFileName);
+
+    oneway void collectAnomalyProfile(long keyMostSigBits, long keyLeastSigBits, int uid, String packageName, int profilingType, int triggerType, boolean returnToAnomalyDetectorOnly, String tag, in Bundle params);
 }

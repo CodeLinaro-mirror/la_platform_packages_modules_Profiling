@@ -40,6 +40,10 @@ public final class DeviceConfigHelper {
     public static final String SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME =
             "system_triggered_profiling.testing_package_name";
 
+    // Use to disable enforcement of system caller requirement in service for testing purposes.
+    public static final String DISABLE_SYSTEM_CALLER_ENFORCEMENT =
+            "system_caller_enforcement.disabled";
+
     // End section: Testing specific constants
 
     // Begin section: Server registered constants

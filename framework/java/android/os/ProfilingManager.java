@@ -125,6 +125,8 @@ public final class ProfilingManager {
     /** Profiling type for {@link #requestProfiling} to request a system trace. */
     public static final int PROFILING_TYPE_SYSTEM_TRACE = 4;
 
+    /* Values 100-199 are reserved for {@link AnomalyProfilingManager}, do not use. */
+
     /* Begin public API defined keys. */
     /* End public API defined keys. */
 
