@@ -176,10 +176,11 @@ public final class ProfilingManager {
     public static final String KEY_SIZE_KB = "KEY_SIZE_KB";
 
     /**
-     * Can be used with profiling type system trace.
-     * Value of type int must be one of:
-     * {@link VALUE_BUFFER_FILL_POLICY_DISCARD}
-     * {@link VALUE_BUFFER_FILL_POLICY_RING_BUFFER}
+     * Can be used with profiling type system trace or stack sampling.
+     *
+     * <p>Value of type int must be one of: {@link VALUE_BUFFER_FILL_POLICY_DISCARD} {@link
+     * VALUE_BUFFER_FILL_POLICY_RING_BUFFER}
+     *
      * @hide
      */
     public static final String KEY_BUFFER_FILL_POLICY = "KEY_BUFFER_FILL_POLICY";
@@ -189,6 +190,14 @@ public final class ProfilingManager {
 
     /** @hide */
     public static final int VALUE_BUFFER_FILL_POLICY_RING_BUFFER = 2;
+
+    /**
+     * Can only be used with profiling type stack sampling. Value of type boolean.
+     *
+     * @hide
+     */
+    public static final String KEY_SAMPLE_BINDER_ONLY = "KEY_SAMPLE_BINDER_ONLY";
+
     /* End not-public API defined keys/values. */
 
     /**
