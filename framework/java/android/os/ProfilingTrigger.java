@@ -84,6 +84,21 @@ public final class ProfilingTrigger {
     @FlaggedApi(Flags.FLAG_PROFILING_25Q4)
     public static final int TRIGGER_TYPE_KILL_TASK_MANAGER = 6;
 
+    /**
+     * Trigger occurs when an app has an Out Of Memory Exception.
+     *
+     * <p>System will provide a Java heap dump in response to this trigger.
+     *
+     * <p>Use of this trigger requires that any custom {@link
+     * java.lang.Thread.UncaughtExceptionHandler} call through to the default uncaught exception
+     * handler ({@link java.lang.Thread#getDefaultUncaughtExceptionHandler}). If the default
+     * uncaught exception handler is not called, then this trigger cannot be used. The app can still
+     * obtain a Java heap dump in this case, but will have to request the profiling itself using
+     * {@link ProfilingManager#requestProfiling}.
+     */
+    @FlaggedApi(Flags.FLAG_PROFILING_TRIGGER_OOM)
+    public static final int TRIGGER_TYPE_OOM = 7;
+
     /** @hide */
     @IntDef(
             value = {
@@ -94,6 +109,7 @@ public final class ProfilingTrigger {
                 TRIGGER_TYPE_KILL_FORCE_STOP,
                 TRIGGER_TYPE_KILL_RECENTS,
                 TRIGGER_TYPE_KILL_TASK_MANAGER,
+                TRIGGER_TYPE_OOM,
             })
     @Retention(RetentionPolicy.SOURCE)
     @interface TriggerType {}
@@ -210,6 +226,7 @@ public final class ProfilingTrigger {
                 || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE)
                 || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_KILL_FORCE_STOP)
                 || (Flags.profilingTriggerKillRecents() && triggerType == TRIGGER_TYPE_KILL_RECENTS)
-                || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_KILL_TASK_MANAGER);
+                || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_KILL_TASK_MANAGER)
+                || (Flags.profilingTriggerOom() && triggerType == TRIGGER_TYPE_OOM);
     }
 }

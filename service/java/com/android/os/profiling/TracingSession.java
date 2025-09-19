@@ -21,6 +21,7 @@ import static android.os.profiling.ProfilingService.TracingState;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.os.Bundle;
+import android.os.IProfilingTriggerCallback;
 import android.os.QueuedResultsWrapper;
 import android.util.Log;
 
@@ -60,6 +61,7 @@ public final class TracingSession {
     @Nullable private String mDestinationFileName = null;
     private long mRedactionStartTimeMs;
     private int mMaxProfilingTimeAllowedMs = 0;
+    @Nullable private IProfilingTriggerCallback mProfilingTriggerCallback = null;
 
     public TracingSession(
             int profilingType, int uid, String packageName, int triggerType, String tag) {
@@ -228,6 +230,11 @@ public final class TracingSession {
         mErrorMessage = message;
     }
 
+    public void setProfilingTriggerCallback(
+            @Nullable IProfilingTriggerCallback profilingTriggerCallback) {
+        mProfilingTriggerCallback = profilingTriggerCallback;
+    }
+
     @Nullable
     public Bundle getParams() {
         return mParams;
@@ -336,6 +343,11 @@ public final class TracingSession {
 
     public int getTriggerType() {
         return mTriggerType;
+    }
+
+    @Nullable
+    public IProfilingTriggerCallback getProfilingTriggerCallback() {
+        return mProfilingTriggerCallback;
     }
 
     // LINT.IfChange(to_proto)

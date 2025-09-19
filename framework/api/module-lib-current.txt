@@ -9,6 +9,7 @@ package android.os {
   @FlaggedApi("android.os.profiling.system_triggered_profiling_new") public class ProfilingServiceHelper {
     method @NonNull public static android.os.ProfilingServiceHelper getInstance();
     method public void onProfilingTriggerOccurred(int, @NonNull String, int);
+    method @FlaggedApi("android.os.profiling.profiling_trigger_oom") public int profileApplicationCrash(int, @NonNull String, @NonNull android.app.ApplicationErrorReport.CrashInfo, @NonNull java.util.concurrent.CountDownLatch);
   }
 
 }

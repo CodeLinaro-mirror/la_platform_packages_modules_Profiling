@@ -89,3 +89,11 @@ flag {
         purpose: PURPOSE_BUGFIX
      }
 }
+
+flag {
+     name: "profiling_trigger_oom"
+     namespace: "system_performance"
+     is_exported: true
+     description: "Enables the oom trigger."
+     bug: "448360272"
+}
