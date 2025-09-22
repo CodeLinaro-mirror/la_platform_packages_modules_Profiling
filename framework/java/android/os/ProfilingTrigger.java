@@ -98,14 +98,10 @@ public final class ProfilingTrigger {
     @Retention(RetentionPolicy.SOURCE)
     @interface TriggerType {}
 
-    /**
-     * @see #getTriggerType
-     */
+    /** {@link #getTriggerType} */
     private final @TriggerType int mTriggerType;
 
-    /**
-     * @see #getRateLimitingPeriodHours
-     */
+    /** {@link #getRateLimitingPeriodHours} */
     private final int mRateLimitingPeriodHours;
 
     private ProfilingTrigger(@TriggerType int triggerType, int rateLimitingPeriodHours) {

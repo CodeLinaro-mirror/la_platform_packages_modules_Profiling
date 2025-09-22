@@ -32,29 +32,19 @@ import java.util.Objects;
 public final class ProfilingResult implements Parcelable {
 
     // LINT.IfChange(params)
-    /**
-     * @see #getErrorCode
-     */
+    /** {@link #getErrorCode} */
     final @ErrorCode int mErrorCode;
 
-    /**
-     * @see #getResultFilePath
-     */
+    /** {@link #getResultFilePath} */
     @Nullable final String mResultFilePath;
 
-    /**
-     * @see #getTag
-     */
+    /** {@link #getTag} */
     @Nullable final String mTag;
 
-    /**
-     * @see #getErrorMessage
-     */
+    /** {@link #getErrorMessage} */
     @Nullable final String mErrorMessage;
 
-    /**
-     * @see #getTriggerType
-     */
+    /** {@link #getTriggerType} */
     final int mTriggerType;
 
     // LINT.ThenChange(:from_parcel)
@@ -167,7 +157,7 @@ public final class ProfilingResult implements Parcelable {
     /**
      * The file path of the profiling result data.
      *
-     * <p>Will be null if {@see #getErrorCode} returns code other than {@see #ERROR_NONE}.
+     * <p>Will be null if {@link #getErrorCode} returns code other than {@link #ERROR_NONE}.
      */
     public @Nullable String getResultFilePath() {
         return mResultFilePath;
