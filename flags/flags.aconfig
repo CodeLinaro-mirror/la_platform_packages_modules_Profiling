@@ -97,3 +97,14 @@ flag {
      description: "Enables the oom trigger."
      bug: "448360272"
 }
+
+flag {
+     name: "oom_trigger_experiment_do_not_release"
+     namespace: "system_performance"
+     is_exported: false
+     description: "Bypass trigger registration to collect profiling. Experiment only."
+     bug: "448618175"
+     metadata {
+        purpose: PURPOSE_BUGFIX
+     }
+}

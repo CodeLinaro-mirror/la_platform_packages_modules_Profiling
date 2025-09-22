@@ -50,6 +50,7 @@ import android.os.ProfilingTrigger;
 import android.os.profiling.DeviceConfigHelper;
 import android.os.profiling.Flags;
 import android.os.profiling.ProfilingService;
+import android.platform.test.annotations.RequiresFlagsDisabled;
 import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
@@ -1286,6 +1287,7 @@ public final class ProfilingFrameworkTests {
      */
     @Test
     @RequiresFlagsEnabled(Flags.FLAG_PROFILING_TRIGGER_OOM)
+    @RequiresFlagsDisabled(Flags.FLAG_OOM_TRIGGER_EXPERIMENT_DO_NOT_RELEASE)
     public void testSystemTriggeredApplicationCrashNotRegistered() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
