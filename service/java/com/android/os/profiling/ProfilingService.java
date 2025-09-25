@@ -134,7 +134,8 @@ public class ProfilingService extends IProfilingService.Stub {
     private final Object mLock = new Object();
     private final HandlerThread mHandlerThread = new HandlerThread("ProfilingService");
 
-    @VisibleForTesting public RateLimiter mRateLimiter = null;
+    /** Do not access directly, use {@link #getRateLimiter}. */
+    @VisibleForTesting @Nullable public RateLimiter mRateLimiter = null;
 
     // Timeout for Perfetto process to successfully stop after we try to stop it.
     private int mPerfettoDestroyTimeoutMs;
@@ -1087,8 +1088,12 @@ public class ProfilingService extends IProfilingService.Stub {
             processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
                     ProfilingResult.ERROR_FAILED_INVALID_REQUEST, null, tag,
                     "Invalid request profiling type", getTriggerTypeNone(), profilingType);
-            LoggingHelper.logProfilingRequest(uid, profilingType, params,
-                    LoggingHelper.REQUEST_RESULT_INVALID, mRateLimiter.isRateLimiterDisabled());
+            LoggingHelper.logProfilingRequest(
+                    uid,
+                    profilingType,
+                    params,
+                    LoggingHelper.REQUEST_RESULT_INVALID,
+                    getRateLimiter().isRateLimiterDisabled());
             return;
         }
 
@@ -1100,9 +1105,12 @@ public class ProfilingService extends IProfilingService.Stub {
                 processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
                         ProfilingResult.ERROR_FAILED_PROFILING_IN_PROGRESS, null, tag, null,
                         getTriggerTypeNone(), profilingType);
-                LoggingHelper.logProfilingRequest(uid, profilingType, params,
+                LoggingHelper.logProfilingRequest(
+                        uid,
+                        profilingType,
+                        params,
                         LoggingHelper.REQUEST_RESULT_PROFILING_IN_PROGRESS,
-                        mRateLimiter.isRateLimiterDisabled());
+                        getRateLimiter().isRateLimiterDisabled());
                 return;
             }
         } catch (RuntimeException e) {
@@ -1110,8 +1118,12 @@ public class ProfilingService extends IProfilingService.Stub {
             processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
                     ProfilingResult.ERROR_UNKNOWN, null, tag, "Error communicating with perfetto",
                     getTriggerTypeNone(), profilingType);
-            LoggingHelper.logProfilingRequest(uid, profilingType, params,
-                    LoggingHelper.REQUEST_RESULT_ERROR, mRateLimiter.isRateLimiterDisabled());
+            LoggingHelper.logProfilingRequest(
+                    uid,
+                    profilingType,
+                    params,
+                    LoggingHelper.REQUEST_RESULT_ERROR,
+                    getRateLimiter().isRateLimiterDisabled());
             return;
         }
 
@@ -1141,8 +1153,12 @@ public class ProfilingService extends IProfilingService.Stub {
                 processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
                         ProfilingResult.ERROR_FAILED_INVALID_REQUEST, null, tag, e.getMessage(),
                         getTriggerTypeNone(), profilingType);
-                LoggingHelper.logProfilingRequest(uid, profilingType, params,
-                        LoggingHelper.REQUEST_RESULT_INVALID, mRateLimiter.isRateLimiterDisabled());
+                LoggingHelper.logProfilingRequest(
+                        uid,
+                        profilingType,
+                        params,
+                        LoggingHelper.REQUEST_RESULT_INVALID,
+                        getRateLimiter().isRateLimiterDisabled());
                 return;
             } catch (RuntimeException e) {
                 // Perfetto error. Systems fault.
@@ -1150,8 +1166,12 @@ public class ProfilingService extends IProfilingService.Stub {
                 processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
                         ProfilingResult.ERROR_UNKNOWN, null, tag, "Perfetto error",
                         getTriggerTypeNone(), profilingType);
-                LoggingHelper.logProfilingRequest(uid, profilingType, params,
-                        LoggingHelper.REQUEST_RESULT_ERROR, mRateLimiter.isRateLimiterDisabled());
+                LoggingHelper.logProfilingRequest(
+                        uid,
+                        profilingType,
+                        params,
+                        LoggingHelper.REQUEST_RESULT_ERROR,
+                        getRateLimiter().isRateLimiterDisabled());
                 return;
             }
         } else {
@@ -1163,8 +1183,12 @@ public class ProfilingService extends IProfilingService.Stub {
             int rateLimitType = status == RateLimiter.RATE_LIMIT_RESULT_BLOCKED_PROCESS
                         ? LoggingHelper.REQUEST_RESULT_RATE_LIMIT_PROCESS
                         : LoggingHelper.REQUEST_RESULT_RATE_LIMIT_SYSTEM;
-            LoggingHelper.logProfilingRequest(uid, profilingType, params, rateLimitType,
-                    mRateLimiter.isRateLimiterDisabled());
+            LoggingHelper.logProfilingRequest(
+                    uid,
+                    profilingType,
+                    params,
+                    rateLimitType,
+                    getRateLimiter().isRateLimiterDisabled());
         }
     }
 
@@ -1612,9 +1636,12 @@ public class ProfilingService extends IProfilingService.Stub {
             if (DEBUG) Log.d(TAG, "Request couldn't be processed", e);
             session.setError(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, e.getMessage());
 
-            LoggingHelper.logProfilingRequest(session.getUid(), session.getProfilingType(),
-                    session.getParams(), LoggingHelper.REQUEST_RESULT_INVALID,
-                    mRateLimiter.isRateLimiterDisabled());
+            LoggingHelper.logProfilingRequest(
+                    session.getUid(),
+                    session.getProfilingType(),
+                    session.getParams(),
+                    LoggingHelper.REQUEST_RESULT_INVALID,
+                    getRateLimiter().isRateLimiterDisabled());
             // Don't bother adding the session to the queue as there is no real value in trying to
             // deliver this error callback again later in the case that the app no longer has a
             // registered listener.
@@ -1644,18 +1671,24 @@ public class ProfilingService extends IProfilingService.Stub {
             session.setProfilingStartTimeMs(System.currentTimeMillis());
             mActiveTracingSessions.put(session.getKey(), session);
 
-            LoggingHelper.logProfilingRequest(session.getUid(), session.getProfilingType(),
-                    session.getParams(), LoggingHelper.REQUEST_RESULT_PROFILING_STARTED,
-                    mRateLimiter.isRateLimiterDisabled());
+            LoggingHelper.logProfilingRequest(
+                    session.getUid(),
+                    session.getProfilingType(),
+                    session.getParams(),
+                    LoggingHelper.REQUEST_RESULT_PROFILING_STARTED,
+                    getRateLimiter().isRateLimiterDisabled());
         } else {
             if (DEBUG) {
                 Log.d(TAG, "Failed to start profiling.");
             }
             session.setError(ProfilingResult.ERROR_FAILED_EXECUTING, "Trace couldn't be started");
 
-            LoggingHelper.logProfilingRequest(session.getUid(), session.getProfilingType(),
-                    session.getParams(), LoggingHelper.REQUEST_RESULT_ERROR,
-                    mRateLimiter.isRateLimiterDisabled());
+            LoggingHelper.logProfilingRequest(
+                    session.getUid(),
+                    session.getProfilingType(),
+                    session.getParams(),
+                    LoggingHelper.REQUEST_RESULT_ERROR,
+                    getRateLimiter().isRateLimiterDisabled());
 
             // Don't bother adding the session to the queue as there is no real value in trying to
             // deliver this error callback again later in the case that the app no longer has a

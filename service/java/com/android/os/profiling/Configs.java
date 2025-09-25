@@ -439,11 +439,24 @@ public final class Configs {
                         sStackSamplingSizeKbMin,
                         sStackSamplingSizeKbMax,
                         paramsCopy));
+                boolean sampleBinderOnly =
+                        getAndRemove(ProfilingManager.KEY_SAMPLE_BINDER_ONLY, false, paramsCopy);
+                TraceConfig.BufferConfig.FillPolicy stackSamplingBufferFillPolicy =
+                        getBufferFillPolicy(
+                                getAndRemove(
+                                        ProfilingManager.KEY_BUFFER_FILL_POLICY,
+                                        ProfilingManager.VALUE_BUFFER_FILL_POLICY_DISCARD,
+                                        paramsCopy));
 
                 confirmEmptyOrThrow(paramsCopy);
 
-                return generateStackSamplingConfig(packageName, stackSamplingSizeKb,
-                        stackSamplingDurationMs, frequency);
+                return generateStackSamplingConfig(
+                        packageName,
+                        stackSamplingSizeKb,
+                        stackSamplingDurationMs,
+                        frequency,
+                        sampleBinderOnly,
+                        stackSamplingBufferFillPolicy);
 
             // System trace
             case ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE:
@@ -715,41 +728,64 @@ public final class Configs {
         return builder.build().toByteArray();
     }
 
-    private static byte[] generateStackSamplingConfig(String packageName, int bufferSizeKb,
-            int durationMs, long frequency) {
+    private static byte[] generateStackSamplingConfig(
+            String packageName,
+            int bufferSizeKb,
+            int durationMs,
+            long frequency,
+            boolean sampleBinderOnly,
+            TraceConfig.BufferConfig.FillPolicy bufferFillPolicy) {
         TraceConfig.Builder builder = TraceConfig.newBuilder();
 
         // Add a buffer
-        TraceConfig.BufferConfig buffer = TraceConfig.BufferConfig.newBuilder()
-                .setSizeKb(bufferSizeKb)
-                .setFillPolicy(TraceConfig.BufferConfig.FillPolicy.DISCARD)
-                .build();
+        TraceConfig.BufferConfig buffer =
+                TraceConfig.BufferConfig.newBuilder()
+                        .setSizeKb(bufferSizeKb)
+                        .setFillPolicy(bufferFillPolicy)
+                        .build();
         builder.addBuffers(buffer);
 
-        // Add data source
-        PerfEvents.Timebase timebase = PerfEvents.Timebase.newBuilder()
-                .setCounter(PerfEvents.Counter.SW_CPU_CLOCK)
-                .setFrequency(frequency)
-                .setTimestampClock(PerfEvents.PerfClock.PERF_CLOCK_MONOTONIC)
-                .build();
-        PerfEventConfig.Scope scope = PerfEventConfig.Scope.newBuilder()
-                .addTargetCmdline(packageName)
-                .build();
-        PerfEventConfig.CallstackSampling callstackSampling = PerfEventConfig.CallstackSampling
-                .newBuilder()
-                .setScope(scope)
-                .build();
-        PerfEventConfig perfEventConfig = PerfEventConfig.newBuilder()
-                .setTimebase(timebase)
-                .setCallstackSampling(callstackSampling)
-                .build();
-        DataSourceConfig dataSourceConfig = DataSourceConfig.newBuilder()
-                .setName("linux.perf")
-                .setPerfEventConfig(perfEventConfig)
-                .build();
-        TraceConfig.DataSource dataSource = TraceConfig.DataSource.newBuilder()
-                .setConfig(dataSourceConfig)
-                .build();
+        // Create appropriate timebase based on parameters.
+        PerfEvents.Timebase timebase = null;
+        if (sampleBinderOnly) {
+            PerfEvents.Tracepoint tracepoint =
+                    PerfEvents.Tracepoint.newBuilder().setName("binder:binder_transaction").build();
+            timebase =
+                    PerfEvents.Timebase.newBuilder()
+                            .setTracepoint(tracepoint)
+                            .setName("binder_transaction")
+                            .setFrequency(frequency)
+                            .setTimestampClock(PerfEvents.PerfClock.PERF_CLOCK_MONOTONIC)
+                            .build();
+        } else {
+            timebase =
+                    PerfEvents.Timebase.newBuilder()
+                            .setCounter(PerfEvents.Counter.SW_CPU_CLOCK)
+                            .setFrequency(frequency)
+                            .setTimestampClock(PerfEvents.PerfClock.PERF_CLOCK_MONOTONIC)
+                            .build();
+        }
+
+        // Add data sources which apply for all current stack sampling configs.
+        // Create a scope limited to the supplied package name only.
+        PerfEventConfig.Scope scope =
+                PerfEventConfig.Scope.newBuilder().addTargetCmdline(packageName).build();
+        PerfEventConfig.CallstackSampling callstackSampling =
+                PerfEventConfig.CallstackSampling.newBuilder().setScope(scope).build();
+        // Configuration for the traced_perf profiler which interacts with linux.perf, the source
+        // for all current supported stack sampling configs.
+        PerfEventConfig perfEventConfig =
+                PerfEventConfig.newBuilder()
+                        .setTimebase(timebase)
+                        .setCallstackSampling(callstackSampling)
+                        .build();
+        DataSourceConfig dataSourceConfig =
+                DataSourceConfig.newBuilder()
+                        .setName("linux.perf")
+                        .setPerfEventConfig(perfEventConfig)
+                        .build();
+        TraceConfig.DataSource dataSource =
+                TraceConfig.DataSource.newBuilder().setConfig(dataSourceConfig).build();
         builder.addDataSources(dataSource);
 
         // Add duration and timeout
