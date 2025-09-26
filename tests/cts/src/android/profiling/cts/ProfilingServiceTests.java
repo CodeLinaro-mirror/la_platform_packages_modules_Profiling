@@ -16,7 +16,11 @@
 
 package android.profiling.cts;
 
-import static android.os.profiling.ProfilingService.TracingState;
+import static android.profiling.cts.ProfilingTestUtils.deleteDeviceConfig;
+import static android.profiling.cts.ProfilingTestUtils.getDeviceConfig;
+import static android.profiling.cts.ProfilingTestUtils.overrideDeviceConfig;
+import static android.profiling.cts.ProfilingTestUtils.resetNamespace;
+import static android.profiling.cts.ProfilingTestUtils.sleep;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -66,7 +70,6 @@ import androidx.test.runner.AndroidJUnit4;
 import com.android.compatibility.common.util.SystemUtil;
 
 import com.google.common.truth.Expect;
-import com.google.errorprone.annotations.FormatMethod;
 
 import org.junit.After;
 import org.junit.Before;
@@ -94,11 +97,6 @@ public final class ProfilingServiceTests {
     private static final String APP_PACKAGE_NAME = "com.android.profiling.tests";
     private static final String NOT_THIS_APP_PACKAGE_NAME = "not.my.application";
     private static final String REQUEST_TAG = "some unique string";
-
-    private static final String OVERRIDE_DEVICE_CONFIG_INT = "device_config put %s %s %d";
-    private static final String GET_DEVICE_CONFIG = "device_config get %s %s";
-    private static final String DELETE_DEVICE_CONFIG = "device_config delete %s %s";
-    private static final String RESET_NAMESPACE = "device_config reset trusted_defaults %s";
 
     private static final String PERSIST_TEST_DIR = "testdir";
     private static final String PERSIST_TEST_FILE = "testfile";
@@ -150,8 +148,8 @@ public final class ProfilingServiceTests {
         // for 'atest' runs which do not provide the same guarantee.
         assumeTrue("SELinux should be in enforcing mode", isSELinuxEnforced());
 
-        executeShellCmd(RESET_NAMESPACE, DeviceConfigHelper.NAMESPACE);
-        executeShellCmd(RESET_NAMESPACE, DeviceConfigHelper.NAMESPACE_TESTING);
+        resetNamespace(DeviceConfigHelper.NAMESPACE);
+        resetNamespace(DeviceConfigHelper.NAMESPACE_TESTING);
 
         mContext = spy(ApplicationProvider.getApplicationContext());
         mProfilingService = spy(new ProfilingService(mContext));
@@ -204,12 +202,10 @@ public final class ProfilingServiceTests {
         }
 
         // Remove any overrides set for period.
-        executeShellCmd(
-                DELETE_DEVICE_CONFIG,
+        deleteDeviceConfig(
                 DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS);
-        executeShellCmd(
-                DELETE_DEVICE_CONFIG,
+        deleteDeviceConfig(
                 DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS);
     }
@@ -1711,11 +1707,8 @@ public final class ProfilingServiceTests {
         mProfilingService.mQueuedTracingResults.clear();
 
         // Override the retry count
-        executeShellCmd(
-                OVERRIDE_DEVICE_CONFIG_INT,
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_RESULT_REDELIVERY_COUNT,
-                3);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_RESULT_REDELIVERY_COUNT, 3);
 
         // Add a in progress session to queue with too many retries
         List<TracingSession> queue = new ArrayList<TracingSession>();
@@ -2487,8 +2480,7 @@ public final class ProfilingServiceTests {
         // Override system triggered trace start values so that the trace will be attempted to be
         // started within the test duration. If these values are changed, make sure to update the
         // additional delay below as well.
-        executeShellCmd(
-                OVERRIDE_DEVICE_CONFIG_INT,
+        overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS,
                 3);
@@ -2709,12 +2701,6 @@ public final class ProfilingServiceTests {
         mRateLimiter.mPersistToDiskFrequency = persistToDiskFrequency;
     }
 
-    @FormatMethod
-    private String executeShellCmd(String cmdFormat, Object... args) throws Exception {
-        String cmd = String.format(cmdFormat, args);
-        return SystemUtil.runShellCommand(mInstrumentation, cmd);
-    }
-
     private void confirmRateLimiterEntriesEqual(
             RateLimiter.CollectionEntry[] collectionOne,
             RateLimiter.CollectionEntry[] collectionTwo) {
@@ -2796,10 +2782,10 @@ public final class ProfilingServiceTests {
      */
     private void updateDeviceConfigAndWaitForChange(String namespace, String config, int newValue)
             throws Exception {
-        executeShellCmd(OVERRIDE_DEVICE_CONFIG_INT, namespace, config, newValue);
+        overrideDeviceConfig(namespace, config, newValue);
         for (int i = 0; i < 20; i++) {
             sleep(100);
-            String s = executeShellCmd(GET_DEVICE_CONFIG, namespace, config);
+            String s = getDeviceConfig(namespace, config);
             try {
                 int val = Integer.parseInt(s.trim());
                 if (val == newValue) {
@@ -2810,14 +2796,6 @@ public final class ProfilingServiceTests {
             }
         }
         fail("DeviceConfig value never updated to match expected value.");
-    }
-
-    private static void sleep(long ms) {
-        try {
-            Thread.sleep(ms);
-        } catch (InterruptedException e) {
-            // Do nothing.
-        }
     }
 
     /** Generate the error message for package name does not belong to calling UID. */
