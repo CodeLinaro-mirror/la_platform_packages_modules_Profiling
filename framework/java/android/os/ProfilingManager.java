@@ -663,7 +663,8 @@ public final class ProfilingManager {
                         Binder.getCallingUid(),
                         packageName,
                         ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE,
-                        tag);
+                        tag,
+                        null);
             } catch (RemoteException e) {
                 if (DEBUG) Log.d(TAG, "Binder exception processing request", e);
                 e.rethrowAsRuntimeException();

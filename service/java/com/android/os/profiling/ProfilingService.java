@@ -33,6 +33,7 @@ import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.IProfilingResultCallback;
 import android.os.IProfilingService;
+import android.os.IProfilingTriggerCallback;
 import android.os.ParcelFileDescriptor;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
@@ -1794,6 +1795,9 @@ public class ProfilingService extends IProfilingService.Stub {
         } catch (IllegalArgumentException e) {
             // Request couldn't be processed. This shouldn't happen.
             if (DEBUG) Log.d(TAG, "Request couldn't be processed", e);
+
+            performTriggerCallback(session);
+
             session.setError(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, e.getMessage());
 
             LoggingHelper.logProfilingRequest(
@@ -1842,6 +1846,9 @@ public class ProfilingService extends IProfilingService.Stub {
             if (DEBUG) {
                 Log.d(TAG, "Failed to start profiling.");
             }
+
+            performTriggerCallback(session);
+
             session.setError(ProfilingResult.ERROR_FAILED_EXECUTING, "Trace couldn't be started");
 
             LoggingHelper.logProfilingRequest(
@@ -1978,29 +1985,41 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     /**
-     * Process a trigger for a uid + package name + trigger combination. This is done by verifying
-     * that a trace is active, the app has registered interest in this combo, and that both system
-     * and app provided rate limiting allow for it. If confirmed, it will proceed to clone the
-     * active profiling and continue processing the result.
+     * Process a trigger for a uid + package name + trigger combination. The bahavior diverges into
+     * one of two paths based on trigger type:
      *
-     * <p>Cloning will fork the running trace, stop the new forked trace, and output the result to a
-     * separate file. This leaves the original trace running.
+     * <p>System Trace type trigger: Verifies that a trace is active, the app has registered
+     * interest in this combo, and that both system and app provided rate limiting allow for it. If
+     * confirmed, it will proceed to clone the active profiling and continue processing the result.
+     *
+     * <p>Non System Trace type trigger: Verifies that the app has registered interest in this
+     * combo, and that both system and app provided rate limiting allow for it. If confirmed, it
+     * will proceed to start a new profiling session and continue processing the result.
      */
     public void processTrigger(
-            int uid, @NonNull String packageName, int triggerType, @Nullable String tag) {
+            int uid,
+            @NonNull String packageName,
+            int triggerType,
+            @Nullable String tag,
+            @Nullable IProfilingTriggerCallback callback) {
         if (!Flags.systemTriggeredProfilingNew()) {
             // Flag disabled.
+            performTriggerCallback(callback);
             return;
         }
 
-        if (triggerType == ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE) {
-            // If this trigger is for an app requesting the running background trace then enforce
-            // that the caller and the package match.
+        if ((Flags.profiling25q4()
+                        && triggerType == ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE)
+                || (Flags.profilingTriggerOom()
+                        && triggerType == ProfilingTrigger.TRIGGER_TYPE_OOM)) {
+            // Triggers of these types are expected to come from the process that the trigger
+            // relates to, so enforce that caller matches package name.
             enforceCallerMatchesPackageName(packageName);
         } else if (mDebugPackageName == null || !packageName.equals(mDebugPackageName)) {
-            // If a debug package is set and equals to the package being supplied, then this is for
-            // test/debug and we do not need to validate the system caller. Otherwise, enfore that
-            // the caller is system.
+            // Any remaining triggers are expected to come from the system process. If a debug
+            // package is set and equals to the package being supplied, then this is for test/debug
+            // and we do not need to validate the system caller. Otherwise, enforce that the caller
+            // is system.
             enforceSystemCaller();
         }
 
@@ -2010,9 +2029,31 @@ public class ProfilingService extends IProfilingService.Stub {
                         new Runnable() {
                             @Override
                             public void run() {
-                                processTriggerInternal(uid, packageName, triggerType, tag);
+                                processTriggerInternal(
+                                        uid, packageName, triggerType, tag, callback);
                             }
                         });
+    }
+
+    /** Returns the correct profiling type for each trigger. */
+    private int getProfilingTypeForTrigger(int triggerType) {
+        if (triggerType == ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN
+                || triggerType == ProfilingTrigger.TRIGGER_TYPE_ANR
+                || triggerType == ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE
+                || (Flags.profiling25q4()
+                        && triggerType == ProfilingTrigger.TRIGGER_TYPE_KILL_FORCE_STOP)
+                || (Flags.profilingTriggerKillRecents()
+                        && triggerType == ProfilingTrigger.TRIGGER_TYPE_KILL_RECENTS)
+                || (Flags.profiling25q4()
+                        && triggerType == ProfilingTrigger.TRIGGER_TYPE_KILL_TASK_MANAGER)) {
+            return ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE;
+        }
+
+        if (Flags.profilingTriggerOom() && triggerType == ProfilingTrigger.TRIGGER_TYPE_OOM) {
+            return ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP;
+        }
+
+        return -1;
     }
 
     /**
@@ -2020,28 +2061,109 @@ public class ProfilingService extends IProfilingService.Stub {
      */
     @VisibleForTesting
     public void processTriggerInternal(
-            int uid, @NonNull String packageName, int triggerType, @Nullable String tag) {
-        synchronized (mLock) {
-            if (mSystemTriggeredTraceProcess == null || !mSystemTriggeredTraceProcess.isAlive()) {
-                // There is no active system triggered trace so there's nothing to clone, null out
-                // the session name just in case and return. This is an expected state as the
-                // background trace does not run all the time.
-                mSystemTriggeredTraceUniqueSessionName = null;
+            int uid,
+            @NonNull String packageName,
+            int triggerType,
+            @Nullable String tag,
+            @Nullable IProfilingTriggerCallback callback) {
+        int profilingType = getProfilingTypeForTrigger(triggerType);
 
-                if (DEBUG) {
-                    Log.d(TAG, "Requested clone system triggered trace but no trace active.");
-                }
+        if (profilingType == -1) {
+            // Something is wrong. Log an error and quit.
+            performTriggerCallback(callback);
 
-                LoggingHelper.logProfilingTriggerSent(
-                        uid, triggerType, LoggingHelper.TRIGGER_STATUS_NOT_RUNNING);
-                return;
+            Log.e(
+                    TAG,
+                    String.format(
+                            "Attempting to process an unsupported trigger type %d for package %s.",
+                            triggerType, packageName));
+
+            LoggingHelper.logProfilingTriggerSent(
+                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_ERROR);
+
+            return;
+        }
+
+        // If a future trigger requires starting a new trace rather than leveraging the existing
+        // one, then an additional condition will need to be added to this check.
+        if (profilingType == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE) {
+            processTriggerInternalRunningTrace(uid, packageName, triggerType, tag, callback);
+        } else {
+            processTriggerInternalNewProfiling(
+                    uid, packageName, triggerType, profilingType, tag, callback);
+        }
+    }
+
+    /**
+     * Process trigger for cases which require starting a new profiling session. Validates the
+     * request and then progresses with profiling when appropriate.
+     */
+    @GuardedBy
+    private void processTriggerInternalNewProfiling(
+            int uid,
+            @NonNull String packageName,
+            int triggerType,
+            int profilingType,
+            @Nullable String tag,
+            @Nullable IProfilingTriggerCallback callback) {
+        if (!performTriggerRegistrationCheckAndRateLimiting(
+                uid, packageName, triggerType, profilingType, callback)) {
+            return;
+        }
+
+        // Rate limiter approved, try to start the request.
+        try {
+            TracingSession session =
+                    new TracingSession(profilingType, uid, packageName, triggerType, tag);
+            session.setProfilingTriggerCallback(callback);
+
+            if (Flags.addRateLimiterDisabledToResult() && packageName.equals(mDebugPackageName)) {
+                session.setErrorMessage(RATE_LIMITER_DISABLED_ERROR_MESSAGE);
             }
+            advanceTracingSession(session, TracingState.APPROVED);
+            LoggingHelper.logProfilingTriggerSent(
+                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_FULFILLED);
+            return;
+        } catch (IllegalArgumentException e) {
+            // This should not happen, it should have been caught when checking rate limiter. No
+            // need to call back to app as this is a trigger and not an explicit request.
+            performTriggerCallback(callback);
+            if (DEBUG) {
+                Log.d(
+                        TAG,
+                        "Invalid request at config generation. This should not have happened.",
+                        e);
+            }
+            LoggingHelper.logProfilingTriggerSent(
+                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_ERROR);
+            return;
+        } catch (RuntimeException e) {
+            // Perfetto error. Systems fault. No need to call back to app as this is a trigger and
+            // not an explicit request.
+            performTriggerCallback(callback);
+            if (DEBUG) Log.d(TAG, "Perfetto error", e);
+            LoggingHelper.logProfilingTriggerSent(
+                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_ERROR);
+            return;
+        }
+    }
 
+    /** Process trigger for cases which leverage the background trace. */
+    private void processTriggerInternalRunningTrace(
+            int uid,
+            @NonNull String packageName,
+            int triggerType,
+            @Nullable String tag,
+            @Nullable IProfilingTriggerCallback callback) {
+        synchronized (mLock) {
             if (mSystemTriggeredTraceUniqueSessionName == null) {
+                performTriggerCallback(callback);
+
                 // If we don't have the session name then we don't know how to clone the trace so
                 // stop it if it's still running and then return.
                 stopSystemTriggeredTraceLocked();
 
+                // There is no active system triggered trace so there's nothing to clone. Return.
                 if (DEBUG) {
                     Log.d(
                             TAG,
@@ -2053,24 +2175,32 @@ public class ProfilingService extends IProfilingService.Stub {
                         uid, triggerType, LoggingHelper.TRIGGER_STATUS_MISSING_NAME);
                 return;
             }
+
+            if (mSystemTriggeredTraceProcess == null || !mSystemTriggeredTraceProcess.isAlive()) {
+                performTriggerCallback(callback);
+
+                // If we make it to this path then session name wasn't set to null but can't be used
+                // anymore as its associated trace is not running, so set to null now.
+                mSystemTriggeredTraceUniqueSessionName = null;
+
+                // There is no active system triggered trace so there's nothing to clone. Return.
+                if (DEBUG) {
+                    Log.d(TAG, "Requested clone system triggered trace but no trace active.");
+                }
+                LoggingHelper.logProfilingTriggerSent(
+                        uid, triggerType, LoggingHelper.TRIGGER_STATUS_NOT_RUNNING);
+                return;
+            }
         }
 
-        ProfilingTriggerData trigger = getTriggerDataObject(uid, packageName, triggerType);
-        if (trigger == null) {
-            // No trigger object, process isn't registered for this trigger.
-            LoggingHelper.logProfilingTriggerSent(
-                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_NOT_REGISTERED);
+        if (!performTriggerRegistrationCheckAndRateLimiting(
+                uid,
+                packageName,
+                triggerType,
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                callback)) {
             return;
         }
-
-        // Then check rate limiting, both app and system.
-        if (!isTriggerRateLimitingAllowed(trigger, ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE)) {
-            // Logging for this return case is done within {@link isTriggerRateLimitingAllowed}.
-            return;
-        }
-
-        // Now that it's approved by both rate limiters, update the last run value.
-        trigger.setLastTriggeredTimeMs(System.currentTimeMillis());
 
         // If we made it this far, a trace is running, the app has registered interest in this
         // trigger, and rate limiting allows for capturing the result.
@@ -2112,6 +2242,8 @@ public class ProfilingService extends IProfilingService.Stub {
 
                 // Wait again to see if it stops now.
                 if (!clone.waitFor(mPerfettoDestroyTimeoutMs, TimeUnit.MILLISECONDS)) {
+                    performTriggerCallback(callback);
+
                     // Nothing more to do, result won't be ready so return.
                     if (DEBUG) Log.d(TAG, "Cloned system triggered trace timed out.");
                     LoggingHelper.logProfilingTriggerSent(
@@ -2120,6 +2252,8 @@ public class ProfilingService extends IProfilingService.Stub {
                 }
             }
         } catch (IOException | InterruptedException e) {
+            performTriggerCallback(callback);
+
             // Failed. There's nothing to clean up as we haven't created a session for this clone
             // yet so just fail quietly. The result for this trigger instance combo will be lost.
             if (DEBUG) Log.d(TAG, "Failed to clone running system triggered trace.", e);
@@ -2127,6 +2261,8 @@ public class ProfilingService extends IProfilingService.Stub {
                     uid, triggerType, LoggingHelper.TRIGGER_STATUS_ERROR);
             return;
         }
+
+        performTriggerCallback(callback);
 
         LoggingHelper.logProfilingTriggerSent(
                 uid, triggerType, LoggingHelper.TRIGGER_STATUS_FULFILLED);
@@ -2207,12 +2343,41 @@ public class ProfilingService extends IProfilingService.Stub {
         return trigger;
     }
 
-    /** Check rate limiting for a potential system triggered profiling run. */
-    private boolean isTriggerRateLimitingAllowed(ProfilingTriggerData trigger, int profilingType) {
+    /**
+     * Check trigger registration and rate limiting for a potential system triggered profiling run,
+     * and update rate limiting values if approved.
+     */
+    private boolean performTriggerRegistrationCheckAndRateLimiting(
+            int uid,
+            @NonNull String packageName,
+            int triggerType,
+            int profilingType,
+            @Nullable IProfilingTriggerCallback callback) {
+        ProfilingTriggerData trigger = getTriggerDataObject(uid, packageName, triggerType);
+
+        if (trigger == null
+                && Flags.profilingTriggerOom()
+                && triggerType == ProfilingTrigger.TRIGGER_TYPE_OOM
+                && Flags.oomTriggerExperimentDoNotRelease()) {
+            // In order to evaluate perf impact of the oom trigger which delays app death, create a
+            // fake trigger object if the real one is non-existent, and proceed with that object.
+            // The object will not be saved in this flow so it will only apply to this session.
+            trigger = new ProfilingTriggerData(uid, packageName, triggerType, 0);
+        }
+
+        if (trigger == null) {
+            // No trigger object, process isn't registered for this trigger.
+            performTriggerCallback(callback);
+            LoggingHelper.logProfilingTriggerSent(
+                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_NOT_REGISTERED);
+            return false;
+        }
+
         // Check app provided rate limiting.
         if (System.currentTimeMillis() - trigger.getLastTriggeredTimeMs()
                 < trigger.getRateLimitingPeriodHours() * 60L * 60L * 1000L) {
             // App provided rate limiting doesn't allow for this run, return.
+            performTriggerCallback(callback);
             if (DEBUG) {
                 Log.d(
                         TAG,
@@ -2238,6 +2403,7 @@ public class ProfilingService extends IProfilingService.Stub {
                 // Blocked by system rate limiter, return. Since this is system triggered there is
                 // no callback and therefore no need to distinguish between per app and system
                 // denials within the system rate limiter.
+                performTriggerCallback(callback);
                 if (DEBUG) {
                     Log.d(
                             TAG,
@@ -2256,6 +2422,9 @@ public class ProfilingService extends IProfilingService.Stub {
                 return false;
             }
         }
+
+        // Now that it's approved by both rate limiters, update the last run value.
+        trigger.setLastTriggeredTimeMs(System.currentTimeMillis());
 
         return true;
     }
@@ -2347,9 +2516,11 @@ public class ProfilingService extends IProfilingService.Stub {
         } else if (session.getActiveTrace().isAlive() && processingTimeRemaining < 0) {
             // still running but exceeded max allotted processing time, stop profiling and deliver
             // what results are available.
+            performTriggerCallback(session);
             stopProfiling(session.getKey(), LoggingHelper.PROFILING_STOPPED_REASON_TIMED_OUT);
         } else {
             // complete, process results and deliver.
+            performTriggerCallback(session);
             LoggingHelper.logProfilingStopped(
                     session.getUid(),
                     session.getProfilingType(),
@@ -3319,6 +3490,21 @@ public class ProfilingService extends IProfilingService.Stub {
 
         // Set session name to null.
         mSystemTriggeredTraceUniqueSessionName = null;
+    }
+
+    private void performTriggerCallback(@NonNull TracingSession session) {
+        performTriggerCallback(session.getProfilingTriggerCallback());
+        session.setProfilingTriggerCallback(null);
+    }
+
+    private void performTriggerCallback(@Nullable IProfilingTriggerCallback callback) {
+        if (callback != null) {
+            try {
+                callback.onComplete();
+            } catch (RemoteException e) {
+                Log.w(TAG, "Exception notifying caller of process trigger complete.", e);
+            }
+        }
     }
 
     private class ProfilingDeathRecipient implements IBinder.DeathRecipient {

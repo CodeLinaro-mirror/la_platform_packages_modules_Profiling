@@ -537,6 +537,7 @@ public final class ProfilingServiceTests {
                                         FAKE_UID,
                                         NOT_THIS_APP_PACKAGE_NAME,
                                         ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE,
+                                        null,
                                         null));
         assertEquals(getErrorMessageForPackageDoesNotMatchUid(), throwable.getMessage());
     }
@@ -555,6 +556,7 @@ public final class ProfilingServiceTests {
                                         FAKE_UID,
                                         APP_PACKAGE_NAME,
                                         ProfilingTrigger.TRIGGER_TYPE_ANR,
+                                        null,
                                         null));
         assertEquals("Calling system only method from non system process.", throwable.getMessage());
     }
@@ -2328,7 +2330,7 @@ public final class ProfilingServiceTests {
 
         // Now process the trigger.
         mProfilingService.processTriggerInternal(
-                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_ANR, null);
+                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_ANR, null, null);
 
         // Get the new trigger time and make sure it's later than the fake one, indicating it ran.
         long newTriggerTime =
@@ -2379,7 +2381,7 @@ public final class ProfilingServiceTests {
 
         // Now process the trigger.
         mProfilingService.processTriggerInternal(
-                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_ANR, null);
+                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_ANR, null, null);
 
         // Get the new trigger time and make sure it's equal to the fake one, indicating it did not
         // run.
@@ -2416,7 +2418,11 @@ public final class ProfilingServiceTests {
 
         // Now process the trigger.
         mProfilingService.processTriggerInternal(
-                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN, null);
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN,
+                null,
+                null);
 
         // Get the new trigger time and make sure it's later than 0, indicating it ran.
         long newTriggerTime =
@@ -2458,7 +2464,11 @@ public final class ProfilingServiceTests {
 
         // Now process the trigger.
         mProfilingService.processTriggerInternal(
-                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN, null);
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN,
+                null,
+                null);
 
         // Get the new trigger time and make sure it's equal to 0, indicating it did not run.
         long newTriggerTime =
