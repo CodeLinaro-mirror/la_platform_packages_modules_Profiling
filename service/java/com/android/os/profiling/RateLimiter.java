@@ -74,16 +74,13 @@ public class RateLimiter {
     private boolean mRateLimiterDisabled = false;
 
     /** Collection of run costs and entries from the last hour. */
-    @VisibleForTesting
-    public final EntryGroupWrapper mPastRunsHour;
+    @VisibleForTesting public final EntryGroupWrapper mPastRunsHour;
 
     /** Collection of run costs and entries from the last day. */
-    @VisibleForTesting
-    public final EntryGroupWrapper mPastRunsDay;
+    @VisibleForTesting public final EntryGroupWrapper mPastRunsDay;
 
     /** Collection of run costs and entries from the last week. */
-    @VisibleForTesting
-    public final EntryGroupWrapper mPastRunsWeek;
+    @VisibleForTesting public final EntryGroupWrapper mPastRunsWeek;
 
     @VisibleForTesting public int mCostJavaHeapDump;
     @VisibleForTesting public int mCostHeapProfile;
@@ -102,73 +99,82 @@ public class RateLimiter {
      * The path to the directory which includes the historical rate limiter data file as specified
      * in {@link #mPersistFile}.
      */
-    @VisibleForTesting
-    public File mPersistStoreDir;
+    @VisibleForTesting public File mPersistStoreDir;
 
     /** The historical rate limiter data file, persisted in the storage. */
-    @VisibleForTesting
-    public File mPersistFile;
+    @VisibleForTesting public File mPersistFile;
 
-    @VisibleForTesting
-    public AtomicBoolean mDataLoaded = new AtomicBoolean();
+    @VisibleForTesting public AtomicBoolean mDataLoaded = new AtomicBoolean();
 
-    @IntDef(value = {
-        RATE_LIMIT_RESULT_ALLOWED,
-        RATE_LIMIT_RESULT_BLOCKED_PROCESS,
-        RATE_LIMIT_RESULT_BLOCKED_SYSTEM,
-    })
+    @IntDef(
+            value = {
+                RATE_LIMIT_RESULT_ALLOWED,
+                RATE_LIMIT_RESULT_BLOCKED_PROCESS,
+                RATE_LIMIT_RESULT_BLOCKED_SYSTEM,
+            })
     @Retention(RetentionPolicy.SOURCE)
     @interface RateLimitResult {}
 
     /**
-     * @param handlerCallback Callback for rate limiter to obtain a {@link Handler} to schedule
-     *                        work such as persisting to storage.
+     * @param handlerCallback Callback for rate limiter to obtain a {@link Handler} to schedule work
+     *     such as persisting to storage.
      */
     public RateLimiter(HandlerCallback handlerCallback) {
         mHandlerCallback = handlerCallback;
 
         DeviceConfig.Properties properties = DeviceConfigHelper.getAllRateLimiterProperties();
 
-        mPastRunsHour = new EntryGroupWrapper(
-                properties.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR,
-                        DEFAULT_MAX_COST_SYSTEM_HOUR),
-                properties.getInt(DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR,
-                        DEFAULT_MAX_COST_PROCESS_HOUR),
-                TIME_HOUR_MS);
-        mPastRunsDay = new EntryGroupWrapper(
-                properties.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR,
-                        DEFAULT_MAX_COST_SYSTEM_DAY),
-                properties.getInt(DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR,
-                        DEFAULT_MAX_COST_PROCESS_DAY),
-                TIME_DAY_MS);
-        mPastRunsWeek = new EntryGroupWrapper(
-                properties.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY,
-                        DEFAULT_MAX_COST_SYSTEM_WEEK),
-                properties.getInt(DeviceConfigHelper.MAX_COST_PROCESS_7_DAY,
-                        DEFAULT_MAX_COST_PROCESS_WEEK),
-                TIME_WEEK_MS);
+        mPastRunsHour =
+                new EntryGroupWrapper(
+                        properties.getInt(
+                                DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR,
+                                DEFAULT_MAX_COST_SYSTEM_HOUR),
+                        properties.getInt(
+                                DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR,
+                                DEFAULT_MAX_COST_PROCESS_HOUR),
+                        TIME_HOUR_MS);
+        mPastRunsDay =
+                new EntryGroupWrapper(
+                        properties.getInt(
+                                DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR,
+                                DEFAULT_MAX_COST_SYSTEM_DAY),
+                        properties.getInt(
+                                DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR,
+                                DEFAULT_MAX_COST_PROCESS_DAY),
+                        TIME_DAY_MS);
+        mPastRunsWeek =
+                new EntryGroupWrapper(
+                        properties.getInt(
+                                DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY,
+                                DEFAULT_MAX_COST_SYSTEM_WEEK),
+                        properties.getInt(
+                                DeviceConfigHelper.MAX_COST_PROCESS_7_DAY,
+                                DEFAULT_MAX_COST_PROCESS_WEEK),
+                        TIME_WEEK_MS);
 
-        mCostJavaHeapDump = properties.getInt(DeviceConfigHelper.COST_JAVA_HEAP_DUMP,
-                DEFAULT_COST_PER_SESSION);
-        mCostHeapProfile = properties.getInt(DeviceConfigHelper.COST_HEAP_PROFILE,
-                DEFAULT_COST_PER_SESSION);
-        mCostStackSampling = properties.getInt(DeviceConfigHelper.COST_STACK_SAMPLING,
-                DEFAULT_COST_PER_SESSION);
-        mCostSystemTrace = properties.getInt(DeviceConfigHelper.COST_SYSTEM_TRACE,
-                DEFAULT_COST_PER_SESSION);
-        mCostSystemTriggeredSystemTrace = properties.getInt(
-                DeviceConfigHelper.COST_SYSTEM_TRIGGERED_SYSTEM_TRACE,
-                DEFAULT_COST_PER_SYSTEM_TRIGGERED_SESSION);
+        mCostJavaHeapDump =
+                properties.getInt(DeviceConfigHelper.COST_JAVA_HEAP_DUMP, DEFAULT_COST_PER_SESSION);
+        mCostHeapProfile =
+                properties.getInt(DeviceConfigHelper.COST_HEAP_PROFILE, DEFAULT_COST_PER_SESSION);
+        mCostStackSampling =
+                properties.getInt(DeviceConfigHelper.COST_STACK_SAMPLING, DEFAULT_COST_PER_SESSION);
+        mCostSystemTrace =
+                properties.getInt(DeviceConfigHelper.COST_SYSTEM_TRACE, DEFAULT_COST_PER_SESSION);
+        mCostSystemTriggeredSystemTrace =
+                properties.getInt(
+                        DeviceConfigHelper.COST_SYSTEM_TRIGGERED_SYSTEM_TRACE,
+                        DEFAULT_COST_PER_SYSTEM_TRIGGERED_SESSION);
 
-        mPersistToDiskFrequency = properties.getLong(
-                DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS, 0);
+        mPersistToDiskFrequency =
+                properties.getLong(DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS, 0);
         mLastPersistedTimestampMs = System.currentTimeMillis();
 
         // Get initial value for whether rate limiter should be enforcing or if it should always
         // allow profiling requests. This is used for (automated and manual) testing only.
         synchronized (mLock) {
-            mRateLimiterDisabled = DeviceConfigHelper.getTestBoolean(
-                    DeviceConfigHelper.RATE_LIMITER_DISABLE_PROPERTY, false);
+            mRateLimiterDisabled =
+                    DeviceConfigHelper.getTestBoolean(
+                            DeviceConfigHelper.RATE_LIMITER_DISABLE_PROPERTY, false);
         }
 
         setupFromPersistedData();
@@ -179,8 +185,8 @@ public class RateLimiter {
      * current rate limiting restrictions. If the request is allowed, it will be stored as having
      * run.
      */
-    public @RateLimitResult int isProfilingRequestAllowed(int uid,
-            int profilingType, boolean isTriggered, @Nullable Bundle params) {
+    public @RateLimitResult int isProfilingRequestAllowed(
+            int uid, int profilingType, boolean isTriggered, @Nullable Bundle params) {
         synchronized (mLock) {
             if (mRateLimiterDisabled && !isTriggered) {
                 // Rate limiter is disabled for testing, approve request and don't store cost.
@@ -233,12 +239,15 @@ public class RateLimiter {
 
     /**
      * This method is meant to be called every time a profiling record is added to the history.
-     * - If persist frequency is set to 0, it will immediately persist the records to disk.
-     * - If a persist is already scheduled, it will do nothing.
-     * - If the last records persist occurred longer ago than the persist frequency, it will
-     *      persist immediately.
-     * - In all other cases, it will schedule a persist event at persist frequency after the last
-     *      persist event.
+     *
+     * <ul>
+     *   <li>If persist frequency is set to 0, it will immediately persist the records to disk.
+     *   <li>If a persist is already scheduled, it will do nothing.
+     *   <li>If the last records persist occurred longer ago than the persist frequency, it will
+     *       persist immediately.
+     *   <li>In all other cases, it will schedule a persist event at persist frequency after the
+     *       last persist event.
+     * </ul>
      */
     void maybePersistToDisk() {
         if (mPersistScheduled) {
@@ -255,17 +264,20 @@ public class RateLimiter {
         } else {
             // Schedule the persist job.
             if (mPersistRunnable == null) {
-                mPersistRunnable = new Runnable() {
-                    @Override
-                    public void run() {
-                        persistToDisk();
-                        mPersistScheduled = false;
-                    }
-                };
+                mPersistRunnable =
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                persistToDisk();
+                                mPersistScheduled = false;
+                            }
+                        };
             }
             mPersistScheduled = true;
-            long persistDelay = mLastPersistedTimestampMs + mPersistToDiskFrequency
-                    - System.currentTimeMillis();
+            long persistDelay =
+                    mLastPersistedTimestampMs
+                            + mPersistToDiskFrequency
+                            - System.currentTimeMillis();
             mHandlerCallback.obtainHandler().postDelayed(mPersistRunnable, persistDelay);
         }
     }
@@ -273,7 +285,7 @@ public class RateLimiter {
     /**
      * Clean up records and persist to disk.
      *
-     * Skips if {@link mPersistFile} is not accessible to write to.
+     * <p>Skips if {@link mPersistFile} is not accessible to write to.
      */
     public void persistToDisk() {
         // Check if file exists
@@ -301,9 +313,8 @@ public class RateLimiter {
 
         // Generate proto for records. We only persist week records as this contains all smaller
         // time ranges.
-        RateLimiterRecordsWrapper outerWrapper = RateLimiterRecordsWrapper.newBuilder()
-                .setRecords(mPastRunsWeek.toProto())
-                .build();
+        RateLimiterRecordsWrapper outerWrapper =
+                RateLimiterRecordsWrapper.newBuilder().setRecords(mPastRunsWeek.toProto()).build();
 
         // Write to disk
         byte[] protoBytes = outerWrapper.toByteArray();
@@ -429,10 +440,10 @@ public class RateLimiter {
     /**
      * Handle a bad persist file - this can be a file that can't be read or can't be parsed.
      *
-     * This case is handled by attempting to delete and recreate the persist file. If this is
+     * <p>This case is handled by attempting to delete and recreate the persist file. If this is
      * successful, it adds some fake records to make up for potentially lost records.
      *
-     * If the bad file is successfully remediated then RateLimiter is ready to use and no further
+     * <p>If the bad file is successfully remediated then RateLimiter is ready to use and no further
      * initialization is needed.
      *
      * @return whether the bad file state has been successfully remediated.
@@ -495,8 +506,9 @@ public class RateLimiter {
     /** Update the disable rate limiter flag if present in the provided properties. */
     public void maybeUpdateRateLimiterDisabled(DeviceConfig.Properties properties) {
         synchronized (mLock) {
-            mRateLimiterDisabled = properties.getBoolean(
-                    DeviceConfigHelper.RATE_LIMITER_DISABLE_PROPERTY, mRateLimiterDisabled);
+            mRateLimiterDisabled =
+                    properties.getBoolean(
+                            DeviceConfigHelper.RATE_LIMITER_DISABLE_PROPERTY, mRateLimiterDisabled);
         }
     }
 
@@ -507,19 +519,21 @@ public class RateLimiter {
     public void maybeUpdateConfigs(DeviceConfig.Properties properties) {
         // If the field is not present in the changed properties then we want the value to stay the
         // same, so use the current value as the default in the properties.get.
-        mPersistToDiskFrequency = properties.getLong(
-                DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS, mPersistToDiskFrequency);
-        mCostJavaHeapDump = properties.getInt(DeviceConfigHelper.COST_JAVA_HEAP_DUMP,
-                mCostJavaHeapDump);
-        mCostHeapProfile = properties.getInt(DeviceConfigHelper.COST_HEAP_PROFILE,
-                mCostHeapProfile);
-        mCostStackSampling = properties.getInt(DeviceConfigHelper.COST_STACK_SAMPLING,
-                mCostStackSampling);
-        mCostSystemTrace = properties.getInt(DeviceConfigHelper.COST_SYSTEM_TRACE,
-                mCostSystemTrace);
-        mCostSystemTriggeredSystemTrace = properties.getInt(
-                DeviceConfigHelper.COST_SYSTEM_TRIGGERED_SYSTEM_TRACE,
-                mCostSystemTriggeredSystemTrace);
+        mPersistToDiskFrequency =
+                properties.getLong(
+                        DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS, mPersistToDiskFrequency);
+        mCostJavaHeapDump =
+                properties.getInt(DeviceConfigHelper.COST_JAVA_HEAP_DUMP, mCostJavaHeapDump);
+        mCostHeapProfile =
+                properties.getInt(DeviceConfigHelper.COST_HEAP_PROFILE, mCostHeapProfile);
+        mCostStackSampling =
+                properties.getInt(DeviceConfigHelper.COST_STACK_SAMPLING, mCostStackSampling);
+        mCostSystemTrace =
+                properties.getInt(DeviceConfigHelper.COST_SYSTEM_TRACE, mCostSystemTrace);
+        mCostSystemTriggeredSystemTrace =
+                properties.getInt(
+                        DeviceConfigHelper.COST_SYSTEM_TRIGGERED_SYSTEM_TRACE,
+                        mCostSystemTriggeredSystemTrace);
 
         // For max cost values, set a invalid default value and pass through to each group wrapper
         // to determine whether to update values.
@@ -586,6 +600,7 @@ public class RateLimiter {
 
         @GuardedBy("mLock")
         final Queue<CollectionEntry> mEntries;
+
         // uid indexed
         final SparseIntArray mPerUidCost;
         final long mTimeRangeMs;
@@ -630,9 +645,7 @@ public class RateLimiter {
             }
         }
 
-        /**
-         * Clean up the queue by removing entries that are too old.
-         */
+        /** Clean up the queue by removing entries that are too old. */
         public void cleanUpOldRecords() {
             removeOlderThan(System.currentTimeMillis() - mTimeRangeMs);
         }
@@ -656,8 +669,8 @@ public class RateLimiter {
                     }
                     final int index = mPerUidCost.indexOfKey(entry.mUid);
                     if (index >= 0) {
-                        mPerUidCost.setValueAt(index, Math.max(0,
-                                mPerUidCost.valueAt(index) - entry.mCost));
+                        mPerUidCost.setValueAt(
+                                index, Math.max(0, mPerUidCost.valueAt(index) - entry.mCost));
                     }
                 }
             }
@@ -671,10 +684,10 @@ public class RateLimiter {
          * @param cost calculated perf cost of running this query
          * @param currentTimeMillis cache time and keep consistent across checks
          * @return status indicating whether request is allowed, or which rate limiting applied to
-         *         deny it.
+         *     deny it.
          */
-        @RateLimitResult int isProfilingAllowed(final int uid, final int cost,
-                final long currentTimeMillis) {
+        @RateLimitResult
+        int isProfilingAllowed(final int uid, final int cost, final long currentTimeMillis) {
             synchronized (mLock) {
                 removeOlderThan(currentTimeMillis - mTimeRangeMs);
                 if (mTotalCost + cost > mMaxCost) {
@@ -749,4 +762,3 @@ public class RateLimiter {
         Handler obtainHandler();
     }
 }
-

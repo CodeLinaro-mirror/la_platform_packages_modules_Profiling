@@ -21,7 +21,10 @@ import android.util.SparseArray;
 
 /**
  * This is a copy/paste of {@link com.android.internal.app.ProcessMap} with change:
- * - remove does not return the removed object which leveraged a hidden SparseArray API.
+ *
+ * <ul>
+ *   <li>remove does not return the removed object which leveraged a hidden SparseArray API.
+ * </ul>
  */
 public class ProcessMap<E> {
     final ArrayMap<String, SparseArray<E>> mMap = new ArrayMap<String, SparseArray<E>>();

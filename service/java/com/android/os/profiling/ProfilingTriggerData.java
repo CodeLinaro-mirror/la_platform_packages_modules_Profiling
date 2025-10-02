@@ -29,10 +29,11 @@ public final class ProfilingTriggerData {
     private final int mTriggerType;
     private final int mRateLimitingPeriodHours;
     private long mLastTriggeredTimeMs = 0;
+
     // LINT.ThenChange(:from_proto)
 
-    public ProfilingTriggerData(int uid, @NonNull String packageName, int triggerType,
-            int rateLimitingPeriodHours) {
+    public ProfilingTriggerData(
+            int uid, @NonNull String packageName, int triggerType, int rateLimitingPeriodHours) {
         mUid = uid;
         mPackageName = packageName;
         mTriggerType = triggerType;
@@ -48,8 +49,8 @@ public final class ProfilingTriggerData {
         mRateLimitingPeriodHours = triggerProto.getRateLimitingPeriodHours();
         mLastTriggeredTimeMs = triggerProto.getLastTriggeredTimeMillis();
     }
-    // LINT.ThenChange(:to_proto)
 
+    // LINT.ThenChange(:to_proto)
 
     public void setLastTriggeredTimeMs(long lastTriggeredTimeMs) {
         mLastTriggeredTimeMs = lastTriggeredTimeMs;

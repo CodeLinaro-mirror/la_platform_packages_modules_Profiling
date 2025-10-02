@@ -65,9 +65,13 @@ public class ProfilingServiceHelper {
                 return sInstance;
             }
 
-            IProfilingService service = Flags.telemetryApis() ? IProfilingService.Stub.asInterface(
-                    ProfilingFrameworkInitializer.getProfilingServiceManager()
-                            .getProfilingServiceRegisterer().get()) : null;
+            IProfilingService service =
+                    Flags.telemetryApis()
+                            ? IProfilingService.Stub.asInterface(
+                                    ProfilingFrameworkInitializer.getProfilingServiceManager()
+                                            .getProfilingServiceRegisterer()
+                                            .get())
+                            : null;
 
             if (service == null) {
                 throw new IllegalStateException("ProfilingService not yet set up.");

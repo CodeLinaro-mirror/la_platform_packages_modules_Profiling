@@ -31,9 +31,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-/**
- * Tests for the {@link BinderSpamData} value object.
- */
+/** Tests for the {@link BinderSpamData} value object. */
 @RunWith(AndroidJUnit4.class)
 @RequiresFlagsEnabled(Flags.FLAG_ANOMALY_DETECTOR_CORE)
 public final class BinderSpamDataTests {
@@ -44,75 +42,91 @@ public final class BinderSpamDataTests {
     private static final String METHOD_NAME = "startService";
     private static final long TIMESPAN_MILLIS = 3 * 1000;
 
-    private static final BinderSpamData BINDER_SPAM_SIGNAL = new BinderSpamData.Builder()
-            .setCallingUid(CALLING_UID)
-            .setCallCount(CALL_COUNT)
-            .setInterfaceName(INTERFACE_NAME)
-            .setMethodName(METHOD_NAME)
-            .setTimespanMillis(TIMESPAN_MILLIS)
-            .build();
+    private static final BinderSpamData BINDER_SPAM_SIGNAL =
+            new BinderSpamData.Builder()
+                    .setCallingUid(CALLING_UID)
+                    .setCallCount(CALL_COUNT)
+                    .setInterfaceName(INTERFACE_NAME)
+                    .setMethodName(METHOD_NAME)
+                    .setTimespanMillis(TIMESPAN_MILLIS)
+                    .build();
 
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
 
     @Test
     public void builder_withInvalidCallingUid_throwException() {
-        assertThrows("Calling UID must be set to valid UID!", IllegalArgumentException.class,
-                () -> new BinderSpamData.Builder()
-                        .setCallingUid(-1)
-                        .setCallCount(CALL_COUNT)
-                        .setInterfaceName(INTERFACE_NAME)
-                        .setMethodName(METHOD_NAME)
-                        .setTimespanMillis(TIMESPAN_MILLIS)
-                        .build());
+        assertThrows(
+                "Calling UID must be set to valid UID!",
+                IllegalArgumentException.class,
+                () ->
+                        new BinderSpamData.Builder()
+                                .setCallingUid(-1)
+                                .setCallCount(CALL_COUNT)
+                                .setInterfaceName(INTERFACE_NAME)
+                                .setMethodName(METHOD_NAME)
+                                .setTimespanMillis(TIMESPAN_MILLIS)
+                                .build());
     }
 
     @Test
     public void builder_withInvalidCallCount_throwException() {
-        assertThrows("Call count must be greater than 0!", IllegalArgumentException.class,
-                () -> new BinderSpamData.Builder()
-                        .setCallingUid(CALLING_UID)
-                        .setCallCount(0)
-                        .setInterfaceName(INTERFACE_NAME)
-                        .setMethodName(METHOD_NAME)
-                        .setTimespanMillis(TIMESPAN_MILLIS)
-                        .build());
+        assertThrows(
+                "Call count must be greater than 0!",
+                IllegalArgumentException.class,
+                () ->
+                        new BinderSpamData.Builder()
+                                .setCallingUid(CALLING_UID)
+                                .setCallCount(0)
+                                .setInterfaceName(INTERFACE_NAME)
+                                .setMethodName(METHOD_NAME)
+                                .setTimespanMillis(TIMESPAN_MILLIS)
+                                .build());
     }
 
     @Test
     public void builder_withInvalidInterfaceName_throwException() {
-        assertThrows("Interface and method names must be set!", IllegalArgumentException.class,
-                () -> new BinderSpamData.Builder()
-                        .setCallingUid(CALLING_UID)
-                        .setCallCount(CALL_COUNT)
-                        .setInterfaceName("")
-                        .setMethodName(METHOD_NAME)
-                        .setTimespanMillis(TIMESPAN_MILLIS)
-                        .build());
+        assertThrows(
+                "Interface and method names must be set!",
+                IllegalArgumentException.class,
+                () ->
+                        new BinderSpamData.Builder()
+                                .setCallingUid(CALLING_UID)
+                                .setCallCount(CALL_COUNT)
+                                .setInterfaceName("")
+                                .setMethodName(METHOD_NAME)
+                                .setTimespanMillis(TIMESPAN_MILLIS)
+                                .build());
     }
 
     @Test
     public void builder_withInvalidMethodName_throwException() {
-        assertThrows("Interface and method names must be set!", IllegalArgumentException.class,
-                () -> new BinderSpamData.Builder()
-                        .setCallingUid(CALLING_UID)
-                        .setCallCount(CALL_COUNT)
-                        .setInterfaceName(INTERFACE_NAME)
-                        .setMethodName("")
-                        .setTimespanMillis(TIMESPAN_MILLIS)
-                        .build());
+        assertThrows(
+                "Interface and method names must be set!",
+                IllegalArgumentException.class,
+                () ->
+                        new BinderSpamData.Builder()
+                                .setCallingUid(CALLING_UID)
+                                .setCallCount(CALL_COUNT)
+                                .setInterfaceName(INTERFACE_NAME)
+                                .setMethodName("")
+                                .setTimespanMillis(TIMESPAN_MILLIS)
+                                .build());
     }
 
     @Test
     public void builder_withInvalidTimespanMillisecond_throwException() {
-        assertThrows("Timespan must be greater than 0!", IllegalArgumentException.class,
-                () -> new BinderSpamData.Builder()
-                        .setCallingUid(CALLING_UID)
-                        .setCallCount(CALL_COUNT)
-                        .setInterfaceName(INTERFACE_NAME)
-                        .setMethodName(METHOD_NAME)
-                        .setTimespanMillis(0)
-                        .build());
+        assertThrows(
+                "Timespan must be greater than 0!",
+                IllegalArgumentException.class,
+                () ->
+                        new BinderSpamData.Builder()
+                                .setCallingUid(CALLING_UID)
+                                .setCallCount(CALL_COUNT)
+                                .setInterfaceName(INTERFACE_NAME)
+                                .setMethodName(METHOD_NAME)
+                                .setTimespanMillis(0)
+                                .build());
     }
 
     @Test
@@ -124,7 +138,6 @@ public final class BinderSpamDataTests {
     public void getCallCount_returnCallCount() {
         assertThat(BINDER_SPAM_SIGNAL.getCallCount()).isEqualTo(CALL_COUNT);
     }
-
 
     @Test
     public void getInterfaceName_returnInterfaceName() {
