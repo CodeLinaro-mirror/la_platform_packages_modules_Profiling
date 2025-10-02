@@ -51,8 +51,7 @@ java_sdk_library {
     impl_library_visibility: [
         "//frameworks/base/services/signalcollector",
         "//frameworks/base/services/tests/servicestests/src/com/android/server/signalcollector",
-        "//packages/modules/Profiling/anomaly-detector/tests/robolectric:__pkg__",
-        "//packages/modules/Profiling/anomaly-detector/tests/mts",
+        "//packages/modules/Profiling/anomaly-detector/tests:__subpackages__",
     ],
     min_sdk_version: "36",
     installable: true,
