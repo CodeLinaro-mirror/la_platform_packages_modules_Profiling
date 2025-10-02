@@ -16,13 +16,7 @@
 
 package com.android.os.profiling.anomaly;
 
-import static android.Manifest.permission.CONFIGURE_ANOMALY_DETECTOR;
-
-import android.content.Context;
 import android.os.IAnomalyDetectorService;
-import android.os.RuleParcel;
-
-import java.util.List;
 
 /**
  * Implementation of {@link android.os.IAnomalyDetectorService} binder service.
@@ -30,18 +24,5 @@ import java.util.List;
  * @hide
  */
 public final class AnomalyDetectorServiceImpl extends IAnomalyDetectorService.Stub {
-
-    private final Context mContext;
-
-    public AnomalyDetectorServiceImpl(Context context) {
-        mContext = context;
-    }
-
-    @Override
-    public void setRules(List<RuleParcel> ruleParcelList) {
-        mContext.enforceCallingOrSelfPermission(
-                CONFIGURE_ANOMALY_DETECTOR,
-                "the caller does not have the required permission to set anomaly detector rules");
-        // TODO(b/423096026): Use the rules to detect anomalies.
-    }
+    // Implement methods here.
 }

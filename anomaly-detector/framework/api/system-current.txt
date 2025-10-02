@@ -2,7 +2,6 @@
 package android.os {
 
   @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public final class AnomalyDetectorManager {
-    method @RequiresPermission(android.Manifest.permission.CONFIGURE_ANOMALY_DETECTOR) public void setAnomalyDetectorRules(@NonNull java.util.Set<android.os.Rule>);
   }
 
   @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public final class Rule {

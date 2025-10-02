@@ -16,21 +16,11 @@
 
 package android.os;
 
-import static android.Manifest.permission.CONFIGURE_ANOMALY_DETECTOR;
-
 import android.annotation.FlaggedApi;
-import android.annotation.NonNull;
-import android.annotation.RequiresApi;
-import android.annotation.RequiresPermission;
 import android.annotation.SystemApi;
 import android.annotation.SystemService;
 import android.content.Context;
 import android.os.profiling.anomaly.flags.Flags;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
 
 /**
  * Manager used to interact with the system anomaly detector service.
@@ -41,66 +31,11 @@ import java.util.Set;
 @SystemApi
 @SystemService(Context.ANOMALY_DETECTOR_SERVICE)
 public final class AnomalyDetectorManager {
+    @SuppressWarnings("unused") // This will be used once APIs are implemented.
     private final IAnomalyDetectorService mService;
 
     /** @hide */
     public AnomalyDetectorManager(Context context, IAnomalyDetectorService service) {
         mService = service;
-    }
-
-    /**
-     * Sets the {@link Rule} objects used for anomaly detection.
-     *
-     * <p>The provided {@code rules} replaces any existing rules. The system uses these rules to
-     * detect applications that violate the specified {@link Rule#getRuleCondition()}s.
-     *
-     * <p><b>Usage Notes:</b>
-     *
-     * <ul>
-     *   <li>To update the rules, call this method again with the new set.
-     *   <li>Passing an empty set disables anomaly detection.
-     *   <li><b>Restriction:</b> Only one privileged application per device is permitted to call
-     *       this API and set anomaly detection rules.
-     * </ul>
-     *
-     * @param rules A Set of {@link Rule} objects to be enforced.
-     * @hide
-     */
-    @RequiresApi(37)
-    @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
-    @RequiresPermission(CONFIGURE_ANOMALY_DETECTOR)
-    public void setAnomalyDetectorRules(@NonNull Set<Rule> rules) {
-        Objects.requireNonNull(rules, "Rules can not be null");
-
-        try {
-            mService.setRules(convertRulesToRuleParcels(rules));
-        } catch (RemoteException ex) {
-            ex.rethrowFromSystemServer();
-        }
-    }
-
-    private static List<RuleParcel> convertRulesToRuleParcels(Set<Rule> rules) {
-        ArrayList<RuleParcel> ruleParcels = new ArrayList<>();
-
-        rules.forEach(
-                rule -> {
-                    RuleParcel ruleParcel = new RuleParcel();
-                    ruleParcel.anomalyActions = convertListToIntArray(rule.getAnomalyActions());
-                    ruleParcel.conditionType = rule.getConditionType();
-                    ruleParcel.ruleCondition = rule.getRuleCondition();
-                    ruleParcels.add(ruleParcel);
-                });
-        return ruleParcels;
-    }
-
-    private static int[] convertListToIntArray(List<Integer> anomalyAction) {
-        int anomalyActionSize = anomalyAction.size();
-        int[] anomalyActionArray = new int[anomalyActionSize];
-
-        for (int i = 0; i < anomalyActionSize; i++) {
-            anomalyActionArray[i] = anomalyAction.get(i);
-        }
-
-        return anomalyActionArray;
     }
 }
