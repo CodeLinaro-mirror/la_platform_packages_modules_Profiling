@@ -47,10 +47,10 @@ import org.mockito.junit.MockitoRule;
 
 /**
  * Tests for {@link AnomalyDetectorService}.
- * <p>
- * These tests verify the core functionality of the anomaly detector service, including
- * signal collector registration and methods for data subscription and retrieval.
- * This test class instantiates the service directly and requires platform-level visibility.
+ *
+ * <p>These tests verify the core functionality of the anomaly detector service, including signal
+ * collector registration and methods for data subscription and retrieval. This test class
+ * instantiates the service directly and requires platform-level visibility.
  */
 @RunWith(AndroidJUnit4.class)
 @RequiresFlagsEnabled(Flags.FLAG_ANOMALY_DETECTOR_CORE)
@@ -59,8 +59,7 @@ public class AnomalyDetectorServiceTests {
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
 
-    @Rule
-    public MockitoRule mMockitoRule = MockitoJUnit.rule();
+    @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
 
     @Mock private SignalCollector<TestConfig, TestData> mTestCollector;
     @Mock private SignalCollector<TestConfig, TestData> mAnotherTestCollector;
@@ -75,7 +74,9 @@ public class AnomalyDetectorServiceTests {
 
     // Stub classes for strong typing in tests
     private static class TestConfig implements SignalCollectorConfig {}
+
     private static class TestData implements SignalCollectorData {}
+
     private static class AnotherData implements SignalCollectorData {}
 
     @Before
@@ -101,17 +102,21 @@ public class AnomalyDetectorServiceTests {
     public void registerSignalCollector_duplicate_throwsException() {
         registerCollector(TestConfig.class, TestData.class, mTestCollector);
         // Try to register another collector with the same config type, which should fail.
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(
+                IllegalArgumentException.class,
                 () -> registerCollector(TestConfig.class, TestData.class, mAnotherTestCollector));
     }
 
     @Test
     public void registerSignalCollector_nullArgs_throwsException() {
-        assertThrows(NullPointerException.class,
+        assertThrows(
+                NullPointerException.class,
                 () -> registerCollector(null, TestData.class, mTestCollector));
-        assertThrows(NullPointerException.class,
+        assertThrows(
+                NullPointerException.class,
                 () -> registerCollector(TestConfig.class, null, mTestCollector));
-        assertThrows(NullPointerException.class,
+        assertThrows(
+                NullPointerException.class,
                 () -> registerCollector(TestConfig.class, TestData.class, null));
     }
 
@@ -148,8 +153,8 @@ public class AnomalyDetectorServiceTests {
         registerCollector(TestConfig.class, TestData.class, mTestCollector);
         when(mTestCollector.subscribe(mTestConfig, mTestListener)).thenReturn(mSubscriptionId);
 
-        SubscriptionId resultId = mService.subscribeToData(mTestConfig, TestData.class,
-                mTestListener);
+        SubscriptionId resultId =
+                mService.subscribeToData(mTestConfig, TestData.class, mTestListener);
 
         verify(mTestCollector).subscribe(mTestConfig, mTestListener);
 
@@ -158,7 +163,8 @@ public class AnomalyDetectorServiceTests {
 
     @Test
     public void subscribeToData_collectorNotFound_throwsException() {
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(
+                IllegalArgumentException.class,
                 () -> mService.subscribeToData(mTestConfig, TestData.class, mTestListener));
     }
 
@@ -168,8 +174,8 @@ public class AnomalyDetectorServiceTests {
         TestData testData = new TestData();
         when(mTestCollector.getData(mSubscriptionId)).thenReturn(testData);
 
-        TestData resultData = mService.getCurrentData(mSubscriptionId, TestConfig.class,
-                TestData.class);
+        TestData resultData =
+                mService.getCurrentData(mSubscriptionId, TestConfig.class, TestData.class);
 
         verify(mTestCollector).getData(mSubscriptionId);
 
@@ -178,7 +184,8 @@ public class AnomalyDetectorServiceTests {
 
     @Test
     public void getCurrentData_collectorNotFound_throwsException() {
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(
+                IllegalArgumentException.class,
                 () -> mService.getCurrentData(mSubscriptionId, TestConfig.class, TestData.class));
     }
 
@@ -193,9 +200,11 @@ public class AnomalyDetectorServiceTests {
 
     @Test
     public void requestSubscriptionUpdate_collectorNotFound_throwsException() {
-        assertThrows(IllegalArgumentException.class,
-                () -> mService.requestSubscriptionUpdate(mSubscriptionId, TestConfig.class,
-                        TestData.class));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        mService.requestSubscriptionUpdate(
+                                mSubscriptionId, TestConfig.class, TestData.class));
     }
 
     @Test
@@ -209,19 +218,19 @@ public class AnomalyDetectorServiceTests {
 
     @Test
     public void unsubscribeFromData_collectorNotFound_throwsException() {
-        assertThrows(IllegalArgumentException.class,
-                () -> mService.unsubscribeFromData(mSubscriptionId, TestConfig.class,
-                        TestData.class));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        mService.unsubscribeFromData(
+                                mSubscriptionId, TestConfig.class, TestData.class));
     }
 
     /**
-     * Helper method to register a collector using the local manager interface,
-     * which is exposed for testing. This mimics how other system services would
-     * register collectors.
+     * Helper method to register a collector using the local manager interface, which is exposed for
+     * testing. This mimics how other system services would register collectors.
      */
     private <T extends SignalCollectorConfig, U extends SignalCollectorData> void registerCollector(
-            Class<T> configType, Class<U> dataType,
-            SignalCollector<T, U> collector) {
+            Class<T> configType, Class<U> dataType, SignalCollector<T, U> collector) {
         mLocalManager.registerSignalCollector(configType, dataType, collector);
     }
 }

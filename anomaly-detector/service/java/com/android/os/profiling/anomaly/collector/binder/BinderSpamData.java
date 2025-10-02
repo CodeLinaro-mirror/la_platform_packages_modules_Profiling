@@ -29,8 +29,9 @@ import com.android.os.profiling.anomaly.collector.SignalCollectorData;
 import java.util.Objects;
 
 /**
- * A signal type representing a binder spam event. Instances of this class contain the specific
- * data collected for a detected binder spam anomaly.
+ * A signal type representing a binder spam event. Instances of this class contain the specific data
+ * collected for a detected binder spam anomaly.
+ *
  * @hide
  */
 @SystemApi(client = SYSTEM_SERVER)
@@ -39,12 +40,16 @@ import java.util.Objects;
 public final class BinderSpamData implements SignalCollectorData {
     /** Either the direct client process UID or the source client process UID. */
     private final int mCallingUid;
+
     /** The count of the binder calls from the calling UID within the timespan. */
     private final long mCallCount;
+
     /** The AIDL interface of the binder call. */
     private final String mInterfaceName;
+
     /** The AIDL method name of the binder call. */
     private final String mMethodName;
+
     /** The timespan between first and last binder call in milliseconds. */
     private final long mTimespanMillis;
 
@@ -56,39 +61,29 @@ public final class BinderSpamData implements SignalCollectorData {
         this.mTimespanMillis = builder.mTimespanMillis;
     }
 
-    /**
-     * Get the total call count of the binder transactions this signal contains.
-     */
+    /** Get the total call count of the binder transactions this signal contains. */
     public long getCallCount() {
         return mCallCount;
     }
 
-    /**
-     * Get the interface name of the binder transactions this signal contains.
-     */
+    /** Get the interface name of the binder transactions this signal contains. */
     @NonNull
     public String getInterfaceName() {
         return mInterfaceName;
     }
 
-    /**
-     * Get the method name of the binder transactions this signal contains.
-     */
+    /** Get the method name of the binder transactions this signal contains. */
     @NonNull
     public String getMethodName() {
         return mMethodName;
     }
 
-    /**
-     * Get the timespan this data represents, in milliseconds.
-     */
+    /** Get the timespan this data represents, in milliseconds. */
     public long getTimespanMillis() {
         return mTimespanMillis;
     }
 
-    /**
-     * Get the calling uid of the binder transactions this signal contains.
-     */
+    /** Get the calling uid of the binder transactions this signal contains. */
     public int getCallingUid() {
         return mCallingUid;
     }
@@ -96,12 +91,16 @@ public final class BinderSpamData implements SignalCollectorData {
     public static final class Builder {
         /** Either the direct client process UID or the source client process UID. */
         private int mCallingUid = -1;
+
         /** The count of the binder calls within the duration. */
         private long mCallCount;
+
         /** The AIDL interface of the binder call. */
         private String mInterfaceName;
+
         /** The AIDL method name of the binder call. */
         private String mMethodName;
+
         /**
          * The timespan between the start of the first and end of the last binder call in
          * milliseconds.
@@ -110,6 +109,7 @@ public final class BinderSpamData implements SignalCollectorData {
 
         /**
          * Set the calling UID.
+         *
          * @param callingUid Either the direct client process UID or the source client process UID.
          * @return this builder for method chaining
          */
@@ -121,6 +121,7 @@ public final class BinderSpamData implements SignalCollectorData {
 
         /**
          * Set the call count
+         *
          * @param callCount The total number of binder calls.
          * @return this builder for method chaining
          */
@@ -132,18 +133,20 @@ public final class BinderSpamData implements SignalCollectorData {
 
         /**
          * Set the AIDL interface name
+         *
          * @param interfaceName The full qualified name of the AIDL interface.
          * @return this builder for method chaining
          */
         @NonNull
         public Builder setInterfaceName(@NonNull String interfaceName) {
-            //TODO(b/440140585): Validate the format of the interface name.
+            // TODO(b/440140585): Validate the format of the interface name.
             mInterfaceName = Objects.requireNonNull(interfaceName);
             return this;
         }
 
         /**
          * Set the AIDL method name
+         *
          * @param methodName The name of the AIDL method.
          * @return this builder for method chaining
          */
@@ -155,8 +158,9 @@ public final class BinderSpamData implements SignalCollectorData {
 
         /**
          * Set the duration of the timespan
+         *
          * @param timespanMillis The total milliseconds of the timespan between first and last
-         *                      binder call.
+         *     binder call.
          * @return this builder for method chaining
          */
         @NonNull
@@ -167,6 +171,7 @@ public final class BinderSpamData implements SignalCollectorData {
 
         /**
          * Validate fields and build the signal
+         *
          * @return the {@link BinderSpamData} with the set fields.
          */
         @NonNull

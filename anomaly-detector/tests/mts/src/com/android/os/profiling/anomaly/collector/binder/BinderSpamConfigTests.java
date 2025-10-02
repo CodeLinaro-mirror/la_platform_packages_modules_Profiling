@@ -31,38 +31,44 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-/**
- * Tests for the {@link BinderSpamConfig} value object.
- */
+/** Tests for the {@link BinderSpamConfig} value object. */
 @RunWith(AndroidJUnit4.class)
 @RequiresFlagsEnabled(Flags.FLAG_ANOMALY_DETECTOR_CORE)
 public class BinderSpamConfigTests {
     private static final String TEST_INTERFACE_NAME = "com.test.service";
     private static final String TEST_METHOD_NAME = "method";
 
-    private static final BinderSpamConfig BINDER_SPAM_CONFIG = new BinderSpamConfig.Builder()
+    private static final BinderSpamConfig BINDER_SPAM_CONFIG =
+            new BinderSpamConfig.Builder()
                     .setInterfaceName(TEST_INTERFACE_NAME)
                     .setMethodName(TEST_METHOD_NAME)
                     .build();
+
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
 
     @Test
     public void builder_withInvalidInterfaceName_throwException() {
-        assertThrows("Interface and method name must be set!", IllegalArgumentException.class,
-                () -> new BinderSpamConfig.Builder()
-                        .setInterfaceName("")
-                        .setMethodName(TEST_METHOD_NAME)
-                        .build());
+        assertThrows(
+                "Interface and method name must be set!",
+                IllegalArgumentException.class,
+                () ->
+                        new BinderSpamConfig.Builder()
+                                .setInterfaceName("")
+                                .setMethodName(TEST_METHOD_NAME)
+                                .build());
     }
 
     @Test
     public void builder_withInvalidMethodName_throwException() {
-        assertThrows("Interface and method name must be set!", IllegalArgumentException.class,
-                () -> new BinderSpamConfig.Builder()
-                        .setInterfaceName(TEST_INTERFACE_NAME)
-                        .setMethodName("")
-                        .build());
+        assertThrows(
+                "Interface and method name must be set!",
+                IllegalArgumentException.class,
+                () ->
+                        new BinderSpamConfig.Builder()
+                                .setInterfaceName(TEST_INTERFACE_NAME)
+                                .setMethodName("")
+                                .build());
     }
 
     @Test

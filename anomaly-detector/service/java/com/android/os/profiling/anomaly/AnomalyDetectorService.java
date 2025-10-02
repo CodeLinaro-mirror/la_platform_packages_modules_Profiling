@@ -37,11 +37,11 @@ import java.util.Objects;
 
 /**
  * Anomaly Detector Service.
- * <p>
- * This entire service is part of a feature controlled by the
- * {@link Flags#FLAG_ANOMALY_DETECTOR_CORE} flag. It is started by the SystemServer only when this
- * flag is enabled. As a result, the entire class is annotated with {@link FlaggedApi} to signify
- * that its existence and all of its APIs are conditional upon this feature flag.
+ *
+ * <p>This entire service is part of a feature controlled by the {@link
+ * Flags#FLAG_ANOMALY_DETECTOR_CORE} flag. It is started by the SystemServer only when this flag is
+ * enabled. As a result, the entire class is annotated with {@link FlaggedApi} to signify that its
+ * existence and all of its APIs are conditional upon this feature flag.
  *
  * @hide
  */
@@ -51,8 +51,7 @@ public final class AnomalyDetectorService extends SystemService {
 
     private final AnomalyDetectorServiceImpl mAnomalyDetectorServiceImpl;
 
-    @VisibleForTesting
-    final AnomalyDetectorManagerLocal mLocalManager;
+    @VisibleForTesting final AnomalyDetectorManagerLocal mLocalManager;
 
     // Stores CollectorEntry, keyed by the config class type.
     @VisibleForTesting
@@ -76,16 +75,14 @@ public final class AnomalyDetectorService extends SystemService {
         publishBinderService(Context.ANOMALY_DETECTOR_SERVICE, mAnomalyDetectorServiceImpl);
     }
 
-    /**
-     * An entry that holds a {@link SignalCollector} and its associated data type class.
-     */
+    /** An entry that holds a {@link SignalCollector} and its associated data type class. */
     @VisibleForTesting
     static final class CollectorEntry {
         final SignalCollector<?, ?> mCollector;
         final Class<? extends SignalCollectorData> mDataType;
 
-        CollectorEntry(SignalCollector<?, ?> collector,
-                Class<? extends SignalCollectorData> dataType) {
+        CollectorEntry(
+                SignalCollector<?, ?> collector, Class<? extends SignalCollectorData> dataType) {
             this.mCollector = Objects.requireNonNull(collector, "Collector cannot be null");
             this.mDataType = Objects.requireNonNull(dataType, "Data type cannot be null");
         }
@@ -101,8 +98,11 @@ public final class AnomalyDetectorService extends SystemService {
         @Override
         public String toString() {
             return "CollectorEntry{"
-                    + "collector=" + mCollector.getClass().getSimpleName()
-                    + ", dataType=" + mDataType.getSimpleName() + '}';
+                    + "collector="
+                    + mCollector.getClass().getSimpleName()
+                    + ", dataType="
+                    + mDataType.getSimpleName()
+                    + '}';
         }
     }
 
@@ -115,37 +115,42 @@ public final class AnomalyDetectorService extends SystemService {
          * Registers a new {@link SignalCollector} with the anomaly detector.
          *
          * @param <T> The specific type of {@link SignalCollectorConfig} that this collector
-         *            handles.
-         * @param <U> The specific type of {@link SignalCollectorData} that this collector
-         *            produces.
+         *     handles.
+         * @param <U> The specific type of {@link SignalCollectorData} that this collector produces.
          * @param configType The Class object representing the type of SignalCollectorConfig this
-         *                   collector handles. This will be used as the primary key.
+         *     collector handles. This will be used as the primary key.
          * @param dataType The Class object representing the type of SignalCollectorData this
-         *                 collector produces.
+         *     collector produces.
          * @param collector The instance of the SignalCollector to be registered.
-         * @throws IllegalArgumentException if a collector handling the same config type
-         *                                  is already registered.
+         * @throws IllegalArgumentException if a collector handling the same config type is already
+         *     registered.
          * @throws NullPointerException if configType, dataType, or collector is null.
          */
         @Override
-        public <T extends SignalCollectorConfig,
-                U extends SignalCollectorData> void registerSignalCollector(Class<T> configType,
-                Class<U> dataType, SignalCollector<T, U> collector) {
+        public <T extends SignalCollectorConfig, U extends SignalCollectorData>
+                void registerSignalCollector(
+                        Class<T> configType, Class<U> dataType, SignalCollector<T, U> collector) {
             Objects.requireNonNull(configType, "Config type cannot be null");
             Objects.requireNonNull(dataType, "Data type cannot be null");
             Objects.requireNonNull(collector, "SignalCollector cannot be null");
 
             synchronized (mRegisteredCollectors) {
                 if (mRegisteredCollectors.containsKey(configType)) {
-                    throw new IllegalArgumentException("Collector for config type '"
-                            + configType.getSimpleName() + "' is already registered.");
+                    throw new IllegalArgumentException(
+                            "Collector for config type '"
+                                    + configType.getSimpleName()
+                                    + "' is already registered.");
                 }
                 CollectorEntry entry = new CollectorEntry(collector, dataType);
                 mRegisteredCollectors.put(configType, entry);
             }
-            Slog.i(TAG, "Registered SignalCollector for config: '"
-                    + configType.getSimpleName()
-                    + "', producing data: '" + dataType.getSimpleName() + "'");
+            Slog.i(
+                    TAG,
+                    "Registered SignalCollector for config: '"
+                            + configType.getSimpleName()
+                            + "', producing data: '"
+                            + dataType.getSimpleName()
+                            + "'");
         }
     }
 
@@ -155,18 +160,17 @@ public final class AnomalyDetectorService extends SystemService {
      *
      * @param configType The exact Class type of SignalCollectorConfig this collector handles.
      * @param dataType The exact Class type of SignalCollectorData this collector is expected to
-     *                 produce. This is used for verification.
+     *     produce. This is used for verification.
      * @param <T> The expected type of SignalCollectorConfig.
      * @param <U> The expected type of SignalCollectorData.
      * @return The typed SignalCollector instance, or null if no collector is found for the
-     *         specified config type, if the registered object is of an incompatible type,
-     *         or if the registered data type does not match the expected dataType.
+     *     specified config type, if the registered object is of an incompatible type, or if the
+     *     registered data type does not match the expected dataType.
      * @hide
      */
     @Nullable
-    public <T extends SignalCollectorConfig,
-            U extends SignalCollectorData> SignalCollector<T, U> getSignalCollector(
-                    Class<T> configType, Class<U> dataType) {
+    public <T extends SignalCollectorConfig, U extends SignalCollectorData>
+            SignalCollector<T, U> getSignalCollector(Class<T> configType, Class<U> dataType) {
         Objects.requireNonNull(configType, "Config type cannot be null");
         Objects.requireNonNull(dataType, "Data type cannot be null");
 
@@ -174,24 +178,33 @@ public final class AnomalyDetectorService extends SystemService {
             CollectorEntry entry = mRegisteredCollectors.get(configType);
 
             if (entry == null) {
-                Slog.w(TAG, "No collector entry found for config type: "
-                        + configType.getSimpleName());
+                Slog.w(
+                        TAG,
+                        "No collector entry found for config type: " + configType.getSimpleName());
                 return null; // Collector not found for this config type
             }
 
             Object rawCollector = entry.getCollector();
 
             if (!(rawCollector instanceof SignalCollector)) {
-                Slog.e(TAG, "Type mismatch: Object retrieved for config type '"
-                        + configType.getSimpleName() + "' is not a SignalCollector. Actual type: "
-                        + rawCollector.getClass().getName());
+                Slog.e(
+                        TAG,
+                        "Type mismatch: Object retrieved for config type '"
+                                + configType.getSimpleName()
+                                + "' is not a SignalCollector. Actual type: "
+                                + rawCollector.getClass().getName());
                 return null; // Treat as incompatible type
             }
 
             if (!dataType.equals(entry.getDataType())) {
-                Slog.e(TAG, "Data type mismatch for config type '" + configType.getSimpleName()
-                        + "'. Expected: " + dataType.getSimpleName()
-                        + ", but registered with: " + entry.getDataType().getSimpleName());
+                Slog.e(
+                        TAG,
+                        "Data type mismatch for config type '"
+                                + configType.getSimpleName()
+                                + "'. Expected: "
+                                + dataType.getSimpleName()
+                                + ", but registered with: "
+                                + entry.getDataType().getSimpleName());
                 return null; // Registered data type does not match expected
             }
 
@@ -215,53 +228,60 @@ public final class AnomalyDetectorService extends SystemService {
      * @param <U> The type of SignalCollectorData.
      * @return The {@link SubscriptionId} if successful.
      * @throws IllegalArgumentException if the collector is not found or types mismatch.
-     *
      * @hide
      */
-    public <T extends SignalCollectorConfig,
-            U extends SignalCollectorData> SubscriptionId subscribeToData(T config,
-            Class<U> dataType, OutcomeReceiver<U, Throwable> listener) {
+    public <T extends SignalCollectorConfig, U extends SignalCollectorData>
+            SubscriptionId subscribeToData(
+                    T config, Class<U> dataType, OutcomeReceiver<U, Throwable> listener) {
         @SuppressWarnings("unchecked")
         Class<T> configType = (Class<T>) config.getClass();
         SignalCollector<T, U> collector = getSignalCollector(configType, dataType);
 
         if (collector == null) {
-            throw new IllegalArgumentException("No suitable collector found for config type '"
-                    + config.getClass().getSimpleName()
-                    + "' and data type '" + dataType.getSimpleName() + "'.");
+            throw new IllegalArgumentException(
+                    "No suitable collector found for config type '"
+                            + config.getClass().getSimpleName()
+                            + "' and data type '"
+                            + dataType.getSimpleName()
+                            + "'.");
         }
-        Slog.i(TAG, "Subscribing to data via collector for config: "
-                + config.getClass().getSimpleName());
+        Slog.i(
+                TAG,
+                "Subscribing to data via collector for config: "
+                        + config.getClass().getSimpleName());
         return collector.subscribe(config, listener);
     }
 
     /**
      * Request the current data snapshot from a registered SignalCollector.
      *
-     * @param subscriptionId The {@link SubscriptionId} identifying the specific subscription
-     *                       for which to retrieve current data.
+     * @param subscriptionId The {@link SubscriptionId} identifying the specific subscription for
+     *     which to retrieve current data.
      * @param configType The expected Class type of SignalCollectorConfig (for type safety in
-     *                   retrieval).
+     *     retrieval).
      * @param dataType The expected Class type of SignalCollectorData (for type safety in
-     *                 retrieval).
+     *     retrieval).
      * @param <T> The type of SignalCollectorConfig.
      * @param <U> The type of SignalCollectorData.
      * @return The current data snapshot.
      * @throws IllegalArgumentException if a collector for the specified config and data types is
-     *                                  not found.
+     *     not found.
      * @hide
      */
-    public <T extends SignalCollectorConfig,
-            U extends SignalCollectorData> U getCurrentData(SubscriptionId subscriptionId,
-                Class<T> configType, Class<U> dataType) {
+    public <T extends SignalCollectorConfig, U extends SignalCollectorData> U getCurrentData(
+            SubscriptionId subscriptionId, Class<T> configType, Class<U> dataType) {
         SignalCollector<T, U> collector = getSignalCollector(configType, dataType);
         if (collector == null) {
-            throw new IllegalArgumentException("No suitable collector found for config type '"
-                    + configType.getSimpleName() + "' and data type '"
-                    + dataType.getSimpleName() + "'.");
+            throw new IllegalArgumentException(
+                    "No suitable collector found for config type '"
+                            + configType.getSimpleName()
+                            + "' and data type '"
+                            + dataType.getSimpleName()
+                            + "'.");
         }
-        Slog.i(TAG, "Getting current data from collector for config: "
-                + configType.getSimpleName());
+        Slog.i(
+                TAG,
+                "Getting current data from collector for config: " + configType.getSimpleName());
         return collector.getData(subscriptionId);
     }
 
@@ -270,56 +290,68 @@ public final class AnomalyDetectorService extends SystemService {
      *
      * @param subscriptionId The {@link SubscriptionId} to request an update for.
      * @param configType The expected Class type of SignalCollectorConfig (for type safety in
-     *                   retrieval).
+     *     retrieval).
      * @param dataType The expected Class type of SignalCollectorData (for type safety in
-     *                 retrieval).
+     *     retrieval).
      * @param <T> The type of SignalCollectorConfig.
      * @param <U> The type of SignalCollectorData.
      * @throws IllegalArgumentException if a collector for the specified config and data types is
-     * not found, or the subscriptionId is invalid.
-     *
+     *     not found, or the subscriptionId is invalid.
      * @hide
      */
-    public <T extends SignalCollectorConfig,
-            U extends SignalCollectorData> void requestSubscriptionUpdate(
+    public <T extends SignalCollectorConfig, U extends SignalCollectorData>
+            void requestSubscriptionUpdate(
                     SubscriptionId subscriptionId, Class<T> configType, Class<U> dataType) {
         SignalCollector<T, U> collector = getSignalCollector(configType, dataType);
         if (collector == null) {
-            throw new IllegalArgumentException("No suitable collector found for config type '"
-                    + configType.getSimpleName() + "' and data type '" + dataType.getSimpleName()
-                    + "'.");
+            throw new IllegalArgumentException(
+                    "No suitable collector found for config type '"
+                            + configType.getSimpleName()
+                            + "' and data type '"
+                            + dataType.getSimpleName()
+                            + "'.");
         }
-        Slog.i(TAG, "Requesting update for subscription '" + subscriptionId
-                + "' via collector for config: " + configType.getSimpleName());
+        Slog.i(
+                TAG,
+                "Requesting update for subscription '"
+                        + subscriptionId
+                        + "' via collector for config: "
+                        + configType.getSimpleName());
         collector.requestUpdate(subscriptionId);
     }
-
 
     /**
      * Unsubscribe from a data stream.
      *
      * @param subscriptionId The {@link SubscriptionId} to unsubscribe.
      * @param configType The expected Class type of SignalCollectorConfig (for type safety in
-     *                   retrieval).
+     *     retrieval).
      * @param dataType The expected Class type of SignalCollectorData (for type safety in
-     *                 retrieval).
+     *     retrieval).
      * @param <T> The type of SignalCollectorConfig.
      * @param <U> The type of SignalCollectorData.
      * @throws IllegalArgumentException if a collector for the specified config and data types is
-     *                                  not found.
+     *     not found.
      * @hide
      */
-    public <T extends SignalCollectorConfig,
-            U extends SignalCollectorData> void unsubscribeFromData(SubscriptionId subscriptionId,
-                Class<T> configType, Class<U> dataType) {
+    public <T extends SignalCollectorConfig, U extends SignalCollectorData>
+            void unsubscribeFromData(
+                    SubscriptionId subscriptionId, Class<T> configType, Class<U> dataType) {
         SignalCollector<T, U> collector = getSignalCollector(configType, dataType);
         if (collector == null) {
-            throw new IllegalArgumentException("No suitable collector found for config type '"
-                    + configType.getSimpleName() + "' and data type '" + dataType.getSimpleName()
-                    + "'.");
+            throw new IllegalArgumentException(
+                    "No suitable collector found for config type '"
+                            + configType.getSimpleName()
+                            + "' and data type '"
+                            + dataType.getSimpleName()
+                            + "'.");
         }
-        Slog.i(TAG, "Unsubscribing from data via collector for config: "
-                + configType.getSimpleName() + " with subscriptionId: " + subscriptionId);
+        Slog.i(
+                TAG,
+                "Unsubscribing from data via collector for config: "
+                        + configType.getSimpleName()
+                        + " with subscriptionId: "
+                        + subscriptionId);
         collector.unsubscribe(subscriptionId);
     }
 }

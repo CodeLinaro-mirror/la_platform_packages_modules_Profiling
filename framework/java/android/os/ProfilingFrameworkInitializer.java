@@ -42,7 +42,7 @@ public class ProfilingFrameworkInitializer {
      * initialization.
      *
      * @param profilingServiceManager instance of {@link ProfilingServiceManager} that allows the
-     * profiling module to register/obtain profiling binder services.
+     *     profiling module to register/obtain profiling binder services.
      */
     public static void setProfilingServiceManager(
             @NonNull ProfilingServiceManager profilingServiceManager) {
@@ -63,17 +63,16 @@ public class ProfilingFrameworkInitializer {
     }
 
     /**
-     * Called by {@link SystemServiceRegistry}'s static initializer and registers profiling
-     * services to {@link Context}, so that {@link Context#getSystemService} can return them.
+     * Called by {@link SystemServiceRegistry}'s static initializer and registers profiling services
+     * to {@link Context}, so that {@link Context#getSystemService} can return them.
      *
-     * @throws IllegalStateException if this is called from anywhere besides
-     * {@link SystemServiceRegistry}
+     * @throws IllegalStateException if this is called from anywhere besides {@link
+     *     SystemServiceRegistry}
      */
     public static void registerServiceWrappers() {
         SystemServiceRegistry.registerContextAwareService(
                 Context.PROFILING_SERVICE,
                 ProfilingManager.class,
-                context -> new ProfilingManager(context)
-        );
+                context -> new ProfilingManager(context));
     }
 }

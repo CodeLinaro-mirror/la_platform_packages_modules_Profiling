@@ -24,11 +24,10 @@ import android.os.profiling.anomaly.flags.Flags;
 
 /**
  * Base interface for data collection configurations.
- * <p>
- * This interface serves as a common type for different configurations
- * that define how data collection should be performed by a {@code SignalCollector}.
- * Specific parameters and settings are defined in concrete classes that
- * implement this interface.
+ *
+ * <p>This interface serves as a common type for different configurations that define how data
+ * collection should be performed by a {@code SignalCollector}. Specific parameters and settings are
+ * defined in concrete classes that implement this interface.
  *
  * @hide
  */

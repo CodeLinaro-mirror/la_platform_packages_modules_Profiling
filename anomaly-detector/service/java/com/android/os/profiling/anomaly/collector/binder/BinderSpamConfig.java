@@ -28,22 +28,20 @@ import com.android.os.profiling.anomaly.collector.SignalCollectorConfig;
 
 /**
  * The configuration for collecting binder spam signals.
- * <p>
- * Each configuration contains information about a specific AIDL target to collect. The collector
+ *
+ * <p>Each configuration contains information about a specific AIDL target to collect. The collector
  * will collect {@link BinderSpamData} based on this information.
+ *
  * @hide
  */
 @SystemApi(client = SYSTEM_SERVER)
 // TODO(b/419590607): Use a separate flag to guard this API
 @FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE)
 public final class BinderSpamConfig implements SignalCollectorConfig {
-    /**
-     * The qualified name of the AIDL interface (e.g. android.app.IActivityManager).
-     */
+    /** The qualified name of the AIDL interface (e.g. android.app.IActivityManager). */
     private final String mInterfaceName;
-    /**
-     * The name of the AIDL method (e.g. startService).
-     */
+
+    /** The name of the AIDL method (e.g. startService). */
     private final String mMethodName;
 
     private BinderSpamConfig(Builder builder) {
@@ -51,9 +49,9 @@ public final class BinderSpamConfig implements SignalCollectorConfig {
         mMethodName = builder.mMethodName;
     }
 
-
     /**
      * Get the AIDL interface this config cares about.
+     *
      * @return The qualified name of the AIDL interface (e.g. android.app.IActivityManager).
      */
     @NonNull
@@ -63,6 +61,7 @@ public final class BinderSpamConfig implements SignalCollectorConfig {
 
     /**
      * Get the AIDL method this config cares about.
+     *
      * @return The name of the AIDL method (e.g. startService).
      */
     @NonNull
@@ -77,8 +76,9 @@ public final class BinderSpamConfig implements SignalCollectorConfig {
 
         /**
          * Set the AIDL interface name of the configuration.
-         * @param interfaceName The qualified name of the AIDL interface
-         *                     (e.g. android.app.IActivityManager).
+         *
+         * @param interfaceName The qualified name of the AIDL interface (e.g.
+         *     android.app.IActivityManager).
          * @return The builder itself.
          */
         @NonNull
@@ -89,6 +89,7 @@ public final class BinderSpamConfig implements SignalCollectorConfig {
 
         /**
          * Set the AIDL method name of the configuration
+         *
          * @param methodName The name of the AIDL method (e.g. startService).
          * @return The builder itself.
          */
@@ -100,6 +101,7 @@ public final class BinderSpamConfig implements SignalCollectorConfig {
 
         /**
          * Build the configuration.
+         *
          * @return The built configuration.
          */
         @NonNull
