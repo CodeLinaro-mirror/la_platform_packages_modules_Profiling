@@ -43,9 +43,12 @@ public class ProfilingServiceHelper {
     private static final boolean DEBUG = false;
 
     private static final String CONFIG_NAMESPACE = "profiling";
+
+    // LINT.IfChange(oom_device_configs)
     private static final String CONFIG_TIMEOUT_OOM = "trigger_timeout_oom";
 
     private static final int TIMEOUT_DEFAULT_JAVA_HEAP_DUMP_SECONDS = 5;
+    // LINT.ThenChange(/tests/cts/src/android/profiling/cts/ProfilingFrameworkTests.java:oom_device_configs)
 
     private static final Object sLock = new Object();
 
