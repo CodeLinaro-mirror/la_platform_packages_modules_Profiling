@@ -50,7 +50,7 @@ java_sdk_library {
     ],
     impl_library_visibility: [
         "//frameworks/base/services/signalcollector",
-        "//frameworks/base/services/tests/servicestests/src/com/android/server/signalcollector",
+        "//frameworks/base/services/tests/servicestests",
         "//packages/modules/Profiling/anomaly-detector/tests:__subpackages__",
     ],
     min_sdk_version: "36",
