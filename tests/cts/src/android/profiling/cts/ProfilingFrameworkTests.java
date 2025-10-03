@@ -107,8 +107,10 @@ public final class ProfilingFrameworkTests {
     // did not occur.
     private static final int WAIT_TIME_FOR_TRIGGERED_PROFILING_NO_RESULT = 10 * 1000;
 
+    // LINT.IfChange(oom_device_configs)
     private static final int TIMEOUT_DEFAULT_JAVA_HEAP_DUMP_SECONDS = 5;
     private static final String CONFIG_TIMEOUT_OOM = "trigger_timeout_oom";
+    // LINT.ThenChange(/framework/java/android/os/ProfilingServiceHelper.java:oom_device_configs)
 
     // Keep in sync with {@link ProfilingService} because we can't access it.
     private static final String OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX = ".perfetto-java-heap-dump";
