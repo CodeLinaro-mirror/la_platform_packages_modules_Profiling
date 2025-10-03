@@ -25,9 +25,9 @@ import static android.profiling.cts.ProfilingTestConstants.REPLY_ACTION_COMPLETE
 import static android.profiling.cts.ProfilingTestConstants.REPLY_EXTRA_FILE_VALIDATION_RESULT;
 import static android.profiling.cts.ProfilingTestConstants.REPLY_EXTRA_PROFILING_RESULT;
 import static android.profiling.cts.ProfilingTestUtils.executeShellCmd;
-import static android.profiling.cts.ProfilingTestUtils.overrideDeviceConfig;
 import static android.profiling.cts.ProfilingTestUtils.resetAllConfigs;
 import static android.profiling.cts.ProfilingTestUtils.sleep;
+import static android.profiling.cts.ProfilingTestUtils.startSystemTriggeredTraceForTesting;
 
 import static com.google.common.truth.Truth.assertThat;
 
@@ -41,7 +41,6 @@ import android.content.IntentFilter;
 import android.os.Bundle;
 import android.os.ProfilingResult;
 import android.os.ProfilingTrigger;
-import android.os.profiling.DeviceConfigHelper;
 import android.os.profiling.Flags;
 import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
@@ -70,7 +69,6 @@ public class ProfilingAppTriggeredTests {
     private static final String STUB_PACKAGE_NAME = "android.profiling.cts.profilingapp";
     private static final String SIMPLE_ACTIVITY = ".ProfilingTriggerTestActivity";
     private static final String OUTPUT_FILE_TRACE_SUFFIX = ".perfetto-trace";
-    private static final int WAIT_TIME_FOR_PROFILING_START_MS = 2 * 1000;
     private static final int WAIT_TIME_FOR_APP_START_MS = 1000;
 
     private Instrumentation mInstrumentation;
@@ -113,16 +111,7 @@ public class ProfilingAppTriggeredTests {
         // Stop the test app.
         executeShellCmd("am force-stop " + STUB_PACKAGE_NAME);
 
-        // Set the device config to enable system-triggered debugging for the test app package.
-        // This needs to be done after the test app registers a trigger so that an active trace
-        // can start.
-        // TODO(b/448723955): Move this to a common class.
-        overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                STUB_PACKAGE_NAME);
-        // Wait a bit so the trace can get started and actually collect something.
-        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+        startSystemTriggeredTraceForTesting(STUB_PACKAGE_NAME, /* waitTraceStart= */ true);
 
         // Start the test app again to trigger reportFullyDrawn().
         startActivityWithAction(ACTION_REGISTER_AND_REPORT_FULLY_DRAWN);

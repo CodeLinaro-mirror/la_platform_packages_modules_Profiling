@@ -29,6 +29,10 @@ import java.util.concurrent.Executor;
 public final class ProfilingTestUtils {
     private static final String TAG = ProfilingTestUtils.class.getSimpleName();
 
+    // Wait 2 seconds for profiling to get started and collect some data.
+    // TODO: b/376440094 - change to query perfetto and confirm profiling is running.
+    public static final int WAIT_TIME_FOR_PROFILING_START_MS = 2 * 1000;
+
     private static final String KEY_DURATION_MS = "KEY_DURATION_MS";
 
     // Wait for rate limiter config to update for 250 milliseconds at a time for up to 12 increments
@@ -78,10 +82,16 @@ public final class ProfilingTestUtils {
      * picked up.
      */
     public static void overrideRateLimiter(boolean disable) {
-        overrideDeviceConfig("profiling_testing", "rate_limiter.disabled", disable);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE_TESTING,
+                DeviceConfigHelper.RATE_LIMITER_DISABLE_PROPERTY,
+                disable);
         for (int i = 0; i < RATE_LIMITER_WAIT_TIME_INCREMENTS_COUNT; i++) {
             sleep(RATE_LIMITER_WAIT_TIME_INCREMENT_MS);
-            String output = getDeviceConfig("profiling_testing", "rate_limiter.disabled");
+            String output =
+                    getDeviceConfig(
+                            DeviceConfigHelper.NAMESPACE_TESTING,
+                            DeviceConfigHelper.RATE_LIMITER_DISABLE_PROPERTY);
             if (Boolean.parseBoolean(output.trim()) == disable) {
                 return;
             }
@@ -265,5 +275,24 @@ public final class ProfilingTestUtils {
     public static String executeShellCmd(String command, Object... args) {
         Log.d(TAG, "Executing shell command: " + String.format(command, args));
         return SystemUtil.runShellCommand(String.format(command, args));
+    }
+
+    /**
+     * Starts a system-triggered trace by setting the DeviceConfig for the test app package.
+     *
+     * @param packageName The package name for which to trigger the trace.
+     * @param waitTraceStart Whether to wait for the trace to start.
+     */
+    public static void startSystemTriggeredTraceForTesting(
+            String packageName, boolean waitTraceStart) {
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE_TESTING,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
+                packageName);
+
+        if (waitTraceStart) {
+            // Wait a bit so the trace can get started and actually collect something.
+            sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+        }
     }
 }

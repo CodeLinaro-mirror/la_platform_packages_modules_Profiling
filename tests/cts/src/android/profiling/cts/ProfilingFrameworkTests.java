@@ -17,11 +17,13 @@
 package android.profiling.cts;
 
 import static android.profiling.cts.ProfilingTestUtils.ImmediateExecutor;
+import static android.profiling.cts.ProfilingTestUtils.WAIT_TIME_FOR_PROFILING_START_MS;
 import static android.profiling.cts.ProfilingTestUtils.getOneSecondDurationParamBundle;
 import static android.profiling.cts.ProfilingTestUtils.overrideDeviceConfig;
 import static android.profiling.cts.ProfilingTestUtils.overrideRateLimiter;
 import static android.profiling.cts.ProfilingTestUtils.resetAllConfigs;
 import static android.profiling.cts.ProfilingTestUtils.sleep;
+import static android.profiling.cts.ProfilingTestUtils.startSystemTriggeredTraceForTesting;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -94,10 +96,6 @@ public final class ProfilingFrameworkTests {
     // Smaller number of increments for cancel case - wait for callback for 5 seconds at a time for
     // up to 4 increments totalling 20 seconds.
     private static final int CALLBACK_CANCEL_WAIT_TIME_INCREMENTS_COUNT = 4;
-
-    // Wait 2 seconds for profiling to get started before attempting to cancel it.
-    // TODO: b/376440094 - change to query perfetto and confirm profiling is running.
-    private static final int WAIT_TIME_FOR_PROFILING_START_MS = 2 * 1000;
 
     // Wait 2 seconds for profiling to finish processing and transfer result to app.
     private static final int WAIT_TIME_FOR_PROFILING_POST_PROCESSING_MS = 2 * 1000;
@@ -987,13 +985,7 @@ public final class ProfilingFrameworkTests {
         mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                REAL_PACKAGE_NAME);
-
-        // Wait a bit so the trace can get started and actually collect something.
-        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ true);
 
         // Now fake a system trigger.
         ProfilingServiceHelper.getInstance()
@@ -1039,13 +1031,7 @@ public final class ProfilingFrameworkTests {
         mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                REAL_PACKAGE_NAME);
-
-        // Wait a bit so the trace can get started and actually collect something.
-        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ true);
 
         // Now fake a system trigger.
         ProfilingServiceHelper.getInstance()
@@ -1091,13 +1077,7 @@ public final class ProfilingFrameworkTests {
         mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                REAL_PACKAGE_NAME);
-
-        // Wait a bit so the trace can get started and actually collect something.
-        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ true);
 
         String tag = "some_tag";
 
@@ -1142,13 +1122,7 @@ public final class ProfilingFrameworkTests {
         mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                REAL_PACKAGE_NAME);
-
-        // Wait a bit so the trace can get started and actually collect something.
-        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ true);
 
         // Remove the trigger.
         mProfilingManager.removeProfilingTriggersByType(
@@ -1195,13 +1169,7 @@ public final class ProfilingFrameworkTests {
         mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                REAL_PACKAGE_NAME);
-
-        // Wait a bit so the trace can get started and actually collect something.
-        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ true);
 
         // Clear all triggers for this process.
         mProfilingManager.clearProfilingTriggers();
@@ -1234,10 +1202,7 @@ public final class ProfilingFrameworkTests {
 
         // Start the system triggered trace for testing as this covers rate limiting override for
         // triggers.
-        overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                REAL_PACKAGE_NAME);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ false);
 
         // Register for OOM trigger
         ProfilingTrigger trigger =
@@ -1289,10 +1254,7 @@ public final class ProfilingFrameworkTests {
 
         // Start the system triggered trace for testing as this covers rate limiting override for
         // triggers.
-        overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                REAL_PACKAGE_NAME);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ false);
 
         // And add a global listener
         AppCallback callbackGeneral = new AppCallback();
@@ -1339,10 +1301,7 @@ public final class ProfilingFrameworkTests {
 
         // Start the system triggered trace for testing as this covers rate limiting override for
         // triggers.
-        overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                REAL_PACKAGE_NAME);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ false);
 
         mProfilingManager.addAllProfilingTriggers();
 
