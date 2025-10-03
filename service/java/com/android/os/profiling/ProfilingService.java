@@ -1922,9 +1922,10 @@ public class ProfilingService extends IProfilingService.Stub {
             }
 
             String[] packageNames = getActiveTriggerPackageNames();
+
             if (packageNames.length == 0) {
-                // No apps have registered interest in system triggered profiling, so don't bother
-                // to start a trace for it.
+                // No apps have registered interest in system triggered profiling and no debug
+                // package is set, so don't bother to start a trace for it.
                 if (DEBUG) {
                     Log.d(
                             TAG,
@@ -1966,7 +1967,8 @@ public class ProfilingService extends IProfilingService.Stub {
      * @return the started process if it started successfully, or null if it failed to start.
      */
     @Nullable
-    private Process startProfilingProcess(byte[] config, String outputFile) {
+    @VisibleForTesting
+    public Process startProfilingProcess(byte[] config, String outputFile) {
         try {
             if (DEBUG) {
                 Log.d(TAG, "Starting perfetto process profile output file=" + outputFile);
@@ -2484,7 +2486,15 @@ public class ProfilingService extends IProfilingService.Stub {
         // profiling types are supported, we'll need to filter these more intentionally to just the
         // ones that have an associated trace trigger.
         Set<String> packageNamesSet = mAppTriggers.getMap().keySet();
-        return packageNamesSet.toArray(new String[packageNamesSet.size()]);
+
+        if (mDebugPackageName == null || packageNamesSet.contains(mDebugPackageName)) {
+            return packageNamesSet.toArray(new String[0]);
+        }
+
+        // Add debug package name if mDebugPackageName is set and it's not already in the list.
+        List<String> resultList = new ArrayList<>(packageNamesSet);
+        resultList.add(mDebugPackageName);
+        return resultList.toArray(new String[0]);
     }
 
     /**
@@ -3443,7 +3453,8 @@ public class ProfilingService extends IProfilingService.Stub {
 
     /** Handle updates to debug package config value. */
     @GuardedBy("mLock")
-    private void handleDebugPackageChangeLocked(String newDebugPackageName) {
+    @VisibleForTesting
+    public void handleDebugPackageChangeLocked(String newDebugPackageName) {
         if (newDebugPackageName == null) {
 
             // Debug package has been set to null, check whether it was null previously.
