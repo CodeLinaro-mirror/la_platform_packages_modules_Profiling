@@ -16,6 +16,14 @@
 
 package android.profiling.cts;
 
+import static android.profiling.cts.ProfilingTestUtils.ImmediateExecutor;
+import static android.profiling.cts.ProfilingTestUtils.deleteDeviceConfig;
+import static android.profiling.cts.ProfilingTestUtils.getOneSecondDurationParamBundle;
+import static android.profiling.cts.ProfilingTestUtils.overrideDeviceConfig;
+import static android.profiling.cts.ProfilingTestUtils.overrideRateLimiter;
+import static android.profiling.cts.ProfilingTestUtils.resetNamespace;
+import static android.profiling.cts.ProfilingTestUtils.sleep;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -49,10 +57,6 @@ import androidx.test.core.app.ApplicationProvider;
 import androidx.test.filters.LargeTest;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
-
-import com.android.compatibility.common.util.SystemUtil;
-
-import com.google.errorprone.annotations.FormatMethod;
 
 import org.junit.After;
 import org.junit.Before;
@@ -88,11 +92,6 @@ public final class ProfilingFrameworkTests {
     // up to 4 increments totalling 20 seconds.
     private static final int CALLBACK_CANCEL_WAIT_TIME_INCREMENTS_COUNT = 4;
 
-    // Wait for rate limiter config to update for 250 milliseconds at a time for up to 12 increments
-    // totalling 3 seconds.
-    private static final int RATE_LIMITER_WAIT_TIME_INCREMENT_MS = 250;
-    private static final int RATE_LIMITER_WAIT_TIME_INCREMENTS_COUNT = 12;
-
     // Wait 2 seconds for profiling to get started before attempting to cancel it.
     // TODO: b/376440094 - change to query perfetto and confirm profiling is running.
     private static final int WAIT_TIME_FOR_PROFILING_START_MS = 2 * 1000;
@@ -110,20 +109,11 @@ public final class ProfilingFrameworkTests {
     public static final Path DUMP_PATH =
             FileSystems.getDefault().getPath("/sdcard/ProfilesCollected/");
 
-    private static final String COMMAND_OVERRIDE_DEVICE_CONFIG_INT = "device_config put %s %s %d";
-    private static final String COMMAND_OVERRIDE_DEVICE_CONFIG_BOOL = "device_config put %s %s %b";
-    private static final String COMMAND_OVERRIDE_DEVICE_CONFIG_STRING =
-            "device_config put %s %s %s";
-    private static final String COMMAND_DELETE_DEVICE_CONFIG_STRING = "device_config delete %s %s";
-    private static final String RESET_NAMESPACE = "device_config reset trusted_defaults %s";
-
     private static final String REAL_PACKAGE_NAME = "com.android.profiling.tests";
 
     private static final int ONE_SECOND_MS = 1 * 1000;
     private static final int FIVE_SECONDS_MS = 5 * 1000;
     private static final int TEN_SECONDS_MS = 10 * 1000;
-    private static final int ONE_MINUTE_MS = 60 * 1000;
-    private static final int FIVE_MINUTES_MS = 5 * 60 * 1000;
     private static final int TEN_MINUTES_MS = 10 * 60 * 1000;
 
     private ProfilingManager mProfilingManager = null;
@@ -147,8 +137,8 @@ public final class ProfilingFrameworkTests {
 
         mProfilingManager.clearProfilingTriggers();
 
-        executeShellCmd(RESET_NAMESPACE, DeviceConfigHelper.NAMESPACE);
-        executeShellCmd(RESET_NAMESPACE, DeviceConfigHelper.NAMESPACE_TESTING);
+        resetNamespace(DeviceConfigHelper.NAMESPACE);
+        resetNamespace(DeviceConfigHelper.NAMESPACE_TESTING);
 
         // This permission is required for Headless (HSUM) tests, including Auto.
         mInstrumentation
@@ -161,8 +151,7 @@ public final class ProfilingFrameworkTests {
     @After
     public void cleanup() throws Exception {
         mProfilingManager.mProfilingService = null;
-        executeShellCmd(
-                COMMAND_DELETE_DEVICE_CONFIG_STRING,
+        deleteDeviceConfig(
                 DeviceConfigHelper.NAMESPACE_TESTING,
                 DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME);
     }
@@ -185,8 +174,7 @@ public final class ProfilingFrameworkTests {
         AppCallback callback = new AppCallback();
 
         // This call is passing an invalid profiling request type and should result in an error.
-        mProfilingManager.requestProfiling(
-                -1, null, null, null, new ProfilingTestUtils.ImmediateExecutor(), callback);
+        mProfilingManager.requestProfiling(-1, null, null, null, new ImmediateExecutor(), callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
         waitForCallback(callback);
@@ -214,7 +202,7 @@ public final class ProfilingFrameworkTests {
                 params,
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -242,7 +230,7 @@ public final class ProfilingFrameworkTests {
                 null,
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -266,7 +254,7 @@ public final class ProfilingFrameworkTests {
         AppCallback callback = new AppCallback();
 
         // Add sampling interval param to test because it is currently the only long param.
-        Bundle params = ProfilingTestUtils.getOneSecondDurationParamBundle();
+        Bundle params = getOneSecondDurationParamBundle();
         params.putLong(ProfilingManager.KEY_SAMPLING_INTERVAL_BYTES, 4096L);
 
         // Now kick off the request.
@@ -275,7 +263,7 @@ public final class ProfilingFrameworkTests {
                 params,
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         MallocLoopThread mallocThread = new MallocLoopThread();
@@ -306,10 +294,10 @@ public final class ProfilingFrameworkTests {
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
-                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                getOneSecondDurationParamBundle(),
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         BusyLoopThread busy = new BusyLoopThread();
@@ -342,10 +330,10 @@ public final class ProfilingFrameworkTests {
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
-                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                getOneSecondDurationParamBundle(),
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -377,7 +365,7 @@ public final class ProfilingFrameworkTests {
                 null, // Use default parameters since we will cancel quickly
                 null,
                 cancellationSignal,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait a bit for collection to get started.
@@ -414,7 +402,7 @@ public final class ProfilingFrameworkTests {
                 null, // Use default parameters since we will cancel quickly
                 null,
                 cancellationSignal,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait a bit for collection to get started.
@@ -451,7 +439,7 @@ public final class ProfilingFrameworkTests {
                 null, // Use default parameters since we will cancel quickly
                 null,
                 cancellationSignal,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait a bit for collection to get started.
@@ -488,7 +476,7 @@ public final class ProfilingFrameworkTests {
                 null, // Use default parameters since we will cancel quickly
                 null,
                 cancellationSignal,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait a bit for collection to get started.
@@ -524,8 +512,7 @@ public final class ProfilingFrameworkTests {
         AppCallback callbackGeneral = new AppCallback();
 
         // Register the general callback.
-        mProfilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Confirm callback is properly registered by checking for size of 1.
         assertTrue(mProfilingManager.mCallbacks.size() == 1);
@@ -536,10 +523,10 @@ public final class ProfilingFrameworkTests {
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
-                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                getOneSecondDurationParamBundle(),
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callbackSpecific);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -570,10 +557,8 @@ public final class ProfilingFrameworkTests {
         AppCallback callbackGeneral2 = new AppCallback();
 
         // Register both general callbacks.
-        mProfilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral1);
-        mProfilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral2);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral1);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral2);
 
         // Confirm callbacks are properly registered by checking for size of 2.
         assertTrue(mProfilingManager.mCallbacks.size() == 2);
@@ -584,10 +569,10 @@ public final class ProfilingFrameworkTests {
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
-                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                getOneSecondDurationParamBundle(),
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callbackSpecific);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -615,21 +600,19 @@ public final class ProfilingFrameworkTests {
         AppCallback callbackGeneral2 = new AppCallback();
 
         // Register the first general callback before kicking off request.
-        mProfilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral1);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral1);
 
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
-                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                getOneSecondDurationParamBundle(),
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callbackSpecific);
 
         // Register the 2nd general callback after kicking off request, but before result is ready.
-        mProfilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral2);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral2);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
         waitForCallback(callbackSpecific);
@@ -664,18 +647,16 @@ public final class ProfilingFrameworkTests {
         AppCallback callbackGeneral2 = new AppCallback();
 
         // Register the general callbacks, one to each context.
-        profilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral1);
-        mProfilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral2);
+        profilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral1);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral2);
 
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
-                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                getOneSecondDurationParamBundle(),
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callbackSpecific);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -707,10 +688,10 @@ public final class ProfilingFrameworkTests {
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
-                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                getOneSecondDurationParamBundle(),
                 fullTag,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -746,7 +727,7 @@ public final class ProfilingFrameworkTests {
                 null,
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -774,7 +755,7 @@ public final class ProfilingFrameworkTests {
                 null,
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -803,7 +784,7 @@ public final class ProfilingFrameworkTests {
                 null,
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -831,7 +812,7 @@ public final class ProfilingFrameworkTests {
                 null,
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -864,8 +845,7 @@ public final class ProfilingFrameworkTests {
         AppCallback callback = new AppCallback();
 
         // Register the general callback.
-        mProfilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callback);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callback);
 
         // Confirm that mProfilingService has been initialized.
         assertNotNull(mProfilingManager.mProfilingService);
@@ -901,7 +881,7 @@ public final class ProfilingFrameworkTests {
                 null,
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Confirm that mProfilingService has been initialized.
@@ -926,8 +906,7 @@ public final class ProfilingFrameworkTests {
         AppCallback callback = new AppCallback();
 
         // Register the general callback.
-        mProfilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callback);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callback);
 
         // Confirm that generalListenerAdded was triggered and registerResultsCallback was not.
         verify(mProfilingManager.mProfilingService, times(0))
@@ -960,7 +939,7 @@ public final class ProfilingFrameworkTests {
                 null,
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Confirm that neither generalListenerAdded nor registerResultsCallback were triggered.
@@ -997,12 +976,10 @@ public final class ProfilingFrameworkTests {
 
         // And add a global listener
         AppCallback callbackGeneral = new AppCallback();
-        mProfilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_STRING,
+        overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE_TESTING,
                 DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
                 REAL_PACKAGE_NAME);
@@ -1051,12 +1028,10 @@ public final class ProfilingFrameworkTests {
 
         // And add a global listener
         AppCallback callbackGeneral = new AppCallback();
-        mProfilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_STRING,
+        overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE_TESTING,
                 DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
                 REAL_PACKAGE_NAME);
@@ -1105,12 +1080,10 @@ public final class ProfilingFrameworkTests {
 
         // And add a global listener
         AppCallback callbackGeneral = new AppCallback();
-        mProfilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_STRING,
+        overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE_TESTING,
                 DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
                 REAL_PACKAGE_NAME);
@@ -1158,12 +1131,10 @@ public final class ProfilingFrameworkTests {
 
         // And add a global listener
         AppCallback callbackGeneral = new AppCallback();
-        mProfilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_STRING,
+        overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE_TESTING,
                 DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
                 REAL_PACKAGE_NAME);
@@ -1213,12 +1184,10 @@ public final class ProfilingFrameworkTests {
 
         // And add a global listener
         AppCallback callbackGeneral = new AppCallback();
-        mProfilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_STRING,
+        overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE_TESTING,
                 DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
                 REAL_PACKAGE_NAME);
@@ -1295,51 +1264,30 @@ public final class ProfilingFrameworkTests {
         // Override rate limiter values such that the system trace cost is more than the system
         // limits but less than the process limits.
         overrideSystemTraceDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR,
-                10);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR,
-                10);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY,
-                10);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR,
-                1000);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR,
-                1000);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_PROCESS_7_DAY,
-                1000);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.COST_SYSTEM_TRACE,
-                100);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, 10);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, 10);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, 10);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_7_DAY, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.COST_SYSTEM_TRACE, 100);
 
         AppCallback callback = new AppCallback();
 
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
-                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                getOneSecondDurationParamBundle(),
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -1366,51 +1314,30 @@ public final class ProfilingFrameworkTests {
         // Override rate limiter values such that the system trace cost is more than the process
         // limits but less than the system limits.
         overrideSystemTraceDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR,
-                1000);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR,
-                1000);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY,
-                1000);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR,
-                10);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR,
-                10);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_PROCESS_7_DAY,
-                10);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.COST_SYSTEM_TRACE,
-                100);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, 10);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR, 10);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_7_DAY, 10);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.COST_SYSTEM_TRACE, 100);
 
         AppCallback callback = new AppCallback();
 
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
-                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                getOneSecondDurationParamBundle(),
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -1432,51 +1359,30 @@ public final class ProfilingFrameworkTests {
         // Override rate limiter values such that the system trace cost is less than both the system
         // and process limits.
         overrideSystemTraceDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR,
-                1000);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR,
-                1000);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY,
-                1000);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR,
-                1000);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR,
-                1000);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_PROCESS_7_DAY,
-                1000);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.COST_SYSTEM_TRACE,
-                100);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_7_DAY, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.COST_SYSTEM_TRACE, 100);
 
         AppCallback callback = new AppCallback();
 
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
-                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                getOneSecondDurationParamBundle(),
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -1517,22 +1423,6 @@ public final class ProfilingFrameworkTests {
     /** Enable the rate limiter and wait long enough for the update to be picked up. */
     private void enableRateLimiter() throws Exception {
         overrideRateLimiter(false);
-    }
-
-    /**
-     * Override the rate limiter to the provided value and wait long enough for the update to be
-     * picked up.
-     */
-    private void overrideRateLimiter(boolean disable) throws Exception {
-        executeShellCmd("device_config put profiling_testing rate_limiter.disabled %s", disable);
-        for (int i = 0; i < RATE_LIMITER_WAIT_TIME_INCREMENTS_COUNT; i++) {
-            sleep(RATE_LIMITER_WAIT_TIME_INCREMENT_MS);
-            String output =
-                    executeShellCmd("device_config get profiling_testing rate_limiter.disabled");
-            if (Boolean.parseBoolean(output.trim()) == disable) {
-                return;
-            }
-        }
     }
 
     /** Wait for callback to be triggered. Waits for up to 5 minutes, checking every 5 seconds. */
@@ -1613,18 +1503,15 @@ public final class ProfilingFrameworkTests {
 
     private void overrideJavaHeapDumpDeviceConfigValues(
             boolean killswitchEnabled, int durationMs, int dataSourceTimeoutMs) throws Exception {
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_BOOL,
+        overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.KILLSWITCH_JAVA_HEAP_DUMP,
                 killswitchEnabled);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
+        overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.JAVA_HEAP_DUMP_DURATION_MS_DEFAULT,
                 durationMs);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
+        overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.JAVA_HEAP_DUMP_DATA_SOURCE_STOP_TIMEOUT_MS_DEFAULT,
                 dataSourceTimeoutMs);
@@ -1633,23 +1520,19 @@ public final class ProfilingFrameworkTests {
     private void overrideHeapProfileDeviceConfigValues(
             boolean killswitchEnabled, int durationDefaultMs, int durationMinMs, int durationMaxMs)
             throws Exception {
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_BOOL,
+        overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.KILLSWITCH_HEAP_PROFILE,
                 killswitchEnabled);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
+        overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_DEFAULT,
                 durationDefaultMs);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
+        overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_MIN,
                 durationMinMs);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
+        overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_MAX,
                 durationMaxMs);
@@ -1658,23 +1541,19 @@ public final class ProfilingFrameworkTests {
     private void overrideStackSamplingDeviceConfigValues(
             boolean killswitchEnabled, int durationDefaultMs, int durationMinMs, int durationMaxMs)
             throws Exception {
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_BOOL,
+        overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.KILLSWITCH_STACK_SAMPLING,
                 killswitchEnabled);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
+        overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_DEFAULT,
                 durationDefaultMs);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
+        overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_MIN,
                 durationMinMs);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
+        overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_MAX,
                 durationMaxMs);
@@ -1683,40 +1562,22 @@ public final class ProfilingFrameworkTests {
     private void overrideSystemTraceDeviceConfigValues(
             boolean killswitchEnabled, int durationDefaultMs, int durationMinMs, int durationMaxMs)
             throws Exception {
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_BOOL,
+        overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.KILLSWITCH_SYSTEM_TRACE,
                 killswitchEnabled);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
+        overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_DEFAULT,
                 durationDefaultMs);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
+        overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_MIN,
                 durationMinMs);
-        executeShellCmd(
-                COMMAND_OVERRIDE_DEVICE_CONFIG_INT,
+        overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_MAX,
                 durationMaxMs);
-    }
-
-    @FormatMethod
-    private String executeShellCmd(String cmdFormat, Object... args) throws Exception {
-        String cmd = String.format(cmdFormat, args);
-        return SystemUtil.runShellCommand(mInstrumentation, cmd);
-    }
-
-    private static void sleep(long ms) {
-        try {
-            Thread.sleep(ms);
-        } catch (InterruptedException e) {
-            // Do nothing.
-        }
     }
 
     private static native void doMallocAndFree();
