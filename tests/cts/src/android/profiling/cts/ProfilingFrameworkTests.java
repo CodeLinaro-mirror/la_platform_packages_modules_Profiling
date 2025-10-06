@@ -17,11 +17,10 @@
 package android.profiling.cts;
 
 import static android.profiling.cts.ProfilingTestUtils.ImmediateExecutor;
-import static android.profiling.cts.ProfilingTestUtils.deleteDeviceConfig;
 import static android.profiling.cts.ProfilingTestUtils.getOneSecondDurationParamBundle;
 import static android.profiling.cts.ProfilingTestUtils.overrideDeviceConfig;
 import static android.profiling.cts.ProfilingTestUtils.overrideRateLimiter;
-import static android.profiling.cts.ProfilingTestUtils.resetNamespace;
+import static android.profiling.cts.ProfilingTestUtils.resetAllConfigs;
 import static android.profiling.cts.ProfilingTestUtils.sleep;
 
 import static org.junit.Assert.assertEquals;
@@ -149,9 +148,6 @@ public final class ProfilingFrameworkTests {
 
         mProfilingManager.clearProfilingTriggers();
 
-        resetNamespace(DeviceConfigHelper.NAMESPACE);
-        resetNamespace(DeviceConfigHelper.NAMESPACE_TESTING);
-
         // This permission is required for Headless (HSUM) tests, including Auto.
         mInstrumentation
                 .getUiAutomation()
@@ -165,9 +161,7 @@ public final class ProfilingFrameworkTests {
     @After
     public void cleanup() throws Exception {
         mProfilingManager.mProfilingService = null;
-        deleteDeviceConfig(
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME);
+        resetAllConfigs();
     }
 
     /** Check and see if we can get a reference to the ProfilingManager service. */

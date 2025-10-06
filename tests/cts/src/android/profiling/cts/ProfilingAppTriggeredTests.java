@@ -24,10 +24,9 @@ import static android.profiling.cts.ProfilingTestConstants.FILE_VALIDATION_RESUL
 import static android.profiling.cts.ProfilingTestConstants.REPLY_ACTION_COMPLETE;
 import static android.profiling.cts.ProfilingTestConstants.REPLY_EXTRA_FILE_VALIDATION_RESULT;
 import static android.profiling.cts.ProfilingTestConstants.REPLY_EXTRA_PROFILING_RESULT;
-import static android.profiling.cts.ProfilingTestUtils.deleteDeviceConfig;
 import static android.profiling.cts.ProfilingTestUtils.executeShellCmd;
 import static android.profiling.cts.ProfilingTestUtils.overrideDeviceConfig;
-import static android.profiling.cts.ProfilingTestUtils.resetNamespace;
+import static android.profiling.cts.ProfilingTestUtils.resetAllConfigs;
 import static android.profiling.cts.ProfilingTestUtils.sleep;
 
 import static com.google.common.truth.Truth.assertThat;
@@ -85,15 +84,11 @@ public class ProfilingAppTriggeredTests {
     @Before
     public void setup() {
         mInstrumentation = InstrumentationRegistry.getInstrumentation();
-        resetNamespace(DeviceConfigHelper.NAMESPACE);
-        resetNamespace(DeviceConfigHelper.NAMESPACE_TESTING);
     }
 
     @After
     public void cleanup() {
-        deleteDeviceConfig(
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME);
+        resetAllConfigs();
 
         if (mResultReceiverFilter != null) {
             mResultReceiverFilter.unregister();

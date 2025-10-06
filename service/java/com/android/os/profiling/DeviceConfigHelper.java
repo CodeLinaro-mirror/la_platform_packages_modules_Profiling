@@ -21,6 +21,7 @@ import android.provider.DeviceConfig;
 /** Wrapper class for retrieving device configuration values. */
 public final class DeviceConfigHelper {
 
+    // LINT.IfChange(configs)
     // Begin section: Testing specific constants
     // Values here can only be accessed with {@link #getTestBoolean}.
 
@@ -151,6 +152,7 @@ public final class DeviceConfigHelper {
             "redaction_max_runtime_allotted_ms";
 
     // End section: Server registered constants
+    // LINT.ThenChange(/tests/cts/src/android/profiling/cts/ProfilingTestUtils.java:reset_configs)
 
     /**
      * Get int param for provided device config name from server side device config namespace or
