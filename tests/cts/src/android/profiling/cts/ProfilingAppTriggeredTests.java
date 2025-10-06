@@ -16,14 +16,14 @@
 
 package android.profiling.cts;
 
-import static android.profiling.cts.ProfilingTestUtils.ACTION_INIT_AND_ADD_APP_FULLY_DRAWN_TRIGGER;
-import static android.profiling.cts.ProfilingTestUtils.ACTION_KEY;
-import static android.profiling.cts.ProfilingTestUtils.ACTION_REGISTER_AND_REPORT_FULLY_DRAWN;
-import static android.profiling.cts.ProfilingTestUtils.FILE_VALIDATION_RESULT_NONE;
-import static android.profiling.cts.ProfilingTestUtils.FILE_VALIDATION_RESULT_SUCCESS;
-import static android.profiling.cts.ProfilingTestUtils.REPLY_ACTION_COMPLETE;
-import static android.profiling.cts.ProfilingTestUtils.REPLY_EXTRA_FILE_VALIDATION_RESULT;
-import static android.profiling.cts.ProfilingTestUtils.REPLY_EXTRA_PROFILING_RESULT;
+import static android.profiling.cts.ProfilingTestConstants.ACTION_INIT_AND_ADD_APP_FULLY_DRAWN_TRIGGER;
+import static android.profiling.cts.ProfilingTestConstants.ACTION_KEY;
+import static android.profiling.cts.ProfilingTestConstants.ACTION_REGISTER_AND_REPORT_FULLY_DRAWN;
+import static android.profiling.cts.ProfilingTestConstants.FILE_VALIDATION_RESULT_NONE;
+import static android.profiling.cts.ProfilingTestConstants.FILE_VALIDATION_RESULT_SUCCESS;
+import static android.profiling.cts.ProfilingTestConstants.REPLY_ACTION_COMPLETE;
+import static android.profiling.cts.ProfilingTestConstants.REPLY_EXTRA_FILE_VALIDATION_RESULT;
+import static android.profiling.cts.ProfilingTestConstants.REPLY_EXTRA_PROFILING_RESULT;
 import static android.profiling.cts.ProfilingTestUtils.deleteDeviceConfig;
 import static android.profiling.cts.ProfilingTestUtils.executeShellCmd;
 import static android.profiling.cts.ProfilingTestUtils.overrideDeviceConfig;

@@ -16,15 +16,15 @@
 
 package android.profiling.cts.profilingapp;
 
-import static android.profiling.cts.ProfilingTestUtils.ACTION_INIT_AND_ADD_APP_FULLY_DRAWN_TRIGGER;
-import static android.profiling.cts.ProfilingTestUtils.ACTION_KEY;
-import static android.profiling.cts.ProfilingTestUtils.ACTION_REGISTER_AND_REPORT_FULLY_DRAWN;
-import static android.profiling.cts.ProfilingTestUtils.FILE_VALIDATION_RESULT_FILE_DOES_NOT_EXIST;
-import static android.profiling.cts.ProfilingTestUtils.FILE_VALIDATION_RESULT_FILE_EMPTY;
-import static android.profiling.cts.ProfilingTestUtils.FILE_VALIDATION_RESULT_FILE_PATH_EMPTY;
-import static android.profiling.cts.ProfilingTestUtils.FILE_VALIDATION_RESULT_NONE;
-import static android.profiling.cts.ProfilingTestUtils.FILE_VALIDATION_RESULT_SUCCESS;
-import static android.profiling.cts.ProfilingTestUtils.reply;
+import static android.profiling.cts.ProfilingTestConstants.ACTION_INIT_AND_ADD_APP_FULLY_DRAWN_TRIGGER;
+import static android.profiling.cts.ProfilingTestConstants.ACTION_KEY;
+import static android.profiling.cts.ProfilingTestConstants.ACTION_REGISTER_AND_REPORT_FULLY_DRAWN;
+import static android.profiling.cts.ProfilingTestConstants.FILE_VALIDATION_RESULT_FILE_DOES_NOT_EXIST;
+import static android.profiling.cts.ProfilingTestConstants.FILE_VALIDATION_RESULT_FILE_EMPTY;
+import static android.profiling.cts.ProfilingTestConstants.FILE_VALIDATION_RESULT_FILE_PATH_EMPTY;
+import static android.profiling.cts.ProfilingTestConstants.FILE_VALIDATION_RESULT_NONE;
+import static android.profiling.cts.ProfilingTestConstants.FILE_VALIDATION_RESULT_SUCCESS;
+import static android.profiling.cts.profilingapp.ProfilingAppUtils.reply;
 
 import android.app.Activity;
 import android.content.Context;
