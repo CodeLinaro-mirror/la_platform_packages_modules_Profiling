@@ -16,12 +16,19 @@
 
 package android.profiling.cts;
 
+import static android.os.ProfilingResult.ERROR_NONE;
+
+import static com.google.common.truth.Truth.assertThat;
+
 import android.os.Bundle;
+import android.os.ProfilingResult;
 import android.os.profiling.DeviceConfigHelper;
+import android.os.profiling.Flags;
 import android.util.Log;
 
 import com.android.compatibility.common.util.SystemUtil;
 
+import com.google.common.truth.Expect;
 import com.google.errorprone.annotations.FormatMethod;
 
 import java.util.concurrent.Executor;
@@ -32,6 +39,14 @@ public final class ProfilingTestUtils {
     // Wait 2 seconds for profiling to get started and collect some data.
     // TODO: b/376440094 - change to query perfetto and confirm profiling is running.
     public static final int WAIT_TIME_FOR_PROFILING_START_MS = 2 * 1000;
+
+    // LINT.IfChange(output_file_suffix)
+    public static final String OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX = ".perfetto-java-heap-dump";
+    public static final String OUTPUT_FILE_HEAP_PROFILE_SUFFIX = ".perfetto-heap-profile";
+    public static final String OUTPUT_FILE_STACK_SAMPLING_SUFFIX = ".perfetto-stack-sample";
+    public static final String OUTPUT_FILE_TRACE_SUFFIX = ".perfetto-trace";
+    // LINT.ThenChange(
+    // /service/java/com/android/os/profiling/ProfilingService.java:output_file_suffix)
 
     private static final String KEY_DURATION_MS = "KEY_DURATION_MS";
 
@@ -293,6 +308,32 @@ public final class ProfilingTestUtils {
         if (waitTraceStart) {
             // Wait a bit so the trace can get started and actually collect something.
             sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+        }
+    }
+
+    /**
+     * Asserts that the given {@link ProfilingResult} is valid and matches the expected values.
+     *
+     * @param expect The {@link Expect} instance to use for assertions.
+     * @param result The {@link ProfilingResult} to assert.
+     * @param expectedFileSuffix The expected file suffix of the result file path.
+     * @param expectedTriggerType The expected trigger type of the profiling result.
+     */
+    public static void assertProfilingResultSuccess(
+            Expect expect,
+            ProfilingResult result,
+            String expectedFileSuffix,
+            int expectedTriggerType) {
+        assertThat(result).isNotNull();
+        expect.that(result.getErrorCode()).isEqualTo(ERROR_NONE);
+        expect.that(result.getResultFilePath()).isNotNull();
+        expect.that(result.getResultFilePath()).contains(expectedFileSuffix);
+        expect.that(result.getTriggerType()).isEqualTo(expectedTriggerType);
+
+        if (Flags.addRateLimiterDisabledToResult()) {
+            expect.that(result.getErrorMessage()).isNotNull();
+        } else {
+            expect.that(result.getErrorMessage()).isNull();
         }
     }
 }

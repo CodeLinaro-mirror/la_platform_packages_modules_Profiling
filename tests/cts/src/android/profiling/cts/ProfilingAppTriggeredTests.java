@@ -24,6 +24,8 @@ import static android.profiling.cts.ProfilingTestConstants.FILE_VALIDATION_RESUL
 import static android.profiling.cts.ProfilingTestConstants.REPLY_ACTION_COMPLETE;
 import static android.profiling.cts.ProfilingTestConstants.REPLY_EXTRA_FILE_VALIDATION_RESULT;
 import static android.profiling.cts.ProfilingTestConstants.REPLY_EXTRA_PROFILING_RESULT;
+import static android.profiling.cts.ProfilingTestUtils.OUTPUT_FILE_TRACE_SUFFIX;
+import static android.profiling.cts.ProfilingTestUtils.assertProfilingResultSuccess;
 import static android.profiling.cts.ProfilingTestUtils.executeShellCmd;
 import static android.profiling.cts.ProfilingTestUtils.resetAllConfigs;
 import static android.profiling.cts.ProfilingTestUtils.sleep;
@@ -68,7 +70,7 @@ public class ProfilingAppTriggeredTests {
     private static final String TAG = ProfilingAppTriggeredTests.class.getSimpleName();
     private static final String STUB_PACKAGE_NAME = "android.profiling.cts.profilingapp";
     private static final String SIMPLE_ACTIVITY = ".ProfilingTriggerTestActivity";
-    private static final String OUTPUT_FILE_TRACE_SUFFIX = ".perfetto-trace";
+
     private static final int WAIT_TIME_FOR_APP_START_MS = 1000;
 
     private Instrumentation mInstrumentation;
@@ -126,17 +128,13 @@ public class ProfilingAppTriggeredTests {
         Bundle extras = mResultReceiverFilter.getIntents().getFirst().getExtras();
         assertThat(extras).isNotNull();
 
-        // TODO(b/448727390): Move these to a common class.
         ProfilingResult result =
                 extras.getParcelable(REPLY_EXTRA_PROFILING_RESULT, ProfilingResult.class);
-        assertThat(result).isNotNull();
-
-        String filePath = result.getResultFilePath();
-        expect.that(result.getErrorCode()).isEqualTo(ProfilingResult.ERROR_NONE);
-        expect.that(filePath).isNotNull();
-        expect.that(filePath).contains(OUTPUT_FILE_TRACE_SUFFIX);
-        expect.that(result.getTriggerType())
-                .isEqualTo(ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN);
+        assertProfilingResultSuccess(
+                expect,
+                result,
+                OUTPUT_FILE_TRACE_SUFFIX,
+                ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN);
 
         int fileValidationResult =
                 extras.getInt(REPLY_EXTRA_FILE_VALIDATION_RESULT, FILE_VALIDATION_RESULT_NONE);

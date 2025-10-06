@@ -17,7 +17,12 @@
 package android.profiling.cts;
 
 import static android.profiling.cts.ProfilingTestUtils.ImmediateExecutor;
+import static android.profiling.cts.ProfilingTestUtils.OUTPUT_FILE_HEAP_PROFILE_SUFFIX;
+import static android.profiling.cts.ProfilingTestUtils.OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX;
+import static android.profiling.cts.ProfilingTestUtils.OUTPUT_FILE_STACK_SAMPLING_SUFFIX;
+import static android.profiling.cts.ProfilingTestUtils.OUTPUT_FILE_TRACE_SUFFIX;
 import static android.profiling.cts.ProfilingTestUtils.WAIT_TIME_FOR_PROFILING_START_MS;
+import static android.profiling.cts.ProfilingTestUtils.assertProfilingResultSuccess;
 import static android.profiling.cts.ProfilingTestUtils.getOneSecondDurationParamBundle;
 import static android.profiling.cts.ProfilingTestUtils.overrideDeviceConfig;
 import static android.profiling.cts.ProfilingTestUtils.overrideRateLimiter;
@@ -60,6 +65,8 @@ import androidx.test.core.app.ApplicationProvider;
 import androidx.test.filters.LargeTest;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
+
+import com.google.common.truth.Expect;
 
 import org.junit.After;
 import org.junit.Before;
@@ -109,12 +116,6 @@ public final class ProfilingFrameworkTests {
     private static final String CONFIG_TIMEOUT_OOM = "trigger_timeout_oom";
     // LINT.ThenChange(/framework/java/android/os/ProfilingServiceHelper.java:oom_device_configs)
 
-    // Keep in sync with {@link ProfilingService} because we can't access it.
-    private static final String OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX = ".perfetto-java-heap-dump";
-    private static final String OUTPUT_FILE_HEAP_PROFILE_SUFFIX = ".perfetto-heap-profile";
-    private static final String OUTPUT_FILE_STACK_SAMPLING_SUFFIX = ".perfetto-stack-sample";
-    private static final String OUTPUT_FILE_TRACE_SUFFIX = ".perfetto-trace";
-
     public static final Path DUMP_PATH =
             FileSystems.getDefault().getPath("/sdcard/ProfilesCollected/");
 
@@ -135,6 +136,8 @@ public final class ProfilingFrameworkTests {
 
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
+
+    @Rule public final Expect expect = Expect.create();
 
     @Rule public final TestName mTestName = new TestName();
 
@@ -1587,16 +1590,7 @@ public final class ProfilingFrameworkTests {
 
     /** Assert that result matches a success case, specifically: contains a path and no errors. */
     private void confirmCollectionSuccess(ProfilingResult result, String suffix, int triggerType) {
-        assertNotNull(result);
-        assertEquals(ProfilingResult.ERROR_NONE, result.getErrorCode());
-        assertNotNull(result.getResultFilePath());
-        assertTrue(result.getResultFilePath().contains(suffix));
-        if (Flags.addRateLimiterDisabledToResult()) {
-            assertNotNull(result.getErrorMessage());
-        } else {
-            assertNull(result.getErrorMessage());
-        }
-        assertEquals(triggerType, result.getTriggerType());
+        assertProfilingResultSuccess(expect, result, suffix, triggerType);
 
         // Confirm output file exists and is not empty.
         File file = new File(result.getResultFilePath());
