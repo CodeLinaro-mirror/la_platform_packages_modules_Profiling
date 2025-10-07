@@ -97,6 +97,9 @@ public class ProfilingService extends IProfilingService.Stub {
     // Used for unique session name only, not filename.
     private static final String SYSTEM_TRIGGERED_SESSION_NAME_PREFIX = "system_triggered_session_";
 
+    private static final String RATE_LIMITER_DISABLED_ERROR_MESSAGE =
+            "Rate limiter disabled manually via adb.";
+
     private static final int TAG_MAX_CHARS_FOR_FILENAME = 20;
 
     private static final int PERFETTO_DESTROY_DEFAULT_TIMEOUT_MS = 10 * 1000;
@@ -168,7 +171,12 @@ public class ProfilingService extends IProfilingService.Stub {
     public String mSystemTriggeredTraceUniqueSessionName = null;
     private long mLastStartedSystemTriggeredTraceMs = 0;
 
-    // Map of uid + package name to a sparse array of trigger objects.
+    /**
+     * Map of uid + package name to a sparse array of trigger objects.
+     *
+     * Adding items to this data structure must only be done using
+     * {@link #addTrigger(ProfilingTriggerData, boolean)} which validates the added triggers.
+     */
     @VisibleForTesting
     public ProcessMap<SparseArray<ProfilingTriggerData>> mAppTriggers = new ProcessMap<>();
     @VisibleForTesting
@@ -216,8 +224,8 @@ public class ProfilingService extends IProfilingService.Stub {
     private AtomicInteger mSystemTriggeredTraceMaxPeriodSeconds;
 
     /**
-     * Package name of app being tested, or null if no app is being tested. To be used both for
-     * automated testing and developer manual testing.
+     * Package name of app being debugged, or null if no app is being debugged. To be used both for
+     * automated testing and developer manual debugging.
      *
      * Setting this package name will:
      * - Ensure a system triggered trace is always running.
@@ -228,7 +236,7 @@ public class ProfilingService extends IProfilingService.Stub {
      *
      * There is no time limit on how long this can be left enabled for.
      */
-    private String mTestPackageName = null;
+    private String mDebugPackageName = null;
 
     /**
      * State the {@link TracingSession} is in.
@@ -352,9 +360,9 @@ public class ProfilingService extends IProfilingService.Stub {
                                     DeviceConfigHelper.DISABLE_DELETE_TEMPORARY_RESULTS, false);
                             getRateLimiter().maybeUpdateRateLimiterDisabled(properties);
 
-                            String newTestPackageName = properties.getString(
-                                    DeviceConfigHelper.SYSTEM_TRIGGERED_TEST_PACKAGE_NAME, null);
-                            handleTestPackageChangeLocked(newTestPackageName);
+                            String newDebugPackageName = properties.getString(
+                                    DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME, null);
+                            handleDebugPackageChangeLocked(newDebugPackageName);
                         }
                     }
                 });
@@ -591,7 +599,13 @@ public class ProfilingService extends IProfilingService.Stub {
         // Populate in memory app triggers store
         for (int i = 0; i < wrapper.getTriggersCount(); i++) {
             ProfilingTriggersWrapper.ProfilingTrigger triggerProto = wrapper.getTriggers(i);
-            addTrigger(new ProfilingTriggerData(triggerProto), false);
+            try {
+                addTrigger(new ProfilingTriggerData(triggerProto), false);
+            } catch (IllegalArgumentException e) {
+                // If this exception is thrown, then a trigger was added with an unsupported type.
+                // Ignore and continue.
+                if (DEBUG) Log.w(TAG, "Trigger loaded from storage with invalid type", e);
+            }
         }
 
         mAppTriggersLoaded = true;
@@ -782,7 +796,7 @@ public class ProfilingService extends IProfilingService.Stub {
                         || session.getProcessResultRunnable() == null) {
                     // This really should not happen, but if profiling is not in correct started
                     // state then try to stop and continue processing it.
-                    stopProfiling(session, LoggingHelper.PROFILING_STOPPED_REASON_UNSPECIFIED);
+                    stopProfiling(session, LoggingHelper.PROFILING_STOPPED_REASON_ERROR);
                 } // else: do nothing. The runnable we just verified exists will return us to this
                 // method when profiling is finished.
                 break;
@@ -810,7 +824,13 @@ public class ProfilingService extends IProfilingService.Stub {
                 break;
             case COPIED_FILE:
                 // File has already been copied to app storage, proceed to callback.
-                session.setError(ProfilingResult.ERROR_NONE);
+                if (Flags.addRateLimiterDisabledToResult()) {
+                    // Set error using existing error message to retain message in case it was set
+                    // to indicate that rate limiter was disabled.
+                    session.setError(ProfilingResult.ERROR_NONE, session.getErrorMessage());
+                } else {
+                    session.setError(ProfilingResult.ERROR_NONE);
+                }
                 processTracingSessionResultCallback(session, true /* Continue advancing session */);
 
                 // This is a good place to persist the queue if possible because the processing work
@@ -964,11 +984,46 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     /**
+     * Enforce that the caller's UID matches the provided package name.
+     *
+     * @throws SecurityException if the package name does not match the calling UID.
+     */
+    private void enforceCallerMatchesPackageName(String packageName) {
+        if (packageName == null || packageName.isEmpty()) {
+            // Empty package cannot be valid.
+            throw new SecurityException("Package name empty, is not associated with caller.");
+        }
+
+        int callingUid = Binder.getCallingUid();
+        String[] uidPackages = mContext.getPackageManager().getPackagesForUid(callingUid);
+        if (uidPackages == null || uidPackages.length == 0) {
+            // Failed to get packages for this uid, cannot validate package name.
+            throw new SecurityException("Failed to resolve package name for uid: " + callingUid);
+        }
+
+        boolean packageNameInUidList = false;
+        for (int i = 0; i < uidPackages.length; i++) {
+            if (packageName.equals(uidPackages[i])) {
+                packageNameInUidList = true;
+                break;
+            }
+        }
+
+        if (!packageNameInUidList) {
+            // Package name is not associated with calling uid, reject request.
+            throw new SecurityException("Package name " + packageName + " not associated with "
+                    + "calling uid: " + callingUid);
+        }
+    }
+
+    /**
      * This method validates the request, arguments, whether the app is allowed to profile now,
      * and if so, starts the profiling.
      */
     public void requestProfiling(int profilingType, Bundle params, String tag,
             long keyMostSigBits, long keyLeastSigBits, String packageName) {
+        enforceCallerMatchesPackageName(packageName);
+
         int uid = Binder.getCallingUid();
 
         if (profilingType != ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP
@@ -980,7 +1035,7 @@ public class ProfilingService extends IProfilingService.Stub {
                     ProfilingResult.ERROR_FAILED_INVALID_REQUEST, null, tag,
                     "Invalid request profiling type", getTriggerTypeNone(), profilingType);
             LoggingHelper.logProfilingRequest(uid, profilingType, params,
-                    LoggingHelper.REQUEST_RESULT_INVALID);
+                    LoggingHelper.REQUEST_RESULT_INVALID, mRateLimiter.isRateLimiterDisabled());
             return;
         }
 
@@ -993,7 +1048,8 @@ public class ProfilingService extends IProfilingService.Stub {
                         ProfilingResult.ERROR_FAILED_PROFILING_IN_PROGRESS, null, tag, null,
                         getTriggerTypeNone(), profilingType);
                 LoggingHelper.logProfilingRequest(uid, profilingType, params,
-                        LoggingHelper.REQUEST_RESULT_PROFILING_IN_PROGRESS);
+                        LoggingHelper.REQUEST_RESULT_PROFILING_IN_PROGRESS,
+                        mRateLimiter.isRateLimiterDisabled());
                 return;
             }
         } catch (RuntimeException e) {
@@ -1002,49 +1058,7 @@ public class ProfilingService extends IProfilingService.Stub {
                     ProfilingResult.ERROR_UNKNOWN, null, tag, "Error communicating with perfetto",
                     getTriggerTypeNone(), profilingType);
             LoggingHelper.logProfilingRequest(uid, profilingType, params,
-                    LoggingHelper.REQUEST_RESULT_ERROR);
-            return;
-        }
-
-        if (packageName == null) {
-            // This shouldn't happen as it should be checked on the app side.
-            if (DEBUG) Log.d(TAG, "PackageName is null");
-            processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                    ProfilingResult.ERROR_UNKNOWN, null, tag, "Couldn't determine package name",
-                    getTriggerTypeNone(), profilingType);
-            LoggingHelper.logProfilingRequest(uid, profilingType, params,
-                    LoggingHelper.REQUEST_RESULT_ERROR);
-            return;
-        }
-
-        String[] uidPackages = mContext.getPackageManager().getPackagesForUid(uid);
-        if (uidPackages == null || uidPackages.length == 0) {
-            // Failed to get uids for this package, can't validate package name.
-            if (DEBUG) Log.d(TAG, "Failed to resolve package name");
-            processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                    ProfilingResult.ERROR_UNKNOWN, null, tag, "Couldn't determine package name",
-                    getTriggerTypeNone(), profilingType);
-            LoggingHelper.logProfilingRequest(uid, profilingType, params,
-                    LoggingHelper.REQUEST_RESULT_ERROR);
-            return;
-        }
-
-        boolean packageNameInUidList = false;
-        for (int i = 0; i < uidPackages.length; i++) {
-            if (packageName.equals(uidPackages[i])) {
-                packageNameInUidList = true;
-                break;
-            }
-        }
-        if (!packageNameInUidList) {
-            // Package name is not associated with calling uid, reject request.
-            if (DEBUG) Log.d(TAG, "Package name not associated with calling uid");
-            processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                    ProfilingResult.ERROR_FAILED_INVALID_REQUEST, null, tag,
-                    "Package name not associated with calling uid.", getTriggerTypeNone(),
-                    profilingType);
-            LoggingHelper.logProfilingRequest(uid, profilingType, params,
-                    LoggingHelper.REQUEST_RESULT_INVALID);
+                    LoggingHelper.REQUEST_RESULT_ERROR, mRateLimiter.isRateLimiterDisabled());
             return;
         }
 
@@ -1057,6 +1071,10 @@ public class ProfilingService extends IProfilingService.Stub {
             try {
                 TracingSession session = new TracingSession(profilingType, params, uid,
                         packageName, tag, keyMostSigBits, keyLeastSigBits, getTriggerTypeNone());
+                if (Flags.addRateLimiterDisabledToResult()
+                        && getRateLimiter().isRateLimiterDisabled()) {
+                    session.setErrorMessage(RATE_LIMITER_DISABLED_ERROR_MESSAGE);
+                }
                 advanceTracingSession(session, TracingState.APPROVED);
                 return;
             } catch (IllegalArgumentException e) {
@@ -1071,7 +1089,7 @@ public class ProfilingService extends IProfilingService.Stub {
                         ProfilingResult.ERROR_FAILED_INVALID_REQUEST, null, tag, e.getMessage(),
                         getTriggerTypeNone(), profilingType);
                 LoggingHelper.logProfilingRequest(uid, profilingType, params,
-                        LoggingHelper.REQUEST_RESULT_INVALID);
+                        LoggingHelper.REQUEST_RESULT_INVALID, mRateLimiter.isRateLimiterDisabled());
                 return;
             } catch (RuntimeException e) {
                 // Perfetto error. Systems fault.
@@ -1080,7 +1098,7 @@ public class ProfilingService extends IProfilingService.Stub {
                         ProfilingResult.ERROR_UNKNOWN, null, tag, "Perfetto error",
                         getTriggerTypeNone(), profilingType);
                 LoggingHelper.logProfilingRequest(uid, profilingType, params,
-                        LoggingHelper.REQUEST_RESULT_ERROR);
+                        LoggingHelper.REQUEST_RESULT_ERROR, mRateLimiter.isRateLimiterDisabled());
                 return;
             }
         } else {
@@ -1092,7 +1110,8 @@ public class ProfilingService extends IProfilingService.Stub {
             int rateLimitType = status == RateLimiter.RATE_LIMIT_RESULT_BLOCKED_PROCESS
                         ? LoggingHelper.REQUEST_RESULT_RATE_LIMIT_PROCESS
                         : LoggingHelper.REQUEST_RESULT_RATE_LIMIT_SYSTEM;
-            LoggingHelper.logProfilingRequest(uid, profilingType, params, rateLimitType);
+            LoggingHelper.logProfilingRequest(uid, profilingType, params, rateLimitType,
+                    mRateLimiter.isRateLimiterDisabled());
         }
     }
 
@@ -1128,9 +1147,11 @@ public class ProfilingService extends IProfilingService.Stub {
             if (DEBUG) Log.d(TAG, "Exception linking death recipient", e);
         }
 
-        // Only handle queued results when a new general listener has been added.
+        // When a new general listener has been added, call through to {@link generalListenerAdded}.
+        // This method is called directly by manager if the callback was already registered before
+        // the general listener added.
         if (isGeneralCallback) {
-            handleQueuedResults(callingUid);
+            generalListenerAdded();
         }
     }
 
@@ -1175,7 +1196,9 @@ public class ProfilingService extends IProfilingService.Stub {
      * through the existing callback object.
      */
     public void generalListenerAdded() {
-        handleQueuedResults(Binder.getCallingUid());
+        int callingUid = Binder.getCallingUid();
+        handleQueuedResults(callingUid);
+        LoggingHelper.logGlobalListenerRegister(callingUid);
     }
 
     /**
@@ -1200,6 +1223,8 @@ public class ProfilingService extends IProfilingService.Stub {
      */
     public void addProfilingTriggers(List<ProfilingTriggerValueParcel> triggers,
             String packageName) {
+        enforceCallerMatchesPackageName(packageName);
+
         int uid = Binder.getCallingUid();
         for (int i = 0; i < triggers.size(); i++) {
             ProfilingTriggerValueParcel trigger = triggers.get(i);
@@ -1209,6 +1234,8 @@ public class ProfilingService extends IProfilingService.Stub {
 
     /** Add an all profiling trigger for the provided package name and the callers uid. */
     public void addAllProfilingTriggers(String packageName) {
+        enforceCallerMatchesPackageName(packageName);
+
         addTrigger(Binder.getCallingUid(), packageName, ProfilingTriggerData.TRIGGER_ALL, 0);
     }
 
@@ -1217,6 +1244,8 @@ public class ProfilingService extends IProfilingService.Stub {
      * name and the uid of the caller.
      */
     public void removeProfilingTriggers(int[] triggerTypesToRemove, String packageName) {
+        enforceCallerMatchesPackageName(packageName);
+
         SparseArray<ProfilingTriggerData> triggers =
                 mAppTriggers.get(packageName, Binder.getCallingUid());
 
@@ -1237,6 +1266,8 @@ public class ProfilingService extends IProfilingService.Stub {
      * Remove all triggers from a process with the provided packagename and the uid of the caller.
      */
     public void clearProfilingTriggers(String packageName) {
+        enforceCallerMatchesPackageName(packageName);
+
         mAppTriggers.remove(packageName, Binder.getCallingUid());
     }
 
@@ -1489,7 +1520,8 @@ public class ProfilingService extends IProfilingService.Stub {
             session.setError(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, e.getMessage());
 
             LoggingHelper.logProfilingRequest(session.getUid(), session.getProfilingType(),
-                    session.getParams(), LoggingHelper.REQUEST_RESULT_INVALID);
+                    session.getParams(), LoggingHelper.REQUEST_RESULT_INVALID,
+                    mRateLimiter.isRateLimiterDisabled());
             // Don't bother adding the session to the queue as there is no real value in trying to
             // deliver this error callback again later in the case that the app no longer has a
             // registered listener.
@@ -1520,12 +1552,14 @@ public class ProfilingService extends IProfilingService.Stub {
             mActiveTracingSessions.put(session.getKey(), session);
 
             LoggingHelper.logProfilingRequest(session.getUid(), session.getProfilingType(),
-                    session.getParams(), LoggingHelper.REQUEST_RESULT_PROFILING_STARTED);
+                    session.getParams(), LoggingHelper.REQUEST_RESULT_PROFILING_STARTED,
+                    mRateLimiter.isRateLimiterDisabled());
         } else {
             session.setError(ProfilingResult.ERROR_FAILED_EXECUTING, "Trace couldn't be started");
 
             LoggingHelper.logProfilingRequest(session.getUid(), session.getProfilingType(),
-                    session.getParams(), LoggingHelper.REQUEST_RESULT_ERROR);
+                    session.getParams(), LoggingHelper.REQUEST_RESULT_ERROR,
+                    mRateLimiter.isRateLimiterDisabled());
 
             // Don't bother adding the session to the queue as there is no real value in trying to
             // deliver this error callback again later in the case that the app no longer has a
@@ -1605,7 +1639,7 @@ public class ProfilingService extends IProfilingService.Stub {
 
             byte[] config = Configs.generateSystemTriggeredTraceConfig(uniqueSessionName,
                     packageNames,
-                    mTestPackageName != null);
+                    mDebugPackageName != null);
             String outputFile = TEMP_TRACE_PATH + SYSTEM_TRIGGERED_SESSION_NAME_PREFIX
                     + OUTPUT_FILE_IN_PROGRESS + OUTPUT_FILE_UNREDACTED_TRACE_SUFFIX;
 
@@ -1658,6 +1692,12 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
 
+        if (triggerType == ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE) {
+            // If this trigger is for an app requesting the running background trace then enforce
+            // that the caller and the package match.
+            enforceCallerMatchesPackageName(packageName);
+        }
+
         // Don't block the calling thread.
         getHandler().post(new Runnable() {
             @Override
@@ -1674,15 +1714,14 @@ public class ProfilingService extends IProfilingService.Stub {
     public void processTriggerInternal(int uid, @NonNull String packageName, int triggerType,
             @Nullable String tag) {
         synchronized (mLock) {
-            if (mSystemTriggeredTraceUniqueSessionName == null) {
-                // If we don't have the session name then we don't know how to clone the trace so
-                // stop it if it's still running and then return.
-                stopSystemTriggeredTraceLocked();
+            if (mSystemTriggeredTraceProcess == null || !mSystemTriggeredTraceProcess.isAlive()) {
+                // There is no active system triggered trace so there's nothing to clone, null out
+                // the session name just in case and return. This is an expected state as the
+                // background trace does not run all the time.
+                mSystemTriggeredTraceUniqueSessionName = null;
 
-                // There is no active system triggered trace so there's nothing to clone. Return.
                 if (DEBUG) {
-                    Log.d(TAG, "Requested clone system triggered trace but we don't have the "
-                            + "session name.");
+                    Log.d(TAG, "Requested clone system triggered trace but no trace active.");
                 }
 
                 LoggingHelper.logProfilingTriggerSent(uid, triggerType,
@@ -1690,18 +1729,18 @@ public class ProfilingService extends IProfilingService.Stub {
                 return;
             }
 
-            if (mSystemTriggeredTraceProcess == null || !mSystemTriggeredTraceProcess.isAlive()) {
-                // If we make it to this path then session name wasn't set to null but can't be used
-                // anymore as its associated trace is not running, so set to null now.
-                mSystemTriggeredTraceUniqueSessionName = null;
+            if (mSystemTriggeredTraceUniqueSessionName == null) {
+                // If we don't have the session name then we don't know how to clone the trace so
+                // stop it if it's still running and then return.
+                stopSystemTriggeredTraceLocked();
 
-                // There is no active system triggered trace so there's nothing to clone. Return.
                 if (DEBUG) {
-                    Log.d(TAG, "Requested clone system triggered trace but no trace active.");
+                    Log.d(TAG, "Requested clone system triggered trace but we don't have the "
+                            + "session name.");
                 }
 
                 LoggingHelper.logProfilingTriggerSent(uid, triggerType,
-                        LoggingHelper.TRIGGER_STATUS_NOT_RUNNING);
+                        LoggingHelper.TRIGGER_STATUS_MISSING_NAME);
                 return;
             }
         }
@@ -1779,6 +1818,10 @@ public class ProfilingService extends IProfilingService.Stub {
         session.setRedactedFileName(baseFileName + OUTPUT_FILE_TRACE_SUFFIX);
         session.setFileName(unredactedFullName);
         session.setProfilingStartTimeMs(System.currentTimeMillis());
+        if (Flags.addRateLimiterDisabledToResult()
+                && packageName.equals(mDebugPackageName)) {
+            session.setErrorMessage(RATE_LIMITER_DISABLED_ERROR_MESSAGE);
+        }
         moveSessionToQueue(session, true);
         advanceTracingSession(session, TracingState.PROFILING_FINISHED);
 
@@ -1847,8 +1890,8 @@ public class ProfilingService extends IProfilingService.Stub {
             return false;
         }
 
-        // Only perform system rate limiting if this is not the test package.
-        if (!trigger.getPackageName().equals(mTestPackageName)) {
+        // Only perform system rate limiting if this is not the debug package.
+        if (!trigger.getPackageName().equals(mDebugPackageName)) {
             // Lastly, check system rate limiting.
             int systemRateLimiterResult = getRateLimiter().isProfilingRequestAllowed(
                     trigger.getUid(), profilingType, true, null);
@@ -1895,6 +1938,12 @@ public class ProfilingService extends IProfilingService.Stub {
         if (!Flags.systemTriggeredProfilingNew()) {
             // Flag disabled.
             return;
+        }
+
+        if (!ProfilingTrigger.isValidRequestTriggerType(trigger.getTriggerType())
+                && trigger.getTriggerType() != ProfilingTriggerData.TRIGGER_ALL) {
+            Log.w(TAG, "Attempted to add invalid profiling trigger.");
+            throw new IllegalArgumentException("Trigger type is not supported");
         }
 
         SparseArray<ProfilingTriggerData> perProcessTriggers = mAppTriggers.get(
@@ -2057,11 +2106,12 @@ public class ProfilingService extends IProfilingService.Stub {
             }
         }
 
-        // If we have any sessions to stop, now is the time.
+        // If we have any sessions to stop, now is the time. This is not an expected state as
+        // sessions should be moved to queue if they reach this state.
         if (!sessionsToStop.isEmpty()) {
             for (int i = 0; i < sessionsToStop.size(); i++) {
                 stopProfiling(sessionsToStop.get(i),
-                        LoggingHelper.PROFILING_STOPPED_REASON_UNSPECIFIED);
+                        LoggingHelper.PROFILING_STOPPED_REASON_ERROR);
             }
         }
     }
@@ -2770,31 +2820,31 @@ public class ProfilingService extends IProfilingService.Stub {
         }
     }
 
-    /** Handle updates to test package config value. */
+    /** Handle updates to debug package config value. */
     @GuardedBy("mLock")
-    private void handleTestPackageChangeLocked(String newTestPackageName) {
-        if (newTestPackageName == null) {
+    private void handleDebugPackageChangeLocked(String newDebugPackageName) {
+        if (newDebugPackageName == null) {
 
-            // Test package has been set to null, check whether it was null previously.
-            if (mTestPackageName != null) {
+            // Debug package has been set to null, check whether it was null previously.
+            if (mDebugPackageName != null) {
 
-                // New null state is a changed from previous state, disable test mode.
-                mTestPackageName = null;
+                // New null state is a changed from previous state, disable debug mode.
+                mDebugPackageName = null;
                 stopSystemTriggeredTraceLocked();
             }
             // If new state is unchanged from previous null state, do nothing.
         } else {
 
-            // Test package has been set with a value. Stop running system triggered trace if
+            // Debug package has been set with a value. Stop running system triggered trace if
             // applicable so we can start a new one that will have most up to date package names.
-            // This should not be called when the new test package name matches the old one as
+            // This should not be called when the debug package name matches the old one as
             // device config should not be sending an update for a value change when the value
             // remains the same, but no need to check as the best experience for caller is to always
             // stop the current trace and start a new one for most up to date package list.
             stopSystemTriggeredTraceLocked();
 
-            // Now update the test package name and start the system triggered trace.
-            mTestPackageName = newTestPackageName;
+            // Now update the debug package name and start the system triggered trace.
+            mDebugPackageName = newDebugPackageName;
             startSystemTriggeredTrace();
         }
     }

@@ -115,6 +115,13 @@ import java.util.function.Consumer;
  * <p>
  * Results are redacted and contain specific information about the requesting process only.
  * </p>
+ *
+ * <p class="note">
+ *   Note: Check out <a href=
+ *   "https://developer.android.com/topic/performance/tracing/profiling-manager/overview">Capture
+ *   Real User Data Using ProfilingManager</a> for a detailed guide on using this API, covering
+ *   capturing Profiling all they way through interpreting the results.
+ * </p>
  */
 @FlaggedApi(Flags.FLAG_TELEMETRY_APIS)
 public final class ProfilingManager {

@@ -40,6 +40,7 @@ public final class LoggingHelper {
     public static final int PROFILING_STOPPED_REASON_APP_REQUESTED = 1;
     public static final int PROFILING_STOPPED_REASON_APP_DIED = 2;
     public static final int PROFILING_STOPPED_REASON_TIMED_OUT = 3;
+    public static final int PROFILING_STOPPED_REASON_ERROR = 4;
 
     public static final int TRIGGER_STATUS_UNSPECIFIED = 0;
     public static final int TRIGGER_STATUS_ERROR = 1;
@@ -49,6 +50,7 @@ public final class LoggingHelper {
     public static final int TRIGGER_STATUS_NOT_REGISTERED = 5;
     public static final int TRIGGER_STATUS_NOT_RUNNING = 6;
     public static final int TRIGGER_STATUS_FULFILLED = 7;
+    public static final int TRIGGER_STATUS_MISSING_NAME = 8;
 
     public static final int BACKGROUND_TRACE_STATE_UNSPECIFIED = 0;
     public static final int BACKGROUND_TRACE_STATE_STARTED = 1;
@@ -79,6 +81,7 @@ public final class LoggingHelper {
             PROFILING_STOPPED_REASON_APP_REQUESTED,
             PROFILING_STOPPED_REASON_APP_DIED,
             PROFILING_STOPPED_REASON_TIMED_OUT,
+            PROFILING_STOPPED_REASON_ERROR,
         })
     @Retention(RetentionPolicy.SOURCE)
     public @interface ProfilingStoppedReason {}
@@ -95,6 +98,7 @@ public final class LoggingHelper {
             TRIGGER_STATUS_NOT_REGISTERED,
             TRIGGER_STATUS_NOT_RUNNING,
             TRIGGER_STATUS_FULFILLED,
+            TRIGGER_STATUS_MISSING_NAME
         })
     @Retention(RetentionPolicy.SOURCE)
     public @interface TriggerStatus {}
@@ -116,13 +120,14 @@ public final class LoggingHelper {
 
     /** Log that a profiling request was made. */
     public static void logProfilingRequest(int uid, int profilingType, @Nullable Bundle params,
-            @RequestResult int requestResult) {
+            @RequestResult int requestResult, boolean isRateLimiterDisabled) {
         ProfilingStatsLog.write(
                 ProfilingStatsLog.PROFILING_REQUEST,
                 uid,
                 profilingTypeToEnumValue(profilingType),
                 params != null && !params.isEmpty(),
-                requestResult);
+                requestResult,
+                isRateLimiterDisabled);
     }
 
     /** Log that a profiling session was stopped. */
@@ -174,6 +179,13 @@ public final class LoggingHelper {
         ProfilingStatsLog.write(
                 ProfilingStatsLog.PROFILING_BACKGROUND_TRACE_STATE,
                 backgroundTraceState);
+    }
+
+    /** Log a global listener registration. */
+    public static void logGlobalListenerRegister(int uid) {
+        ProfilingStatsLog.write(
+                ProfilingStatsLog.PROFILING_GLOBAL_LISTENER_REGISTER,
+                uid);
     }
 
     /**

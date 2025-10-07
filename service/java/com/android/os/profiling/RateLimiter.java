@@ -574,6 +574,13 @@ public class RateLimiter {
         return false;
     }
 
+    /** Whether rate limiter is currently disabled. */
+    public boolean isRateLimiterDisabled() {
+        synchronized (mLock) {
+            return mRateLimiterDisabled;
+        }
+    }
+
     public static final class EntryGroupWrapper {
         private final Object mLock = new Object();
 

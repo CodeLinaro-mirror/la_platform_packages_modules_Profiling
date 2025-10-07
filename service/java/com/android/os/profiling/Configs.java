@@ -111,7 +111,8 @@ public final class Configs {
         sSystemTriggeredSystemTraceDiscardBufferSizeKb = properties.getInt(
                 DeviceConfigHelper.SYSTEM_TRIGGERED_SYSTEM_TRACE_DISCARD_BUFFER_SIZE_KB, FOUR_MB);
         sSystemTriggeredSystemTraceRingBufferSizeKb = properties.getInt(
-                DeviceConfigHelper.SYSTEM_TRIGGERED_SYSTEM_TRACE_RING_BUFFER_SIZE_KB, 32768);
+                DeviceConfigHelper.SYSTEM_TRIGGERED_SYSTEM_TRACE_RING_BUFFER_SIZE_KB,
+                Flags.backgroundBufferSizeIncrease() ? 65536 : 32768);
 
         sSystemTriggeredSystemTraceConfigsInitialized = true;
     }
