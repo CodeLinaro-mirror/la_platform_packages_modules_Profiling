@@ -17,6 +17,7 @@
 package android.profiling.cts;
 
 import android.os.Bundle;
+import android.os.profiling.DeviceConfigHelper;
 import android.util.Log;
 
 import com.android.compatibility.common.util.SystemUtil;
@@ -72,11 +73,6 @@ public final class ProfilingTestUtils {
         executeShellCmd("device_config delete %s %s", namespace, config);
     }
 
-    /** Resets a device config namespace to its default values. */
-    public static void resetNamespace(String namespace) {
-        executeShellCmd("device_config reset trusted_defaults %s", namespace);
-    }
-
     /**
      * Overrides the rate limiter to the provided value and wait long enough for the update to be
      * picked up.
@@ -90,6 +86,163 @@ public final class ProfilingTestUtils {
                 return;
             }
         }
+    }
+
+    /**
+     * Reset all profiling device configs from both namespaces.
+     *
+     * <p>This should be called in the cleanup of any test which modified device config values.
+     *
+     * <p>Any config which is overridden in a test must be added here.
+     */
+    public static void resetAllConfigs() {
+        // LINT.IfChange(reset_configs)
+        // Testing namespace
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE_TESTING,
+                DeviceConfigHelper.RATE_LIMITER_DISABLE_PROPERTY);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE_TESTING,
+                DeviceConfigHelper.DISABLE_DELETE_TEMPORARY_RESULTS);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE_TESTING,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME);
+
+        // Config namespace
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.KILLSWITCH_SYSTEM_TRACE);
+        deleteDeviceConfig(DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.COST_SYSTEM_TRACE);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_DEFAULT);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_MIN);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_MAX);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_DEFAULT);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_MIN);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_MAX);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.KILLSWITCH_HEAP_PROFILE);
+        deleteDeviceConfig(DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.COST_HEAP_PROFILE);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.HEAP_PROFILE_TRACK_JAVA_ALLOCATIONS_DEFAULT);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.HEAP_PROFILE_FLUSH_TIMEOUT_MS_DEFAULT);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_DEFAULT);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_MIN);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_MAX);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_DEFAULT);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MIN);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MAX);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_DEFAULT);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MIN);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MAX);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.KILLSWITCH_JAVA_HEAP_DUMP);
+        deleteDeviceConfig(DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.COST_JAVA_HEAP_DUMP);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.JAVA_HEAP_DUMP_DURATION_MS_DEFAULT);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.JAVA_HEAP_DUMP_DATA_SOURCE_STOP_TIMEOUT_MS_DEFAULT);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_DEFAULT);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_MIN);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_MAX);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.KILLSWITCH_STACK_SAMPLING);
+        deleteDeviceConfig(DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.COST_STACK_SAMPLING);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.STACK_SAMPLING_FLUSH_TIMEOUT_MS_DEFAULT);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_DEFAULT);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_MIN);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_MAX);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_DEFAULT);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_MIN);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_MAX);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.STACK_SAMPLING_FREQUENCY_DEFAULT);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.STACK_SAMPLING_FREQUENCY_MIN);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.STACK_SAMPLING_FREQUENCY_MAX);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.COST_SYSTEM_TRIGGERED_SYSTEM_TRACE);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_SYSTEM_TRACE_DURATION_MS);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_SYSTEM_TRACE_DISCARD_BUFFER_SIZE_KB);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_SYSTEM_TRACE_RING_BUFFER_SIZE_KB);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS);
+        deleteDeviceConfig(DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR);
+        deleteDeviceConfig(DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY);
+        deleteDeviceConfig(DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_7_DAY);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.PERFETTO_DESTROY_TIMEOUT_MS);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_RESULT_REDELIVERY_COUNT);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.CLEAR_TEMPORARY_DIRECTORY_FREQUENCY_MS);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.CLEAR_TEMPORARY_DIRECTORY_BOOT_DELAY_MS);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.PROFILING_RECHECK_DELAY_MS);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.REDACTION_CHECK_FREQUENCY_MS);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.REDACTION_MAX_RUNTIME_ALLOTTED_MS);
+        // LINT.ThenChange(/service/java/com/android/os/profiling/DeviceConfigHelper.java:configs)
     }
 
     /** Sleeps for the given number of milliseconds. */
