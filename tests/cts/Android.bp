@@ -22,6 +22,9 @@ package {
 android_test {
     name: "CtsProfilingModuleTests",
     defaults: ["cts_defaults"],
+    data: [
+        ":CtsProfilingTestApp",
+    ],
     static_libs: [
         "androidx.test.rules",
         "androidx.test.ext.truth",
@@ -58,4 +61,23 @@ android_test {
     ],
     min_sdk_version: "35",
     sdk_version: "module_current",
+}
+
+android_test_helper_app {
+    name: "CtsProfilingTestApp",
+    defaults: ["cts_defaults"],
+    sdk_version: "system_current",
+    srcs: [
+        "src/android/profiling/cts/profilingapp/**/*.java",
+        "src/android/profiling/cts/ProfilingTestConstants.java",
+    ],
+    min_sdk_version: "35",
+    target_sdk_version: "35",
+    test_suites: [
+        "cts",
+        "general-tests",
+        "mts-profiling",
+        "mcts-profiling",
+    ],
+    manifest: "src/android/profiling/cts/profilingapp/AndroidManifestProfilingApp.xml",
 }

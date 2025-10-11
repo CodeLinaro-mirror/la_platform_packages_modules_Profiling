@@ -17,6 +17,7 @@
 package android.profiling.cts;
 
 import android.os.Bundle;
+import android.util.Log;
 
 import com.android.compatibility.common.util.SystemUtil;
 
@@ -25,6 +26,7 @@ import com.google.errorprone.annotations.FormatMethod;
 import java.util.concurrent.Executor;
 
 public final class ProfilingTestUtils {
+    private static final String TAG = ProfilingTestUtils.class.getSimpleName();
 
     private static final String KEY_DURATION_MS = "KEY_DURATION_MS";
 
@@ -108,6 +110,7 @@ public final class ProfilingTestUtils {
      */
     @FormatMethod
     public static String executeShellCmd(String command, Object... args) {
+        Log.d(TAG, "Executing shell command: " + String.format(command, args));
         return SystemUtil.runShellCommand(String.format(command, args));
     }
 }

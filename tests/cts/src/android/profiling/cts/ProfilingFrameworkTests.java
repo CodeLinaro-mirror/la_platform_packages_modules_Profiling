@@ -36,6 +36,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import android.app.ApplicationErrorReport;
 import android.app.Instrumentation;
 import android.content.Context;
 import android.os.Binder;
@@ -49,6 +50,7 @@ import android.os.ProfilingTrigger;
 import android.os.profiling.DeviceConfigHelper;
 import android.os.profiling.Flags;
 import android.os.profiling.ProfilingService;
+import android.platform.test.annotations.RequiresFlagsDisabled;
 import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
@@ -73,6 +75,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -96,9 +100,17 @@ public final class ProfilingFrameworkTests {
     // TODO: b/376440094 - change to query perfetto and confirm profiling is running.
     private static final int WAIT_TIME_FOR_PROFILING_START_MS = 2 * 1000;
 
+    // Wait 2 seconds for profiling to finish processing and transfer result to app.
+    private static final int WAIT_TIME_FOR_PROFILING_POST_PROCESSING_MS = 2 * 1000;
+
     // Wait 10 seconds for profiling to potentially clone, process, and return result to confirm it
     // did not occur.
     private static final int WAIT_TIME_FOR_TRIGGERED_PROFILING_NO_RESULT = 10 * 1000;
+
+    // LINT.IfChange(oom_device_configs)
+    private static final int TIMEOUT_DEFAULT_JAVA_HEAP_DUMP_SECONDS = 5;
+    private static final String CONFIG_TIMEOUT_OOM = "trigger_timeout_oom";
+    // LINT.ThenChange(/framework/java/android/os/ProfilingServiceHelper.java:oom_device_configs)
 
     // Keep in sync with {@link ProfilingService} because we can't access it.
     private static final String OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX = ".perfetto-java-heap-dump";
@@ -145,6 +157,8 @@ public final class ProfilingFrameworkTests {
                 .getUiAutomation()
                 .adoptShellPermissionIdentity(
                         android.Manifest.permission.INTERACT_ACROSS_USERS_FULL);
+
+        mProfilingManager.clearProfilingTriggers();
     }
 
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager.mProfilingService lock.
@@ -1209,6 +1223,163 @@ public final class ProfilingFrameworkTests {
         sleep(WAIT_TIME_FOR_TRIGGERED_PROFILING_NO_RESULT);
 
         // Finally, confirm that no callback was received.
+        assertNull(callbackGeneral.mResult);
+    }
+
+    /**
+     * Test system triggered profiling for application crash case in which the crash is eligible for
+     * profiling and the app is registered for the trigger.
+     *
+     * <p>Test confirms both that the correct result is received, and that the latch is correctly
+     * counted down allowing callers to block on the latch.
+     */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_PROFILING_TRIGGER_OOM)
+    public void testSystemTriggeredApplicationCrashSuccess() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // Start the system triggered trace for testing as this covers rate limiting override for
+        // triggers.
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE_TESTING,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
+                REAL_PACKAGE_NAME);
+
+        // Register for OOM trigger
+        ProfilingTrigger trigger =
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_OOM).build();
+        mProfilingManager.addProfilingTriggers(List.of(trigger));
+
+        // And add a global listener
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(
+                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
+
+        CountDownLatch latch = new CountDownLatch(1);
+
+        // Fake a system trigger.
+        ProfilingServiceHelper.getInstance()
+                .profileApplicationCrash(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        new ApplicationErrorReport.CrashInfo(new OutOfMemoryError()),
+                        latch);
+
+        // Await up to 10 seconds, Java Heap Dump should take less than 5 seconds, so assert true
+        // to ensure exit was due to latch counting down rather than timeout.
+        assertTrue(latch.await(10, TimeUnit.SECONDS));
+
+        // The latch counts down when collection is complete, but before a callback is necessarily
+        // received, so wait for a bit.
+        sleep(WAIT_TIME_FOR_PROFILING_POST_PROCESSING_MS);
+
+        // Confirm that a result was received.
+        confirmCollectionSuccess(
+                callbackGeneral.mResult,
+                OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX,
+                ProfilingTrigger.TRIGGER_TYPE_OOM);
+    }
+
+    /**
+     * Test system triggered profiling for application crash case in which the crash is eligible for
+     * profiling but the app is not registered for the trigger.
+     *
+     * <p>Test confirms both that no result is received, and that the latch is promptly counted down
+     * allowing callers to block on the latch.
+     */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_PROFILING_TRIGGER_OOM)
+    @RequiresFlagsDisabled(Flags.FLAG_OOM_TRIGGER_EXPERIMENT_DO_NOT_RELEASE)
+    public void testSystemTriggeredApplicationCrashNotRegistered() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // Start the system triggered trace for testing as this covers rate limiting override for
+        // triggers.
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE_TESTING,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
+                REAL_PACKAGE_NAME);
+
+        // And add a global listener
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(
+                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
+
+        CountDownLatch latch = new CountDownLatch(1);
+
+        // Fake a system trigger.
+        ProfilingServiceHelper.getInstance()
+                .profileApplicationCrash(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        new ApplicationErrorReport.CrashInfo(new OutOfMemoryError()),
+                        latch);
+
+        // Await up to 1 second, since the trigger is not registered the latch should be counted
+        // down in less than that time so assert true to ensure exit was not due to timeout.
+        assertTrue(latch.await(1, TimeUnit.SECONDS));
+
+        // Set wait time to timeout plus post processing wait time
+        int waitTimeMs =
+                DeviceConfigHelper.getInt(
+                                        CONFIG_TIMEOUT_OOM, TIMEOUT_DEFAULT_JAVA_HEAP_DUMP_SECONDS)
+                                * 1000
+                        + WAIT_TIME_FOR_PROFILING_POST_PROCESSING_MS;
+        sleep(waitTimeMs);
+
+        // Confirm that no callback was received.
+        assertNull(callbackGeneral.mResult);
+    }
+
+    /**
+     * Test system triggered profiling for application crash case in which the crash is not eligible
+     * for profiling.
+     *
+     * <p>Test confirms both that no result is received, and that the latch is promptly counted down
+     * allowing callers to block on the latch.
+     */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_PROFILING_TRIGGER_OOM)
+    public void testSystemTriggeredApplicationCrashNotProfilingEligible() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // Start the system triggered trace for testing as this covers rate limiting override for
+        // triggers.
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE_TESTING,
+                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
+                REAL_PACKAGE_NAME);
+
+        mProfilingManager.addAllProfilingTriggers();
+
+        // And add a global listener
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(
+                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
+
+        CountDownLatch latch = new CountDownLatch(1);
+
+        // Fake a system trigger for a NPE, which is not a type that is eligible for profiling.
+        ProfilingServiceHelper.getInstance()
+                .profileApplicationCrash(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        new ApplicationErrorReport.CrashInfo(new NullPointerException()),
+                        latch);
+
+        // Await up to 1 second, since the trigger is not registered the latch should be counted
+        // down in less than that time so assert true to ensure exit was not due to timeout.
+        assertTrue(latch.await(1, TimeUnit.SECONDS));
+
+        // Set wait time to timeout plus post processing wait time
+        int waitTimeMs =
+                DeviceConfigHelper.getInt(
+                                        CONFIG_TIMEOUT_OOM, TIMEOUT_DEFAULT_JAVA_HEAP_DUMP_SECONDS)
+                                * 1000
+                        + WAIT_TIME_FOR_PROFILING_POST_PROCESSING_MS;
+        sleep(waitTimeMs);
+
+        // Confirm that no callback was received.
         assertNull(callbackGeneral.mResult);
     }
 
