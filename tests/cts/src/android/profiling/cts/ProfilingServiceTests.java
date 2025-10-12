@@ -22,6 +22,8 @@ import static android.profiling.cts.ProfilingTestUtils.overrideDeviceConfig;
 import static android.profiling.cts.ProfilingTestUtils.resetNamespace;
 import static android.profiling.cts.ProfilingTestUtils.sleep;
 
+import static com.google.common.truth.Truth.assertThat;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
@@ -33,10 +35,12 @@ import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -537,6 +541,7 @@ public final class ProfilingServiceTests {
                                         FAKE_UID,
                                         NOT_THIS_APP_PACKAGE_NAME,
                                         ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE,
+                                        null,
                                         null));
         assertEquals(getErrorMessageForPackageDoesNotMatchUid(), throwable.getMessage());
     }
@@ -555,6 +560,7 @@ public final class ProfilingServiceTests {
                                         FAKE_UID,
                                         APP_PACKAGE_NAME,
                                         ProfilingTrigger.TRIGGER_TYPE_ANR,
+                                        null,
                                         null));
         assertEquals("Calling system only method from non system process.", throwable.getMessage());
     }
@@ -2328,7 +2334,7 @@ public final class ProfilingServiceTests {
 
         // Now process the trigger.
         mProfilingService.processTriggerInternal(
-                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_ANR, null);
+                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_ANR, null, null);
 
         // Get the new trigger time and make sure it's later than the fake one, indicating it ran.
         long newTriggerTime =
@@ -2379,7 +2385,7 @@ public final class ProfilingServiceTests {
 
         // Now process the trigger.
         mProfilingService.processTriggerInternal(
-                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_ANR, null);
+                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_ANR, null, null);
 
         // Get the new trigger time and make sure it's equal to the fake one, indicating it did not
         // run.
@@ -2416,7 +2422,11 @@ public final class ProfilingServiceTests {
 
         // Now process the trigger.
         mProfilingService.processTriggerInternal(
-                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN, null);
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN,
+                null,
+                null);
 
         // Get the new trigger time and make sure it's later than 0, indicating it ran.
         long newTriggerTime =
@@ -2458,7 +2468,11 @@ public final class ProfilingServiceTests {
 
         // Now process the trigger.
         mProfilingService.processTriggerInternal(
-                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN, null);
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN,
+                null,
+                null);
 
         // Get the new trigger time and make sure it's equal to 0, indicating it did not run.
         long newTriggerTime =
@@ -2642,6 +2656,35 @@ public final class ProfilingServiceTests {
 
         // Verify that the all triggers object is returned.
         assertEquals(ProfilingTriggerData.TRIGGER_ALL, trigger.getTriggerType());
+    }
+
+    @Test
+    public void testStartSystemTriggeredTrace_debugPackageName() {
+        // First, clear any existing triggers.
+        mProfilingService.mAppTriggers.getMap().clear();
+        assertThat(mProfilingService.mAppTriggers.getMap()).isEmpty();
+
+        // Set the debug package name directly.
+        mProfilingService.handleDebugPackageChangeLocked(APP_PACKAGE_NAME);
+
+        // Confirm the startSystemTriggeredTrace was called and started the actual profiling
+        // process.
+        verify(mProfilingService, times(1)).startSystemTriggeredTrace();
+        verify(mProfilingService, times(1)).startProfilingProcess(any(), anyString());
+    }
+
+    @Test
+    public void testStartSystemTriggeredTrace_nullDebugPackageName() {
+        // First, clear any existing triggers.
+        mProfilingService.mAppTriggers.getMap().clear();
+        assertThat(mProfilingService.mAppTriggers.getMap()).isEmpty();
+
+        // Set the null debug package name directly.
+        mProfilingService.handleDebugPackageChangeLocked(/* newDebugPackageName */ null);
+
+        // Confirm the startSystemTriggeredTrace and startProfilingProcess were not called.
+        verify(mProfilingService, never()).startSystemTriggeredTrace();
+        verify(mProfilingService, never()).startProfilingProcess(any(), anyString());
     }
 
     private File createAndConfirmFileExists(File directory, String fileName) throws Exception {
