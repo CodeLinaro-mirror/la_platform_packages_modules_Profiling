@@ -16,10 +16,9 @@
 
 package android.profiling.cts;
 
-import static android.profiling.cts.ProfilingTestUtils.deleteDeviceConfig;
 import static android.profiling.cts.ProfilingTestUtils.getDeviceConfig;
 import static android.profiling.cts.ProfilingTestUtils.overrideDeviceConfig;
-import static android.profiling.cts.ProfilingTestUtils.resetNamespace;
+import static android.profiling.cts.ProfilingTestUtils.resetAllConfigs;
 import static android.profiling.cts.ProfilingTestUtils.sleep;
 
 import static com.google.common.truth.Truth.assertThat;
@@ -152,9 +151,6 @@ public final class ProfilingServiceTests {
         // for 'atest' runs which do not provide the same guarantee.
         assumeTrue("SELinux should be in enforcing mode", isSELinuxEnforced());
 
-        resetNamespace(DeviceConfigHelper.NAMESPACE);
-        resetNamespace(DeviceConfigHelper.NAMESPACE_TESTING);
-
         mContext = spy(ApplicationProvider.getApplicationContext());
         mProfilingService = spy(new ProfilingService(mContext));
         mRateLimiter =
@@ -205,13 +201,7 @@ public final class ProfilingServiceTests {
             mProfilingService.mPersistQueueFile.delete();
         }
 
-        // Remove any overrides set for period.
-        deleteDeviceConfig(
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS);
-        deleteDeviceConfig(
-                DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS);
+        resetAllConfigs();
     }
 
     /** Test that registering binder callbacks works as expected. */

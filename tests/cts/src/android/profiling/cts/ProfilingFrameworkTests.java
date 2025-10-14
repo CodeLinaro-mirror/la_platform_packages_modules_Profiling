@@ -17,12 +17,18 @@
 package android.profiling.cts;
 
 import static android.profiling.cts.ProfilingTestUtils.ImmediateExecutor;
-import static android.profiling.cts.ProfilingTestUtils.deleteDeviceConfig;
+import static android.profiling.cts.ProfilingTestUtils.OUTPUT_FILE_HEAP_PROFILE_SUFFIX;
+import static android.profiling.cts.ProfilingTestUtils.OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX;
+import static android.profiling.cts.ProfilingTestUtils.OUTPUT_FILE_STACK_SAMPLING_SUFFIX;
+import static android.profiling.cts.ProfilingTestUtils.OUTPUT_FILE_TRACE_SUFFIX;
+import static android.profiling.cts.ProfilingTestUtils.WAIT_TIME_FOR_PROFILING_START_MS;
+import static android.profiling.cts.ProfilingTestUtils.assertProfilingResultSuccess;
 import static android.profiling.cts.ProfilingTestUtils.getOneSecondDurationParamBundle;
 import static android.profiling.cts.ProfilingTestUtils.overrideDeviceConfig;
 import static android.profiling.cts.ProfilingTestUtils.overrideRateLimiter;
-import static android.profiling.cts.ProfilingTestUtils.resetNamespace;
+import static android.profiling.cts.ProfilingTestUtils.resetAllConfigs;
 import static android.profiling.cts.ProfilingTestUtils.sleep;
+import static android.profiling.cts.ProfilingTestUtils.startSystemTriggeredTraceForTesting;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -60,6 +66,8 @@ import androidx.test.filters.LargeTest;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
+import com.google.common.truth.Expect;
+
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -96,10 +104,6 @@ public final class ProfilingFrameworkTests {
     // up to 4 increments totalling 20 seconds.
     private static final int CALLBACK_CANCEL_WAIT_TIME_INCREMENTS_COUNT = 4;
 
-    // Wait 2 seconds for profiling to get started before attempting to cancel it.
-    // TODO: b/376440094 - change to query perfetto and confirm profiling is running.
-    private static final int WAIT_TIME_FOR_PROFILING_START_MS = 2 * 1000;
-
     // Wait 2 seconds for profiling to finish processing and transfer result to app.
     private static final int WAIT_TIME_FOR_PROFILING_POST_PROCESSING_MS = 2 * 1000;
 
@@ -111,12 +115,6 @@ public final class ProfilingFrameworkTests {
     private static final int TIMEOUT_DEFAULT_JAVA_HEAP_DUMP_SECONDS = 5;
     private static final String CONFIG_TIMEOUT_OOM = "trigger_timeout_oom";
     // LINT.ThenChange(/framework/java/android/os/ProfilingServiceHelper.java:oom_device_configs)
-
-    // Keep in sync with {@link ProfilingService} because we can't access it.
-    private static final String OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX = ".perfetto-java-heap-dump";
-    private static final String OUTPUT_FILE_HEAP_PROFILE_SUFFIX = ".perfetto-heap-profile";
-    private static final String OUTPUT_FILE_STACK_SAMPLING_SUFFIX = ".perfetto-stack-sample";
-    private static final String OUTPUT_FILE_TRACE_SUFFIX = ".perfetto-trace";
 
     public static final Path DUMP_PATH =
             FileSystems.getDefault().getPath("/sdcard/ProfilesCollected/");
@@ -139,6 +137,8 @@ public final class ProfilingFrameworkTests {
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
 
+    @Rule public final Expect expect = Expect.create();
+
     @Rule public final TestName mTestName = new TestName();
 
     @Before
@@ -148,9 +148,6 @@ public final class ProfilingFrameworkTests {
         mInstrumentation = InstrumentationRegistry.getInstrumentation();
 
         mProfilingManager.clearProfilingTriggers();
-
-        resetNamespace(DeviceConfigHelper.NAMESPACE);
-        resetNamespace(DeviceConfigHelper.NAMESPACE_TESTING);
 
         // This permission is required for Headless (HSUM) tests, including Auto.
         mInstrumentation
@@ -165,9 +162,7 @@ public final class ProfilingFrameworkTests {
     @After
     public void cleanup() throws Exception {
         mProfilingManager.mProfilingService = null;
-        deleteDeviceConfig(
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME);
+        resetAllConfigs();
     }
 
     /** Check and see if we can get a reference to the ProfilingManager service. */
@@ -993,13 +988,7 @@ public final class ProfilingFrameworkTests {
         mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                REAL_PACKAGE_NAME);
-
-        // Wait a bit so the trace can get started and actually collect something.
-        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ true);
 
         // Now fake a system trigger.
         ProfilingServiceHelper.getInstance()
@@ -1045,13 +1034,7 @@ public final class ProfilingFrameworkTests {
         mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                REAL_PACKAGE_NAME);
-
-        // Wait a bit so the trace can get started and actually collect something.
-        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ true);
 
         // Now fake a system trigger.
         ProfilingServiceHelper.getInstance()
@@ -1097,13 +1080,7 @@ public final class ProfilingFrameworkTests {
         mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                REAL_PACKAGE_NAME);
-
-        // Wait a bit so the trace can get started and actually collect something.
-        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ true);
 
         String tag = "some_tag";
 
@@ -1148,13 +1125,7 @@ public final class ProfilingFrameworkTests {
         mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                REAL_PACKAGE_NAME);
-
-        // Wait a bit so the trace can get started and actually collect something.
-        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ true);
 
         // Remove the trigger.
         mProfilingManager.removeProfilingTriggersByType(
@@ -1201,13 +1172,7 @@ public final class ProfilingFrameworkTests {
         mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                REAL_PACKAGE_NAME);
-
-        // Wait a bit so the trace can get started and actually collect something.
-        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ true);
 
         // Clear all triggers for this process.
         mProfilingManager.clearProfilingTriggers();
@@ -1240,10 +1205,7 @@ public final class ProfilingFrameworkTests {
 
         // Start the system triggered trace for testing as this covers rate limiting override for
         // triggers.
-        overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                REAL_PACKAGE_NAME);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ false);
 
         // Register for OOM trigger
         ProfilingTrigger trigger =
@@ -1295,10 +1257,7 @@ public final class ProfilingFrameworkTests {
 
         // Start the system triggered trace for testing as this covers rate limiting override for
         // triggers.
-        overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                REAL_PACKAGE_NAME);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ false);
 
         // And add a global listener
         AppCallback callbackGeneral = new AppCallback();
@@ -1345,10 +1304,7 @@ public final class ProfilingFrameworkTests {
 
         // Start the system triggered trace for testing as this covers rate limiting override for
         // triggers.
-        overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                REAL_PACKAGE_NAME);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ false);
 
         mProfilingManager.addAllProfilingTriggers();
 
@@ -1634,16 +1590,7 @@ public final class ProfilingFrameworkTests {
 
     /** Assert that result matches a success case, specifically: contains a path and no errors. */
     private void confirmCollectionSuccess(ProfilingResult result, String suffix, int triggerType) {
-        assertNotNull(result);
-        assertEquals(ProfilingResult.ERROR_NONE, result.getErrorCode());
-        assertNotNull(result.getResultFilePath());
-        assertTrue(result.getResultFilePath().contains(suffix));
-        if (Flags.addRateLimiterDisabledToResult()) {
-            assertNotNull(result.getErrorMessage());
-        } else {
-            assertNull(result.getErrorMessage());
-        }
-        assertEquals(triggerType, result.getTriggerType());
+        assertProfilingResultSuccess(expect, result, suffix, triggerType);
 
         // Confirm output file exists and is not empty.
         File file = new File(result.getResultFilePath());

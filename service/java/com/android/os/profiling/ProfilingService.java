@@ -83,11 +83,15 @@ public class ProfilingService extends IProfilingService.Stub {
     private static final String OUTPUT_FILE_SECTION_SEPARATOR = "_";
     private static final String OUTPUT_FILE_FIELD_SEPARATOR = "-";
     private static final String OUTPUT_FILE_PREFIX = "profile";
-    // Keep in sync with {@link ProfilingFrameworkTests}.
+
+    // LINT.IfChange(output_file_suffix)
     private static final String OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX = ".perfetto-java-heap-dump";
     private static final String OUTPUT_FILE_HEAP_PROFILE_SUFFIX = ".perfetto-heap-profile";
     private static final String OUTPUT_FILE_STACK_SAMPLING_SUFFIX = ".perfetto-stack-sample";
     private static final String OUTPUT_FILE_TRACE_SUFFIX = ".perfetto-trace";
+    // LINT.ThenChange(
+    // /tests/cts/src/android/profiling/cts/ProfilingTestUtils.java:output_file_suffix)
+
     private static final String OUTPUT_FILE_UNREDACTED_TRACE_SUFFIX = ".perfetto-trace-unredacted";
     private static final String OUTPUT_FILE_TRIGGER = "trigger-type";
     private static final String OUTPUT_FILE_IN_PROGRESS = "in-progress";

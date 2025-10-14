@@ -24,11 +24,12 @@ import static android.profiling.cts.ProfilingTestConstants.FILE_VALIDATION_RESUL
 import static android.profiling.cts.ProfilingTestConstants.REPLY_ACTION_COMPLETE;
 import static android.profiling.cts.ProfilingTestConstants.REPLY_EXTRA_FILE_VALIDATION_RESULT;
 import static android.profiling.cts.ProfilingTestConstants.REPLY_EXTRA_PROFILING_RESULT;
-import static android.profiling.cts.ProfilingTestUtils.deleteDeviceConfig;
+import static android.profiling.cts.ProfilingTestUtils.OUTPUT_FILE_TRACE_SUFFIX;
+import static android.profiling.cts.ProfilingTestUtils.assertProfilingResultSuccess;
 import static android.profiling.cts.ProfilingTestUtils.executeShellCmd;
-import static android.profiling.cts.ProfilingTestUtils.overrideDeviceConfig;
-import static android.profiling.cts.ProfilingTestUtils.resetNamespace;
+import static android.profiling.cts.ProfilingTestUtils.resetAllConfigs;
 import static android.profiling.cts.ProfilingTestUtils.sleep;
+import static android.profiling.cts.ProfilingTestUtils.startSystemTriggeredTraceForTesting;
 
 import static com.google.common.truth.Truth.assertThat;
 
@@ -42,7 +43,6 @@ import android.content.IntentFilter;
 import android.os.Bundle;
 import android.os.ProfilingResult;
 import android.os.ProfilingTrigger;
-import android.os.profiling.DeviceConfigHelper;
 import android.os.profiling.Flags;
 import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
@@ -70,8 +70,7 @@ public class ProfilingAppTriggeredTests {
     private static final String TAG = ProfilingAppTriggeredTests.class.getSimpleName();
     private static final String STUB_PACKAGE_NAME = "android.profiling.cts.profilingapp";
     private static final String SIMPLE_ACTIVITY = ".ProfilingTriggerTestActivity";
-    private static final String OUTPUT_FILE_TRACE_SUFFIX = ".perfetto-trace";
-    private static final int WAIT_TIME_FOR_PROFILING_START_MS = 2 * 1000;
+
     private static final int WAIT_TIME_FOR_APP_START_MS = 1000;
 
     private Instrumentation mInstrumentation;
@@ -85,15 +84,11 @@ public class ProfilingAppTriggeredTests {
     @Before
     public void setup() {
         mInstrumentation = InstrumentationRegistry.getInstrumentation();
-        resetNamespace(DeviceConfigHelper.NAMESPACE);
-        resetNamespace(DeviceConfigHelper.NAMESPACE_TESTING);
     }
 
     @After
     public void cleanup() {
-        deleteDeviceConfig(
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME);
+        resetAllConfigs();
 
         if (mResultReceiverFilter != null) {
             mResultReceiverFilter.unregister();
@@ -118,16 +113,7 @@ public class ProfilingAppTriggeredTests {
         // Stop the test app.
         executeShellCmd("am force-stop " + STUB_PACKAGE_NAME);
 
-        // Set the device config to enable system-triggered debugging for the test app package.
-        // This needs to be done after the test app registers a trigger so that an active trace
-        // can start.
-        // TODO(b/448723955): Move this to a common class.
-        overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                STUB_PACKAGE_NAME);
-        // Wait a bit so the trace can get started and actually collect something.
-        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+        startSystemTriggeredTraceForTesting(STUB_PACKAGE_NAME, /* waitTraceStart= */ true);
 
         // Start the test app again to trigger reportFullyDrawn().
         startActivityWithAction(ACTION_REGISTER_AND_REPORT_FULLY_DRAWN);
@@ -142,17 +128,13 @@ public class ProfilingAppTriggeredTests {
         Bundle extras = mResultReceiverFilter.getIntents().getFirst().getExtras();
         assertThat(extras).isNotNull();
 
-        // TODO(b/448727390): Move these to a common class.
         ProfilingResult result =
                 extras.getParcelable(REPLY_EXTRA_PROFILING_RESULT, ProfilingResult.class);
-        assertThat(result).isNotNull();
-
-        String filePath = result.getResultFilePath();
-        expect.that(result.getErrorCode()).isEqualTo(ProfilingResult.ERROR_NONE);
-        expect.that(filePath).isNotNull();
-        expect.that(filePath).contains(OUTPUT_FILE_TRACE_SUFFIX);
-        expect.that(result.getTriggerType())
-                .isEqualTo(ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN);
+        assertProfilingResultSuccess(
+                expect,
+                result,
+                OUTPUT_FILE_TRACE_SUFFIX,
+                ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN);
 
         int fileValidationResult =
                 extras.getInt(REPLY_EXTRA_FILE_VALIDATION_RESULT, FILE_VALIDATION_RESULT_NONE);
