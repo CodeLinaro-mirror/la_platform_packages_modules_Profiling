@@ -84,6 +84,7 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -1332,19 +1333,21 @@ public final class ProfilingFrameworkTests {
         mProfilingManager.registerForAllProfilingResults(
                 new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
 
-        CountDownLatch latch = new CountDownLatch(1);
+        final CountDownLatch latch = new CountDownLatch(1);
 
         // Fake a system trigger.
-        int duration = ProfilingServiceHelper.getInstance()
-                .profileApplicationCrash(
-                        Binder.getCallingUid(),
-                        REAL_PACKAGE_NAME,
-                        new ApplicationErrorReport.CrashInfo(new OutOfMemoryError()),
-                        latch);
+        Duration duration =
+                ProfilingServiceHelper.getInstance()
+                        .profileApplicationCrash(
+                                Binder.getCallingUid(),
+                                REAL_PACKAGE_NAME,
+                                new ApplicationErrorReport.CrashInfo(new OutOfMemoryError()),
+                                new ImmediateExecutor(),
+                                () -> latch.countDown());
 
         // Await for up to the duration plus 1 second. Assert true to ensure exit was due to latch
         // counting down rather than timeout.
-        assertThat(latch.await(duration + 1, TimeUnit.SECONDS)).isTrue();
+        assertThat(latch.await(duration.toSeconds() + 1, TimeUnit.SECONDS)).isTrue();
 
         // The latch counts down when collection is complete, but before a callback is necessarily
         // received, so wait for a bit.
@@ -1386,19 +1389,21 @@ public final class ProfilingFrameworkTests {
         mProfilingManager.registerForAllProfilingResults(
                 new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
 
-        CountDownLatch latch = new CountDownLatch(1);
+        final CountDownLatch latch = new CountDownLatch(1);
 
         // Fake a system trigger.
-        int duration = ProfilingServiceHelper.getInstance()
-                .profileApplicationCrash(
-                        Binder.getCallingUid(),
-                        REAL_PACKAGE_NAME,
-                        new ApplicationErrorReport.CrashInfo(new OutOfMemoryError()),
-                        latch);
+        Duration duration =
+                ProfilingServiceHelper.getInstance()
+                        .profileApplicationCrash(
+                                Binder.getCallingUid(),
+                                REAL_PACKAGE_NAME,
+                                new ApplicationErrorReport.CrashInfo(new OutOfMemoryError()),
+                                new ImmediateExecutor(),
+                                () -> latch.countDown());
 
         // Await for up to the duration. Assert true to ensure exit was due to latch counting down
         // rather than timeout.
-        assertThat(latch.await(duration, TimeUnit.SECONDS)).isTrue();
+        assertThat(latch.await(duration.toSeconds(), TimeUnit.SECONDS)).isTrue();
 
         // Wait for post processing time just to confirm that no result is eventually received.
         sleep(WAIT_TIME_FOR_PROFILING_POST_PROCESSING_MS);
@@ -1437,19 +1442,21 @@ public final class ProfilingFrameworkTests {
         mProfilingManager.registerForAllProfilingResults(
                 new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
 
-        CountDownLatch latch = new CountDownLatch(1);
+        final CountDownLatch latch = new CountDownLatch(1);
 
         // Fake a system trigger for a NPE, which is not a type that is eligible for profiling.
-        int duration = ProfilingServiceHelper.getInstance()
-                .profileApplicationCrash(
-                        Binder.getCallingUid(),
-                        REAL_PACKAGE_NAME,
-                        new ApplicationErrorReport.CrashInfo(new NullPointerException()),
-                        latch);
+        Duration duration =
+                ProfilingServiceHelper.getInstance()
+                        .profileApplicationCrash(
+                                Binder.getCallingUid(),
+                                REAL_PACKAGE_NAME,
+                                new ApplicationErrorReport.CrashInfo(new NullPointerException()),
+                                new ImmediateExecutor(),
+                                () -> latch.countDown());
 
         // Confirm that duration is 0 and that the latch is already counted down as the runnable
         // should have run prior to the method above finishing.
-        expect.that(duration).isEqualTo(0);
+        expect.that(duration).isEqualTo(Duration.ZERO);
         expect.that(latch.getCount()).isEqualTo(0);
 
         // Wait for post processing time just to confirm that no result is eventually received.
