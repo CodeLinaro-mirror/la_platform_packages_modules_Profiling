@@ -1392,17 +1392,28 @@ public final class ProfilingFrameworkTests {
         // limits but less than the process limits.
         overrideSystemTraceDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, 10);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR,
+                10);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, 10);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR,
+                10);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, 10);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY,
+                10);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, Integer.MAX_VALUE);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR,
+                Integer.MAX_VALUE);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_7_DAY, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_7_DAY,
+                Integer.MAX_VALUE);
         overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.COST_SYSTEM_TRACE, 100);
 
@@ -1442,11 +1453,17 @@ public final class ProfilingFrameworkTests {
         // limits but less than the system limits.
         overrideSystemTraceDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR,
+                Integer.MAX_VALUE);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR,
+                Integer.MAX_VALUE);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY,
+                Integer.MAX_VALUE);
         overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, 10);
         overrideDeviceConfig(
@@ -1487,19 +1504,31 @@ public final class ProfilingFrameworkTests {
         // and process limits.
         overrideSystemTraceDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR,
+                Integer.MAX_VALUE);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR,
+                Integer.MAX_VALUE);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY,
+                Integer.MAX_VALUE);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR,
+                Integer.MAX_VALUE);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR,
+                Integer.MAX_VALUE);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_7_DAY, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_7_DAY,
+                Integer.MAX_VALUE);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.COST_SYSTEM_TRACE, 100);
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.COST_SYSTEM_TRACE, 1);
 
         AppCallback callback = new AppCallback();
 
