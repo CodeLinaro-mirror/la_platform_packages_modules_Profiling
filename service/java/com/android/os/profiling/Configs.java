@@ -534,6 +534,36 @@ public final class Configs {
                     throw new IllegalArgumentException("System trace is disabled");
                 }
 
+                boolean collectStackSampling =
+                        getAndRemove(
+                                ProfilingManager.KEY_COLLECT_STACK_SAMPLING, false, paramsCopy);
+                long systemTraceFrequency = 0L;
+                boolean systemTraceSampleBinderOnly = false;
+
+                if (collectStackSampling) {
+                    if (!Flags.systemTraceAddStackSampling()) {
+                        throw new IllegalArgumentException(
+                                "Adding stack sampling to system trace is not supported.");
+                    }
+
+                    initializeStackSamplingConfigsIfNecessary();
+
+                    if (sKillswitchStackSampling) {
+                        throw new IllegalArgumentException("Stack sampling is disabled");
+                    }
+
+                    systemTraceFrequency =
+                            getAndRemoveWithinBounds(
+                                    ProfilingManager.KEY_FREQUENCY_HZ,
+                                    sStackSamplingSamplingFrequencyDefault,
+                                    sStackSamplingSamplingFrequencyMin,
+                                    sStackSamplingSamplingFrequencyMax,
+                                    paramsCopy);
+                    systemTraceSampleBinderOnly =
+                            getAndRemove(
+                                    ProfilingManager.KEY_SAMPLE_BINDER_ONLY, false, paramsCopy);
+                }
+
                 int systemTraceDurationMs =
                         getAndRemoveWithinBounds(
                                 ProfilingManager.KEY_DURATION_MS,
@@ -562,6 +592,9 @@ public final class Configs {
                         packageName,
                         systemTraceSizeKb,
                         systemTraceDurationMs,
+                        collectStackSampling,
+                        systemTraceFrequency,
+                        systemTraceSampleBinderOnly,
                         systemTraceBufferFillPolicy);
 
             // Invalid type
@@ -577,6 +610,7 @@ public final class Configs {
      */
     public static int getInitialProfilingTimeMs(int profilingType, @Nullable Bundle params) {
         int duration;
+
         switch (profilingType) {
             case ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP:
                 initializeJavaHeapDumpConfigsIfNecessary();
@@ -615,7 +649,6 @@ public final class Configs {
                                 sSystemTraceDurationMsMax,
                                 params);
                 break;
-
             default:
                 throw new IllegalArgumentException("Invalid profiling type");
         }
@@ -836,6 +869,23 @@ public final class Configs {
                         .build();
         builder.addBuffers(buffer);
 
+        // Use target buffer 0 as we just created the singular buffer above.
+        addStackSamplingGeneralConfigs(
+                builder, 0 /* targetBuffer */, packageName, frequency, sampleBinderOnly);
+
+        // Add duration
+        builder.setDurationMs(durationMs);
+
+        return builder.build().toByteArray();
+    }
+
+    private static void addStackSamplingGeneralConfigs(
+            TraceConfig.Builder builder,
+            int targetBuffer,
+            String packageName,
+            long frequency,
+            boolean sampleBinderOnly) {
+
         // Create appropriate timebase based on parameters.
         PerfEvents.Timebase timebase = null;
         if (sampleBinderOnly) {
@@ -874,22 +924,23 @@ public final class Configs {
                 DataSourceConfig.newBuilder()
                         .setName("linux.perf")
                         .setPerfEventConfig(perfEventConfig)
+                        .setTargetBuffer(targetBuffer)
                         .build();
         TraceConfig.DataSource dataSource =
                 TraceConfig.DataSource.newBuilder().setConfig(dataSourceConfig).build();
         builder.addDataSources(dataSource);
 
-        // Add duration and timeout
-        builder.setDurationMs(durationMs);
+        // Add timeout
         builder.setFlushTimeoutMs(sStackSamplingFlushTimeoutMsDefault);
-
-        return builder.build().toByteArray();
     }
 
     private static byte[] generateSystemTraceConfig(
             String packageName,
             int bufferSizeKb,
             int durationMs,
+            boolean collectStackSampling,
+            long stackSamplingFrequency,
+            boolean stackSamplingSampleBinderOnly,
             TraceConfig.BufferConfig.FillPolicy bufferFillPolicy) {
         TraceConfig.Builder builder = TraceConfig.newBuilder();
 
@@ -900,6 +951,17 @@ public final class Configs {
                 bufferSizeKb,
                 durationMs,
                 bufferFillPolicy);
+
+        if (collectStackSampling) {
+            // Use target buffer 1 as addSystemTraceGeneralConfigs will create 2 buffers: buffer 0
+            // for one time collections on start, and buffer 1 for everything else.
+            addStackSamplingGeneralConfigs(
+                    builder,
+                    1 /* targetBuffer */,
+                    packageName,
+                    stackSamplingFrequency,
+                    stackSamplingSampleBinderOnly);
+        }
 
         return builder.build().toByteArray();
     }
