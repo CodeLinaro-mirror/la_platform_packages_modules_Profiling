@@ -2174,6 +2174,8 @@ public class ProfilingService extends IProfilingService.Stub {
         // performTriggerCallback and sendToAnomalyDetectorIfAnomalyTrigger.
         if (!performTriggerRegistrationCheckAndRateLimiting(
                 uid, packageName, triggerType, profilingType, callback)) {
+            performTriggerCallback(callback);
+
             // If we fall into this case, then either rate limiting was denied or the trigger wasn't
             // registered for the provided process. In the case of anomaly triggers, which bypass
             // rate limiting, this means the trigger was not registered, so send the result with not
@@ -2333,6 +2335,8 @@ public class ProfilingService extends IProfilingService.Stub {
                 triggerType,
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
                 callback)) {
+
+            performTriggerCallback(callback);
 
             sendToAnomalyDetectorIfAnomalyTrigger(
                     keyMostSigBits,
