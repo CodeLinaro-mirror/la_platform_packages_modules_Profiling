@@ -394,13 +394,21 @@ public class ProfilingService extends IProfilingService.Stub {
 
                             getRateLimiter().maybeUpdateRateLimiterDisabled(properties);
 
-                            // Use null as default since we're assigning to a new variable and
-                            // handleDebugPackageChangeLocked will handle null as unchanged.
-                            String newDebugPackageName =
-                                    properties.getString(
-                                            DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                                            null);
-                            handleDebugPackageChangeLocked(newDebugPackageName);
+                            // Only process the new value for debug package name if it is present in
+                            // properties, as we need to be able to differentiate between the value
+                            // being set to null and the value not being present.
+                            if (properties.getKeyset().contains(
+                                        DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME)) {
+                                // Assign property update value to new variable so that
+                                // handleDebugPackageChangeLocked can access both new and old
+                                // values.
+                                String newDebugPackageName =
+                                        properties.getString(
+                                                DeviceConfigHelper
+                                                        .SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
+                                                null);
+                                handleDebugPackageChangeLocked(newDebugPackageName);
+                            }
                         }
                     }
                 });
