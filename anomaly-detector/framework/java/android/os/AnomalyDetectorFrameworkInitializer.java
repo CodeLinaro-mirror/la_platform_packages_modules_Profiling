@@ -34,16 +34,17 @@ public final class AnomalyDetectorFrameworkInitializer {
 
     /**
      * Called by {@link SystemServiceRegistry}'s static initializer and registers the Anomaly
-     * Detector service to {@link Context}, so that {@link Context#getSystemService} can
-     * return it.
+     * Detector service to {@link Context}, so that {@link Context#getSystemService} can return it.
      *
-     * @throws IllegalStateException if this is called from anywhere beside
-     * {@link SystemServiceRegistry}
+     * @throws IllegalStateException if this is called from anywhere beside {@link
+     *     SystemServiceRegistry}
      */
     public static void registerServiceWrappers() {
         SystemServiceRegistry.registerContextAwareService(
-                Context.ANOMALY_DETECTOR_SERVICE, AnomalyDetectorManager.class,
-                (context, service)-> new AnomalyDetectorManager(context,
-                        IAnomalyDetectorService.Stub.asInterface(service)));
+                Context.ANOMALY_DETECTOR_SERVICE,
+                AnomalyDetectorManager.class,
+                (context, service) ->
+                        new AnomalyDetectorManager(
+                                context, IAnomalyDetectorService.Stub.asInterface(service)));
     }
 }

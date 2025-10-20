@@ -49,8 +49,9 @@ java_sdk_library {
         "com.android.profiling",
     ],
     impl_library_visibility: [
-        "//packages/modules/Profiling/anomaly-detector/tests/robolectric:__pkg__",
-        "//packages/modules/Profiling/anomaly-detector/tests/mts",
+        "//frameworks/base/services/signalcollector",
+        "//frameworks/base/services/tests/servicestests/src/com/android/server/signalcollector",
+        "//packages/modules/Profiling/anomaly-detector/tests:__subpackages__",
     ],
     min_sdk_version: "36",
     installable: true,

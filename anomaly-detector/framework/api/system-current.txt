@@ -2,6 +2,27 @@
 package android.os {
 
   @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public final class AnomalyDetectorManager {
+    method @RequiresPermission(android.Manifest.permission.CONFIGURE_ANOMALY_DETECTOR) public void setAnomalyDetectorRules(@NonNull java.util.Set<android.os.Rule>);
+  }
+
+  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public final class Rule {
+    method @NonNull public java.util.List<java.lang.Integer> getAnomalyActions();
+    method @NonNull public String getConditionType();
+    method @NonNull public android.os.Bundle getRuleCondition();
+    field public static final int ACTION_TYPE_LOG = 1; // 0x1
+    field public static final String BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS = "android.os.Rule.binder_call_interval_millis";
+    field public static final String BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT = "android.os.Rule.binder_call_limit";
+    field public static final String BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME = "android.os.Rule.binder_interface_name";
+    field public static final String BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME = "android.os.Rule.binder_method_name";
+    field public static final String CONDITION_TYPE_BINDER_SPAM = "android.os.Rule.binder_spam";
+  }
+
+  public static final class Rule.Builder {
+    ctor public Rule.Builder();
+    method @NonNull public android.os.Rule.Builder addAnomalyAction(int);
+    method @NonNull public android.os.Rule build();
+    method @NonNull public android.os.Rule.Builder setConditionType(@NonNull String);
+    method @NonNull public android.os.Rule.Builder setRuleCondition(@NonNull android.os.Bundle);
   }
 
 }

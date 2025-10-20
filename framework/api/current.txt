@@ -46,6 +46,7 @@ package android.os {
     field @FlaggedApi("android.os.profiling.profiling_trigger_kill_recents") public static final int TRIGGER_TYPE_KILL_RECENTS = 5; // 0x5
     field @FlaggedApi("android.os.profiling.profiling_25q4") public static final int TRIGGER_TYPE_KILL_TASK_MANAGER = 6; // 0x6
     field public static final int TRIGGER_TYPE_NONE = 0; // 0x0
+    field @FlaggedApi("android.os.profiling.profiling_trigger_oom") public static final int TRIGGER_TYPE_OOM = 7; // 0x7
   }
 
   @FlaggedApi("android.os.profiling.system_triggered_profiling_new") public static final class ProfilingTrigger.Builder {

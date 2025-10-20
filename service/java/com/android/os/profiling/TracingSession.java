@@ -21,6 +21,7 @@ import static android.os.profiling.ProfilingService.TracingState;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.os.Bundle;
+import android.os.IProfilingTriggerCallback;
 import android.os.QueuedResultsWrapper;
 import android.util.Log;
 
@@ -60,22 +61,22 @@ public final class TracingSession {
     @Nullable private String mDestinationFileName = null;
     private long mRedactionStartTimeMs;
     private int mMaxProfilingTimeAllowedMs = 0;
+    @Nullable private IProfilingTriggerCallback mProfilingTriggerCallback = null;
 
-    public TracingSession(int profilingType,  int uid, String packageName, int triggerType,
-            String tag) {
-        this(
-                profilingType,
-                null,
-                uid,
-                packageName,
-                tag,
-                0L,
-                0L,
-                triggerType);
+    public TracingSession(
+            int profilingType, int uid, String packageName, int triggerType, String tag) {
+        this(profilingType, null, uid, packageName, tag, 0L, 0L, triggerType);
     }
 
-    public TracingSession(int profilingType, Bundle params, int uid, String packageName, String tag,
-            long keyMostSigBits, long keyLeastSigBits, int triggerType) {
+    public TracingSession(
+            int profilingType,
+            Bundle params,
+            int uid,
+            String packageName,
+            String tag,
+            long keyMostSigBits,
+            long keyLeastSigBits,
+            int triggerType) {
         mProfilingType = profilingType;
         mTriggerType = triggerType;
         mParams = params;
@@ -125,6 +126,7 @@ public final class TracingSession {
             Log.e(TAG, "Attempting to load a queued session with an invalid state.");
         }
     }
+
     // LINT.ThenChange(:to_proto)
 
     /** Generates the config for this request and converts to bytes. */
@@ -142,14 +144,14 @@ public final class TracingSession {
 
     /**
      * Gets the maximum profiling time allowed for this TracingSession.
+     *
      * @return maximum profiling time allowed in ms.
      */
     public int getMaxProfilingTimeAllowedMs() {
         if (mMaxProfilingTimeAllowedMs != 0) {
             return mMaxProfilingTimeAllowedMs;
         }
-        mMaxProfilingTimeAllowedMs =
-                Configs.getMaxProfilingTimeAllowedMs(mProfilingType, mParams);
+        mMaxProfilingTimeAllowedMs = Configs.getMaxProfilingTimeAllowedMs(mProfilingType, mParams);
         return mMaxProfilingTimeAllowedMs;
     }
 
@@ -193,8 +195,8 @@ public final class TracingSession {
     }
 
     /**
-     * Do not call directly!
-     * State should only be updated with {@link ProfilingService#advanceStateAndContinue}.
+     * Do not call directly! State should only be updated with {@link
+     * ProfilingService#advanceStateAndContinue}.
      */
     public void setState(TracingState state) {
         mState = state;
@@ -205,7 +207,7 @@ public final class TracingSession {
         mRetryCount += 1;
     }
 
-    public void setProfilingStartTimeMs(long startTime)  {
+    public void setProfilingStartTimeMs(long startTime) {
         mProfilingStartTimeMs = startTime;
     }
 
@@ -226,6 +228,11 @@ public final class TracingSession {
     /** Update error message only. */
     public void setErrorMessage(String message) {
         mErrorMessage = message;
+    }
+
+    public void setProfilingTriggerCallback(
+            @Nullable IProfilingTriggerCallback profilingTriggerCallback) {
+        mProfilingTriggerCallback = profilingTriggerCallback;
     }
 
     @Nullable
@@ -297,6 +304,7 @@ public final class TracingSession {
     /**
      * Returns the relative path starting from apps storage dir including name of the file being
      * returned to the client.
+     *
      * @param appRelativePath relative path to app storage.
      * @return relative file path and name of file.
      */
@@ -306,8 +314,11 @@ public final class TracingSession {
             return null;
         }
         if (mDestinationFileName == null) {
-            mDestinationFileName = appRelativePath
-                    + ((this.getRedactedFileName() == null) ? mFileName : mRedactedFileName);
+            mDestinationFileName =
+                    appRelativePath
+                            + ((this.getRedactedFileName() == null)
+                                    ? mFileName
+                                    : mRedactedFileName);
         }
         return mDestinationFileName;
     }
@@ -332,6 +343,11 @@ public final class TracingSession {
 
     public int getTriggerType() {
         return mTriggerType;
+    }
+
+    @Nullable
+    public IProfilingTriggerCallback getProfilingTriggerCallback() {
+        return mProfilingTriggerCallback;
     }
 
     // LINT.IfChange(to_proto)

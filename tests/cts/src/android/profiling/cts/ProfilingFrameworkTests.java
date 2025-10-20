@@ -16,6 +16,20 @@
 
 package android.profiling.cts;
 
+import static android.profiling.cts.ProfilingTestUtils.ImmediateExecutor;
+import static android.profiling.cts.ProfilingTestUtils.OUTPUT_FILE_HEAP_PROFILE_SUFFIX;
+import static android.profiling.cts.ProfilingTestUtils.OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX;
+import static android.profiling.cts.ProfilingTestUtils.OUTPUT_FILE_STACK_SAMPLING_SUFFIX;
+import static android.profiling.cts.ProfilingTestUtils.OUTPUT_FILE_TRACE_SUFFIX;
+import static android.profiling.cts.ProfilingTestUtils.WAIT_TIME_FOR_PROFILING_START_MS;
+import static android.profiling.cts.ProfilingTestUtils.assertProfilingResultSuccess;
+import static android.profiling.cts.ProfilingTestUtils.getOneSecondDurationParamBundle;
+import static android.profiling.cts.ProfilingTestUtils.overrideDeviceConfig;
+import static android.profiling.cts.ProfilingTestUtils.overrideRateLimiter;
+import static android.profiling.cts.ProfilingTestUtils.resetAllConfigs;
+import static android.profiling.cts.ProfilingTestUtils.sleep;
+import static android.profiling.cts.ProfilingTestUtils.startSystemTriggeredTraceForTesting;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -28,6 +42,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import android.app.ApplicationErrorReport;
 import android.app.Instrumentation;
 import android.content.Context;
 import android.os.Binder;
@@ -41,6 +56,7 @@ import android.os.ProfilingTrigger;
 import android.os.profiling.DeviceConfigHelper;
 import android.os.profiling.Flags;
 import android.os.profiling.ProfilingService;
+import android.platform.test.annotations.RequiresFlagsDisabled;
 import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
@@ -50,9 +66,7 @@ import androidx.test.filters.LargeTest;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
-import com.android.compatibility.common.util.SystemUtil;
-
-import com.google.errorprone.annotations.FormatMethod;
+import com.google.common.truth.Expect;
 
 import org.junit.After;
 import org.junit.Before;
@@ -69,17 +83,16 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
- *
- * Tests defined in this class are expected to test the API implementation.  All tests below require
- * the android.os.profiling.telemetry_apis flag to be enabled, otherwise you will receive an
- * assumed failure for any tests has the @RequiresFlagsEnabled annotation.
- *
+ * Tests defined in this class are expected to test the API implementation. All tests below require
+ * the android.os.profiling.telemetry_apis flag to be enabled, otherwise you will receive an assumed
+ * failure for any tests has the @RequiresFlagsEnabled annotation.
  */
-
 @RunWith(AndroidJUnit4.class)
 public final class ProfilingFrameworkTests {
 
@@ -91,42 +104,26 @@ public final class ProfilingFrameworkTests {
     // up to 4 increments totalling 20 seconds.
     private static final int CALLBACK_CANCEL_WAIT_TIME_INCREMENTS_COUNT = 4;
 
-    // Wait for rate limiter config to update for 250 milliseconds at a time for up to 12 increments
-    // totalling 3 seconds.
-    private static final int RATE_LIMITER_WAIT_TIME_INCREMENT_MS = 250;
-    private static final int RATE_LIMITER_WAIT_TIME_INCREMENTS_COUNT = 12;
-
-    // Wait 2 seconds for profiling to get started before attempting to cancel it.
-    // TODO: b/376440094 - change to query perfetto and confirm profiling is running.
-    private static final int WAIT_TIME_FOR_PROFILING_START_MS = 2 * 1000;
+    // Wait 2 seconds for profiling to finish processing and transfer result to app.
+    private static final int WAIT_TIME_FOR_PROFILING_POST_PROCESSING_MS = 2 * 1000;
 
     // Wait 10 seconds for profiling to potentially clone, process, and return result to confirm it
     // did not occur.
     private static final int WAIT_TIME_FOR_TRIGGERED_PROFILING_NO_RESULT = 10 * 1000;
 
-    // Keep in sync with {@link ProfilingService} because we can't access it.
-    private static final String OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX = ".perfetto-java-heap-dump";
-    private static final String OUTPUT_FILE_HEAP_PROFILE_SUFFIX = ".perfetto-heap-profile";
-    private static final String OUTPUT_FILE_STACK_SAMPLING_SUFFIX = ".perfetto-stack-sample";
-    private static final String OUTPUT_FILE_TRACE_SUFFIX = ".perfetto-trace";
+    // LINT.IfChange(oom_device_configs)
+    private static final int TIMEOUT_DEFAULT_JAVA_HEAP_DUMP_SECONDS = 5;
+    private static final String CONFIG_TIMEOUT_OOM = "trigger_timeout_oom";
+    // LINT.ThenChange(/framework/java/android/os/ProfilingServiceHelper.java:oom_device_configs)
 
-    public static final Path DUMP_PATH = FileSystems.getDefault()
-            .getPath("/sdcard/ProfilesCollected/");
-
-    private static final String COMMAND_OVERRIDE_DEVICE_CONFIG_INT = "device_config put %s %s %d";
-    private static final String COMMAND_OVERRIDE_DEVICE_CONFIG_BOOL = "device_config put %s %s %b";
-    private static final String COMMAND_OVERRIDE_DEVICE_CONFIG_STRING =
-            "device_config put %s %s %s";
-    private static final String COMMAND_DELETE_DEVICE_CONFIG_STRING = "device_config delete %s %s";
-    private static final String RESET_NAMESPACE = "device_config reset trusted_defaults %s";
+    public static final Path DUMP_PATH =
+            FileSystems.getDefault().getPath("/sdcard/ProfilesCollected/");
 
     private static final String REAL_PACKAGE_NAME = "com.android.profiling.tests";
 
     private static final int ONE_SECOND_MS = 1 * 1000;
     private static final int FIVE_SECONDS_MS = 5 * 1000;
     private static final int TEN_SECONDS_MS = 10 * 1000;
-    private static final int ONE_MINUTE_MS = 60 * 1000;
-    private static final int FIVE_MINUTES_MS = 5 * 60 * 1000;
     private static final int TEN_MINUTES_MS = 10 * 60 * 1000;
 
     private ProfilingManager mProfilingManager = null;
@@ -140,8 +137,9 @@ public final class ProfilingFrameworkTests {
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
 
-    @Rule
-    public final TestName mTestName = new TestName();
+    @Rule public final Expect expect = Expect.create();
+
+    @Rule public final TestName mTestName = new TestName();
 
     @Before
     public void setup() throws Exception {
@@ -151,20 +149,20 @@ public final class ProfilingFrameworkTests {
 
         mProfilingManager.clearProfilingTriggers();
 
-        executeShellCmd(RESET_NAMESPACE, DeviceConfigHelper.NAMESPACE);
-        executeShellCmd(RESET_NAMESPACE, DeviceConfigHelper.NAMESPACE_TESTING);
-
         // This permission is required for Headless (HSUM) tests, including Auto.
-        mInstrumentation.getUiAutomation().adoptShellPermissionIdentity(
-                android.Manifest.permission.INTERACT_ACROSS_USERS_FULL);
+        mInstrumentation
+                .getUiAutomation()
+                .adoptShellPermissionIdentity(
+                        android.Manifest.permission.INTERACT_ACROSS_USERS_FULL);
+
+        mProfilingManager.clearProfilingTriggers();
     }
 
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager.mProfilingService lock.
     @After
     public void cleanup() throws Exception {
         mProfilingManager.mProfilingService = null;
-        executeShellCmd(COMMAND_DELETE_DEVICE_CONFIG_STRING, DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME);
+        resetAllConfigs();
     }
 
     /** Check and see if we can get a reference to the ProfilingManager service. */
@@ -185,13 +183,7 @@ public final class ProfilingFrameworkTests {
         AppCallback callback = new AppCallback();
 
         // This call is passing an invalid profiling request type and should result in an error.
-        mProfilingManager.requestProfiling(
-                -1,
-                null,
-                null,
-                null,
-                new ProfilingTestUtils.ImmediateExecutor(),
-                callback);
+        mProfilingManager.requestProfiling(-1, null, null, null, new ImmediateExecutor(), callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
         waitForCallback(callback);
@@ -219,7 +211,7 @@ public final class ProfilingFrameworkTests {
                 params,
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -247,7 +239,7 @@ public final class ProfilingFrameworkTests {
                 null,
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -271,7 +263,7 @@ public final class ProfilingFrameworkTests {
         AppCallback callback = new AppCallback();
 
         // Add sampling interval param to test because it is currently the only long param.
-        Bundle params = ProfilingTestUtils.getOneSecondDurationParamBundle();
+        Bundle params = getOneSecondDurationParamBundle();
         params.putLong(ProfilingManager.KEY_SAMPLING_INTERVAL_BYTES, 4096L);
 
         // Now kick off the request.
@@ -280,7 +272,7 @@ public final class ProfilingFrameworkTests {
                 params,
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         MallocLoopThread mallocThread = new MallocLoopThread();
@@ -303,18 +295,18 @@ public final class ProfilingFrameworkTests {
 
         disableRateLimiter();
 
-        overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
-                FIVE_SECONDS_MS);
+        overrideStackSamplingDeviceConfigValues(
+                false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
 
         AppCallback callback = new AppCallback();
 
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
-                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                getOneSecondDurationParamBundle(),
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         BusyLoopThread busy = new BusyLoopThread();
@@ -330,8 +322,8 @@ public final class ProfilingFrameworkTests {
     }
 
     /**
-     * Test that profiling request for system trace fails as it's disabled until redaction
-     * is in place.
+     * Test that profiling request for system trace fails as it's disabled until redaction is in
+     * place.
      */
     @Test
     @RequiresFlagsEnabled({Flags.FLAG_TELEMETRY_APIS, Flags.FLAG_REDACTION_ENABLED})
@@ -347,10 +339,10 @@ public final class ProfilingFrameworkTests {
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
-                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                getOneSecondDurationParamBundle(),
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -379,10 +371,10 @@ public final class ProfilingFrameworkTests {
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
-                null,    // Use default parameters since we will cancel quickly
+                null, // Use default parameters since we will cancel quickly
                 null,
                 cancellationSignal,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait a bit for collection to get started.
@@ -407,8 +399,8 @@ public final class ProfilingFrameworkTests {
         disableRateLimiter();
 
         // Set override durations to 10 minutes so we can ensure it finishes early when canceled.
-        overrideHeapProfileDeviceConfigValues(false, TEN_MINUTES_MS, TEN_MINUTES_MS,
-                TEN_MINUTES_MS);
+        overrideHeapProfileDeviceConfigValues(
+                false, TEN_MINUTES_MS, TEN_MINUTES_MS, TEN_MINUTES_MS);
 
         AppCallback callback = new AppCallback();
         CancellationSignal cancellationSignal = new CancellationSignal();
@@ -416,10 +408,10 @@ public final class ProfilingFrameworkTests {
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
-                null,    // Use default parameters since we will cancel quickly
+                null, // Use default parameters since we will cancel quickly
                 null,
                 cancellationSignal,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait a bit for collection to get started.
@@ -444,8 +436,8 @@ public final class ProfilingFrameworkTests {
         disableRateLimiter();
 
         // Set override durations to 10 minutes so we can ensure it finishes early when canceled.
-        overrideStackSamplingDeviceConfigValues(false, TEN_MINUTES_MS, TEN_MINUTES_MS,
-                TEN_MINUTES_MS);
+        overrideStackSamplingDeviceConfigValues(
+                false, TEN_MINUTES_MS, TEN_MINUTES_MS, TEN_MINUTES_MS);
 
         AppCallback callback = new AppCallback();
         CancellationSignal cancellationSignal = new CancellationSignal();
@@ -453,10 +445,10 @@ public final class ProfilingFrameworkTests {
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
-                null,    // Use default parameters since we will cancel quickly
+                null, // Use default parameters since we will cancel quickly
                 null,
                 cancellationSignal,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait a bit for collection to get started.
@@ -481,8 +473,8 @@ public final class ProfilingFrameworkTests {
         disableRateLimiter();
 
         // Set override durations to 10 minutes so we can ensure it finishes early when canceled.
-        overrideSystemTraceDeviceConfigValues(false, TEN_MINUTES_MS, TEN_MINUTES_MS,
-                TEN_MINUTES_MS);
+        overrideSystemTraceDeviceConfigValues(
+                false, TEN_MINUTES_MS, TEN_MINUTES_MS, TEN_MINUTES_MS);
 
         AppCallback callback = new AppCallback();
         CancellationSignal cancellationSignal = new CancellationSignal();
@@ -490,10 +482,10 @@ public final class ProfilingFrameworkTests {
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
-                null,    // Use default parameters since we will cancel quickly
+                null, // Use default parameters since we will cancel quickly
                 null,
                 cancellationSignal,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait a bit for collection to get started.
@@ -518,8 +510,8 @@ public final class ProfilingFrameworkTests {
 
         disableRateLimiter();
 
-        overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
-                FIVE_SECONDS_MS);
+        overrideStackSamplingDeviceConfigValues(
+                false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
 
         // Clear all existing callbacks.
         mProfilingManager.mCallbacks.clear();
@@ -529,8 +521,7 @@ public final class ProfilingFrameworkTests {
         AppCallback callbackGeneral = new AppCallback();
 
         // Register the general callback.
-        mProfilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Confirm callback is properly registered by checking for size of 1.
         assertTrue(mProfilingManager.mCallbacks.size() == 1);
@@ -541,10 +532,10 @@ public final class ProfilingFrameworkTests {
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
-                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                getOneSecondDurationParamBundle(),
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callbackSpecific);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -563,8 +554,8 @@ public final class ProfilingFrameworkTests {
 
         disableRateLimiter();
 
-        overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
-                FIVE_SECONDS_MS);
+        overrideStackSamplingDeviceConfigValues(
+                false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
 
         // Clear all existing callbacks.
         mProfilingManager.mCallbacks.clear();
@@ -575,10 +566,8 @@ public final class ProfilingFrameworkTests {
         AppCallback callbackGeneral2 = new AppCallback();
 
         // Register both general callbacks.
-        mProfilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral1);
-        mProfilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral2);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral1);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral2);
 
         // Confirm callbacks are properly registered by checking for size of 2.
         assertTrue(mProfilingManager.mCallbacks.size() == 2);
@@ -589,10 +578,10 @@ public final class ProfilingFrameworkTests {
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
-                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                getOneSecondDurationParamBundle(),
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callbackSpecific);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -611,8 +600,8 @@ public final class ProfilingFrameworkTests {
 
         disableRateLimiter();
 
-        overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
-                FIVE_SECONDS_MS);
+        overrideStackSamplingDeviceConfigValues(
+                false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
 
         // Create 3 callbacks.
         AppCallback callbackSpecific = new AppCallback();
@@ -620,21 +609,19 @@ public final class ProfilingFrameworkTests {
         AppCallback callbackGeneral2 = new AppCallback();
 
         // Register the first general callback before kicking off request.
-        mProfilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral1);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral1);
 
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
-                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                getOneSecondDurationParamBundle(),
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callbackSpecific);
 
         // Register the 2nd general callback after kicking off request, but before result is ready.
-        mProfilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral2);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral2);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
         waitForCallback(callbackSpecific);
@@ -653,8 +640,8 @@ public final class ProfilingFrameworkTests {
 
         disableRateLimiter();
 
-        overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
-                FIVE_SECONDS_MS);
+        overrideStackSamplingDeviceConfigValues(
+                false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
 
         // Obtain another ProfilingManager instance from a different context.
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
@@ -669,20 +656,17 @@ public final class ProfilingFrameworkTests {
         AppCallback callbackGeneral2 = new AppCallback();
 
         // Register the general callbacks, one to each context.
-        profilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral1);
-        mProfilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral2);
+        profilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral1);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral2);
 
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
-                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                getOneSecondDurationParamBundle(),
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callbackSpecific);
-
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
         waitForCallback(callbackSpecific);
@@ -701,8 +685,8 @@ public final class ProfilingFrameworkTests {
 
         disableRateLimiter();
 
-        overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
-                FIVE_SECONDS_MS);
+        overrideStackSamplingDeviceConfigValues(
+                false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
 
         AppCallback callback = new AppCallback();
 
@@ -713,10 +697,10 @@ public final class ProfilingFrameworkTests {
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
-                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                getOneSecondDurationParamBundle(),
                 fullTag,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -752,7 +736,7 @@ public final class ProfilingFrameworkTests {
                 null,
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -780,7 +764,7 @@ public final class ProfilingFrameworkTests {
                 null,
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -798,8 +782,8 @@ public final class ProfilingFrameworkTests {
 
         disableRateLimiter();
 
-        overrideStackSamplingDeviceConfigValues(true, ONE_SECOND_MS, FIVE_SECONDS_MS,
-                TEN_SECONDS_MS);
+        overrideStackSamplingDeviceConfigValues(
+                true, ONE_SECOND_MS, FIVE_SECONDS_MS, TEN_SECONDS_MS);
 
         AppCallback callback = new AppCallback();
 
@@ -809,7 +793,7 @@ public final class ProfilingFrameworkTests {
                 null,
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -837,7 +821,7 @@ public final class ProfilingFrameworkTests {
                 null,
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -851,8 +835,9 @@ public final class ProfilingFrameworkTests {
      * Test that adding a new general listener when no listeners have been added to that instance
      * works correctly, that is: that mProfilingService has been initialized.
      *
-     * The flow should result in registerResultsCallback being triggered with isGeneralListener true
-     * and generalListenerAdded not being triggered, but we cannot confirm this specifically here.
+     * <p>The flow should result in registerResultsCallback being triggered with isGeneralListener
+     * true and generalListenerAdded not being triggered, but we cannot confirm this specifically
+     * here.
      */
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
     @Test
@@ -869,18 +854,17 @@ public final class ProfilingFrameworkTests {
         AppCallback callback = new AppCallback();
 
         // Register the general callback.
-        mProfilingManager.registerForAllProfilingResults(new ProfilingTestUtils.ImmediateExecutor(),
-                callback);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callback);
 
         // Confirm that mProfilingService has been initialized.
         assertNotNull(mProfilingManager.mProfilingService);
     }
 
     /**
-     * Test that adding a new profiling instance specific listener when no listeners have been
-     * added to that instance works correctly, that is: that mProfilingService has been initialized.
+     * Test that adding a new profiling instance specific listener when no listeners have been added
+     * to that instance works correctly, that is: that mProfilingService has been initialized.
      *
-     * The flow should result in registerResultsCallback being triggered with isGeneralListener
+     * <p>The flow should result in registerResultsCallback being triggered with isGeneralListener
      * false and generalListenerAdded not being triggered, but we cannot confirm this specifically
      * here.
      */
@@ -892,8 +876,8 @@ public final class ProfilingFrameworkTests {
 
         disableRateLimiter();
 
-        overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
-                FIVE_SECONDS_MS);
+        overrideStackSamplingDeviceConfigValues(
+                false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
 
         // Setup for no current listener - mProfilingService should be null and mCallbacks empty.
         mProfilingManager.mProfilingService = null;
@@ -906,7 +890,7 @@ public final class ProfilingFrameworkTests {
                 null,
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Confirm that mProfilingService has been initialized.
@@ -931,12 +915,11 @@ public final class ProfilingFrameworkTests {
         AppCallback callback = new AppCallback();
 
         // Register the general callback.
-        mProfilingManager.registerForAllProfilingResults(new ProfilingTestUtils.ImmediateExecutor(),
-                callback);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callback);
 
         // Confirm that generalListenerAdded was triggered and registerResultsCallback was not.
-        verify(mProfilingManager.mProfilingService, times(0)).registerResultsCallback(anyBoolean(),
-                any());
+        verify(mProfilingManager.mProfilingService, times(0))
+                .registerResultsCallback(anyBoolean(), any());
         verify(mProfilingManager.mProfilingService, times(1)).generalListenerAdded();
     }
 
@@ -953,8 +936,8 @@ public final class ProfilingFrameworkTests {
 
         disableRateLimiter();
 
-        overrideStackSamplingDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS,
-                FIVE_SECONDS_MS);
+        overrideStackSamplingDeviceConfigValues(
+                false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
 
         mProfilingManager.mProfilingService = spy(new ProfilingService(mContext));
 
@@ -965,21 +948,21 @@ public final class ProfilingFrameworkTests {
                 null,
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Confirm that neither generalListenerAdded nor registerResultsCallback were triggered.
-        verify(mProfilingManager.mProfilingService, times(0)).registerResultsCallback(anyBoolean(),
-                any());
+        verify(mProfilingManager.mProfilingService, times(0))
+                .registerResultsCallback(anyBoolean(), any());
         verify(mProfilingManager.mProfilingService, times(0)).generalListenerAdded();
     }
 
     /**
      * Test adding a profiling trigger and receiving a result works correctly.
      *
-     * This is done by: adding the trigger through the public api, force starting a system triggered
-     * trace, sending a fake trigger as if from the system, and then confirming the result is
-     * received.
+     * <p>This is done by: adding the trigger through the public api, force starting a system
+     * triggered trace, sending a fake trigger as if from the system, and then confirming the result
+     * is received.
      */
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
     @Test
@@ -990,9 +973,10 @@ public final class ProfilingFrameworkTests {
         disableRateLimiter();
 
         // First add a trigger
-        ProfilingTrigger trigger = new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANR)
-                .setRateLimitingPeriodHours(1)
-                .build();
+        ProfilingTrigger trigger =
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANR)
+                        .setRateLimitingPeriodHours(1)
+                        .build();
         mProfilingManager.addProfilingTriggers(List.of(trigger));
 
         // Verify the trigger and rate limiting period.
@@ -1001,37 +985,39 @@ public final class ProfilingFrameworkTests {
 
         // And add a global listener
         AppCallback callbackGeneral = new AppCallback();
-        mProfilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_STRING,
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                REAL_PACKAGE_NAME);
-
-        // Wait a bit so the trace can get started and actually collect something.
-        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ true);
 
         // Now fake a system trigger.
-        ProfilingServiceHelper.getInstance().onProfilingTriggerOccurred(Binder.getCallingUid(),
-                REAL_PACKAGE_NAME,
-                ProfilingTrigger.TRIGGER_TYPE_ANR);
+        ProfilingServiceHelper.getInstance()
+                .onProfilingTriggerOccurred(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        ProfilingTrigger.TRIGGER_TYPE_ANR);
 
         // Wait for the trace to process.
         waitForCallback(callbackGeneral);
 
         // Finally, confirm that a result was received.
-        confirmCollectionSuccess(callbackGeneral.mResult, OUTPUT_FILE_TRACE_SUFFIX,
+        confirmCollectionSuccess(
+                callbackGeneral.mResult,
+                OUTPUT_FILE_TRACE_SUFFIX,
                 ProfilingTrigger.TRIGGER_TYPE_ANR);
     }
 
     /**
      * Test add all profiling triggers and receiving a result works correctly.
      *
-     * This is done by: adding all triggers through the public api, force starting a system
-     * triggered trace, sending a fake trigger as if from the system, and then confirming the result
-     * is received.
+     * <p>This is done by:
+     *
+     * <ul>
+     *   <li>adding all triggers through the public api,
+     *   <li>force starting a system triggered trace,
+     *   <li>sending a fake trigger as if from the system, and then
+     *   <li>confirming the result is received.
+     * </ul>
      */
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
     @Test
@@ -1045,35 +1031,32 @@ public final class ProfilingFrameworkTests {
 
         // And add a global listener
         AppCallback callbackGeneral = new AppCallback();
-        mProfilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_STRING,
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                REAL_PACKAGE_NAME);
-
-        // Wait a bit so the trace can get started and actually collect something.
-        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ true);
 
         // Now fake a system trigger.
-        ProfilingServiceHelper.getInstance().onProfilingTriggerOccurred(Binder.getCallingUid(),
-                REAL_PACKAGE_NAME,
-                ProfilingTrigger.TRIGGER_TYPE_KILL_FORCE_STOP);
+        ProfilingServiceHelper.getInstance()
+                .onProfilingTriggerOccurred(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        ProfilingTrigger.TRIGGER_TYPE_KILL_FORCE_STOP);
 
         // Wait for the trace to process.
         waitForCallback(callbackGeneral);
 
         // Finally, confirm that a result was received.
-        confirmCollectionSuccess(callbackGeneral.mResult, OUTPUT_FILE_TRACE_SUFFIX,
+        confirmCollectionSuccess(
+                callbackGeneral.mResult,
+                OUTPUT_FILE_TRACE_SUFFIX,
                 ProfilingTrigger.TRIGGER_TYPE_KILL_FORCE_STOP);
     }
 
     /**
      * Test request running trace trigger.
      *
-     * This is done by: adding the app request trigger through the public api, force starting a
+     * <p>This is done by: adding the app request trigger through the public api, force starting a
      * system triggered trace, calling the app requested trace api, and then confirming the result
      * is received.
      */
@@ -1086,23 +1069,18 @@ public final class ProfilingFrameworkTests {
         disableRateLimiter();
 
         // First add a trigger
-        ProfilingTrigger trigger = new ProfilingTrigger
-                .Builder(ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE).build();
+        ProfilingTrigger trigger =
+                new ProfilingTrigger.Builder(
+                                ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE)
+                        .build();
         mProfilingManager.addProfilingTriggers(List.of(trigger));
 
         // And add a global listener
         AppCallback callbackGeneral = new AppCallback();
-        mProfilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_STRING,
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                REAL_PACKAGE_NAME);
-
-        // Wait a bit so the trace can get started and actually collect something.
-        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ true);
 
         String tag = "some_tag";
 
@@ -1113,7 +1091,9 @@ public final class ProfilingFrameworkTests {
         waitForCallback(callbackGeneral);
 
         // Finally, confirm that a result was received.
-        confirmCollectionSuccess(callbackGeneral.mResult, OUTPUT_FILE_TRACE_SUFFIX,
+        confirmCollectionSuccess(
+                callbackGeneral.mResult,
+                OUTPUT_FILE_TRACE_SUFFIX,
                 ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE);
         assertTrue(tag.equals(callbackGeneral.mResult.getTag()));
     }
@@ -1121,8 +1101,9 @@ public final class ProfilingFrameworkTests {
     /**
      * Test removing profiling trigger.
      *
-     * There is no way to check the data structure from this context and that specifically is tested
-     * in {@link ProfilingServiceTests}, so this test just ensures that a result is not received.
+     * <p>There is no way to check the data structure from this context and that specifically is
+     * tested in {@link ProfilingServiceTests}, so this test just ensures that a result is not
+     * received.
      */
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
     @Test
@@ -1133,33 +1114,29 @@ public final class ProfilingFrameworkTests {
         disableRateLimiter();
 
         // First add a trigger
-        ProfilingTrigger trigger = new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANR)
-                .setRateLimitingPeriodHours(1)
-                .build();
+        ProfilingTrigger trigger =
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANR)
+                        .setRateLimitingPeriodHours(1)
+                        .build();
         mProfilingManager.addProfilingTriggers(List.of(trigger));
 
         // And add a global listener
         AppCallback callbackGeneral = new AppCallback();
-        mProfilingManager.registerForAllProfilingResults(
-                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_STRING,
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                REAL_PACKAGE_NAME);
-
-        // Wait a bit so the trace can get started and actually collect something.
-        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ true);
 
         // Remove the trigger.
         mProfilingManager.removeProfilingTriggersByType(
-                new int[]{ProfilingTrigger.TRIGGER_TYPE_ANR});
+                new int[] {ProfilingTrigger.TRIGGER_TYPE_ANR});
 
         // Now fake a system trigger.
-        ProfilingServiceHelper.getInstance().onProfilingTriggerOccurred(Binder.getCallingUid(),
-                REAL_PACKAGE_NAME,
-                ProfilingTrigger.TRIGGER_TYPE_ANR);
+        ProfilingServiceHelper.getInstance()
+                .onProfilingTriggerOccurred(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        ProfilingTrigger.TRIGGER_TYPE_ANR);
 
         // We can't wait for nothing to happen, so wait 10 seconds which should be long enough.
         sleep(WAIT_TIME_FOR_TRIGGERED_PROFILING_NO_RESULT);
@@ -1171,8 +1148,9 @@ public final class ProfilingFrameworkTests {
     /**
      * Test clearing all profiling triggers.
      *
-     * There is no way to check the data structure from this context and that specifically is tested
-     * in {@link ProfilingServiceTests}, so this test just ensures that a result is not received.
+     * <p>There is no way to check the data structure from this context and that specifically is
+     * tested in {@link ProfilingServiceTests}, so this test just ensures that a result is not
+     * received.
      */
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
     @Test
@@ -1183,9 +1161,55 @@ public final class ProfilingFrameworkTests {
         disableRateLimiter();
 
         // First add a trigger
-        ProfilingTrigger trigger = new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANR)
-                .setRateLimitingPeriodHours(1)
-                .build();
+        ProfilingTrigger trigger =
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANR)
+                        .setRateLimitingPeriodHours(1)
+                        .build();
+        mProfilingManager.addProfilingTriggers(List.of(trigger));
+
+        // And add a global listener
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
+
+        // Then start the system triggered trace for testing.
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ true);
+
+        // Clear all triggers for this process.
+        mProfilingManager.clearProfilingTriggers();
+
+        // Now fake a system trigger.
+        ProfilingServiceHelper.getInstance()
+                .onProfilingTriggerOccurred(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        ProfilingTrigger.TRIGGER_TYPE_ANR);
+
+        // We can't wait for nothing to happen, so wait 10 seconds which should be long enough.
+        sleep(WAIT_TIME_FOR_TRIGGERED_PROFILING_NO_RESULT);
+
+        // Finally, confirm that no callback was received.
+        assertNull(callbackGeneral.mResult);
+    }
+
+    /**
+     * Test system triggered profiling for application crash case in which the crash is eligible for
+     * profiling and the app is registered for the trigger.
+     *
+     * <p>Test confirms both that the correct result is received, and that the latch is correctly
+     * counted down allowing callers to block on the latch.
+     */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_PROFILING_TRIGGER_OOM)
+    public void testSystemTriggeredApplicationCrashSuccess() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // Start the system triggered trace for testing as this covers rate limiting override for
+        // triggers.
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ false);
+
+        // Register for OOM trigger
+        ProfilingTrigger trigger =
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_OOM).build();
         mProfilingManager.addProfilingTriggers(List.of(trigger));
 
         // And add a global listener
@@ -1193,27 +1217,125 @@ public final class ProfilingFrameworkTests {
         mProfilingManager.registerForAllProfilingResults(
                 new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
 
-        // Then start the system triggered trace for testing.
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_STRING,
-                DeviceConfigHelper.NAMESPACE_TESTING,
-                DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                REAL_PACKAGE_NAME);
+        CountDownLatch latch = new CountDownLatch(1);
 
-        // Wait a bit so the trace can get started and actually collect something.
-        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+        // Fake a system trigger.
+        ProfilingServiceHelper.getInstance()
+                .profileApplicationCrash(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        new ApplicationErrorReport.CrashInfo(new OutOfMemoryError()),
+                        latch);
 
-        // Clear all triggers for this process.
-        mProfilingManager.clearProfilingTriggers();
+        // Await up to 10 seconds, Java Heap Dump should take less than 5 seconds, so assert true
+        // to ensure exit was due to latch counting down rather than timeout.
+        assertTrue(latch.await(10, TimeUnit.SECONDS));
 
-        // Now fake a system trigger.
-        ProfilingServiceHelper.getInstance().onProfilingTriggerOccurred(Binder.getCallingUid(),
-                REAL_PACKAGE_NAME,
-                ProfilingTrigger.TRIGGER_TYPE_ANR);
+        // The latch counts down when collection is complete, but before a callback is necessarily
+        // received, so wait for a bit.
+        sleep(WAIT_TIME_FOR_PROFILING_POST_PROCESSING_MS);
 
-        // We can't wait for nothing to happen, so wait 10 seconds which should be long enough.
-        sleep(WAIT_TIME_FOR_TRIGGERED_PROFILING_NO_RESULT);
+        // Confirm that a result was received.
+        confirmCollectionSuccess(
+                callbackGeneral.mResult,
+                OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX,
+                ProfilingTrigger.TRIGGER_TYPE_OOM);
+    }
 
-        // Finally, confirm that no callback was received.
+    /**
+     * Test system triggered profiling for application crash case in which the crash is eligible for
+     * profiling but the app is not registered for the trigger.
+     *
+     * <p>Test confirms both that no result is received, and that the latch is promptly counted down
+     * allowing callers to block on the latch.
+     */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_PROFILING_TRIGGER_OOM)
+    @RequiresFlagsDisabled(Flags.FLAG_OOM_TRIGGER_EXPERIMENT_DO_NOT_RELEASE)
+    public void testSystemTriggeredApplicationCrashNotRegistered() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // Start the system triggered trace for testing as this covers rate limiting override for
+        // triggers.
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ false);
+
+        // And add a global listener
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(
+                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
+
+        CountDownLatch latch = new CountDownLatch(1);
+
+        // Fake a system trigger.
+        ProfilingServiceHelper.getInstance()
+                .profileApplicationCrash(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        new ApplicationErrorReport.CrashInfo(new OutOfMemoryError()),
+                        latch);
+
+        // Await up to 1 second, since the trigger is not registered the latch should be counted
+        // down in less than that time so assert true to ensure exit was not due to timeout.
+        assertTrue(latch.await(1, TimeUnit.SECONDS));
+
+        // Set wait time to timeout plus post processing wait time
+        int waitTimeMs =
+                DeviceConfigHelper.getInt(
+                                        CONFIG_TIMEOUT_OOM, TIMEOUT_DEFAULT_JAVA_HEAP_DUMP_SECONDS)
+                                * 1000
+                        + WAIT_TIME_FOR_PROFILING_POST_PROCESSING_MS;
+        sleep(waitTimeMs);
+
+        // Confirm that no callback was received.
+        assertNull(callbackGeneral.mResult);
+    }
+
+    /**
+     * Test system triggered profiling for application crash case in which the crash is not eligible
+     * for profiling.
+     *
+     * <p>Test confirms both that no result is received, and that the latch is promptly counted down
+     * allowing callers to block on the latch.
+     */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_PROFILING_TRIGGER_OOM)
+    public void testSystemTriggeredApplicationCrashNotProfilingEligible() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // Start the system triggered trace for testing as this covers rate limiting override for
+        // triggers.
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ false);
+
+        mProfilingManager.addAllProfilingTriggers();
+
+        // And add a global listener
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(
+                new ProfilingTestUtils.ImmediateExecutor(), callbackGeneral);
+
+        CountDownLatch latch = new CountDownLatch(1);
+
+        // Fake a system trigger for a NPE, which is not a type that is eligible for profiling.
+        ProfilingServiceHelper.getInstance()
+                .profileApplicationCrash(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        new ApplicationErrorReport.CrashInfo(new NullPointerException()),
+                        latch);
+
+        // Await up to 1 second, since the trigger is not registered the latch should be counted
+        // down in less than that time so assert true to ensure exit was not due to timeout.
+        assertTrue(latch.await(1, TimeUnit.SECONDS));
+
+        // Set wait time to timeout plus post processing wait time
+        int waitTimeMs =
+                DeviceConfigHelper.getInt(
+                                        CONFIG_TIMEOUT_OOM, TIMEOUT_DEFAULT_JAVA_HEAP_DUMP_SECONDS)
+                                * 1000
+                        + WAIT_TIME_FOR_PROFILING_POST_PROCESSING_MS;
+        sleep(waitTimeMs);
+
+        // Confirm that no callback was received.
         assertNull(callbackGeneral.mResult);
     }
 
@@ -1225,12 +1347,13 @@ public final class ProfilingFrameworkTests {
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS)
     public void testProfilingResultParcelReadWriteMatch() throws Exception {
         // Create a fake ProfilingResult with all fields set.
-        ProfilingResult result = new ProfilingResult(
-                ProfilingResult.ERROR_FAILED_RATE_LIMIT_SYSTEM,
-                "/path/to/file.type",
-                "some_tag",
-                "This is an error message.",
-                ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN);
+        ProfilingResult result =
+                new ProfilingResult(
+                        ProfilingResult.ERROR_FAILED_RATE_LIMIT_SYSTEM,
+                        "/path/to/file.type",
+                        "some_tag",
+                        "This is an error message.",
+                        ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN);
 
         // Write to parcel.
         Parcel parcel = Parcel.obtain();
@@ -1255,7 +1378,7 @@ public final class ProfilingFrameworkTests {
     /**
      * Test that profiling request fails system rate limiter when cost exceeds max.
      *
-     * This test in particular will fail the hour bucket just to verify end to end a system deny.
+     * <p>This test in particular will fail the hour bucket just to verify end to end a system deny.
      * Testing for each time bucket is covered in service side tests.
      */
     @Test
@@ -1268,45 +1391,45 @@ public final class ProfilingFrameworkTests {
         // Override rate limiter values such that the system trace cost is more than the system
         // limits but less than the process limits.
         overrideSystemTraceDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, 10);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, 10);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, 10);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, 1000);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR, 1000);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_PROCESS_7_DAY, 1000);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.COST_SYSTEM_TRACE, 100);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, 10);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, 10);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, 10);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_7_DAY, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.COST_SYSTEM_TRACE, 100);
 
         AppCallback callback = new AppCallback();
 
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
-                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                getOneSecondDurationParamBundle(),
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
         waitForCallback(callback);
 
         // Assert request failed with system rate limiting error.
-        assertEquals(ProfilingResult.ERROR_FAILED_RATE_LIMIT_SYSTEM,
-                callback.mResult.getErrorCode());
+        assertEquals(
+                ProfilingResult.ERROR_FAILED_RATE_LIMIT_SYSTEM, callback.mResult.getErrorCode());
     }
 
     /**
      * Test that profiling request fails process rate limiter when cost exceeds max.
      *
-     * This test in particular will fail the hour bucket just to verify end to end a process deny.
-     * Testing for each time bucket is covered in service side tests.
+     * <p>This test in particular will fail the hour bucket just to verify end to end a process
+     * deny. Testing for each time bucket is covered in service side tests.
      */
     @Test
     @RequiresFlagsEnabled({Flags.FLAG_TELEMETRY_APIS, Flags.FLAG_REDACTION_ENABLED})
@@ -1318,38 +1441,38 @@ public final class ProfilingFrameworkTests {
         // Override rate limiter values such that the system trace cost is more than the process
         // limits but less than the system limits.
         overrideSystemTraceDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, 1000);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, 1000);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, 1000);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, 10);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR, 10);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_PROCESS_7_DAY, 10);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.COST_SYSTEM_TRACE, 100);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, 10);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR, 10);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_7_DAY, 10);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.COST_SYSTEM_TRACE, 100);
 
         AppCallback callback = new AppCallback();
 
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
-                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                getOneSecondDurationParamBundle(),
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
         waitForCallback(callback);
 
         // Assert request failed with process rate limiting error.
-        assertEquals(ProfilingResult.ERROR_FAILED_RATE_LIMIT_PROCESS,
-                callback.mResult.getErrorCode());
+        assertEquals(
+                ProfilingResult.ERROR_FAILED_RATE_LIMIT_PROCESS, callback.mResult.getErrorCode());
     }
 
     /** Test that profiling request passes system rate limiter. */
@@ -1363,30 +1486,30 @@ public final class ProfilingFrameworkTests {
         // Override rate limiter values such that the system trace cost is less than both the system
         // and process limits.
         overrideSystemTraceDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, 1000);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, 1000);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, 1000);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, 1000);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR, 1000);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.MAX_COST_PROCESS_7_DAY, 1000);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.COST_SYSTEM_TRACE, 100);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_7_DAY, 1000);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.COST_SYSTEM_TRACE, 100);
 
         AppCallback callback = new AppCallback();
 
         // Now kick off the request.
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
-                ProfilingTestUtils.getOneSecondDurationParamBundle(),
+                getOneSecondDurationParamBundle(),
                 null,
                 null,
-                new ProfilingTestUtils.ImmediateExecutor(),
+                new ImmediateExecutor(),
                 callback);
 
         // Wait until callback#onAccept is triggered so we can confirm the result.
@@ -1399,8 +1522,7 @@ public final class ProfilingFrameworkTests {
     /**
      * Test that registering a trigger with an invalid trigger type fails with the correct
      * exception. The invalid type used here is value 1000 which is noted in docs to be reserved,
-     * thus this test covers both that invalid triggers fail and that the reserved value isn't
-     * used.
+     * thus this test covers both that invalid triggers fail and that the reserved value isn't used.
      */
     @Test
     public void testInvalidTriggerType() throws Exception {
@@ -1430,27 +1552,10 @@ public final class ProfilingFrameworkTests {
         overrideRateLimiter(false);
     }
 
-    /**
-     * Override the rate limiter to the provided value and wait long enough for the update to be
-     * picked up.
-     */
-    private void overrideRateLimiter(boolean disable) throws Exception {
-        executeShellCmd(
-                "device_config put profiling_testing rate_limiter.disabled %s", disable);
-        for (int i = 0; i < RATE_LIMITER_WAIT_TIME_INCREMENTS_COUNT; i++) {
-            sleep(RATE_LIMITER_WAIT_TIME_INCREMENT_MS);
-            String output = executeShellCmd(
-                    "device_config get profiling_testing rate_limiter.disabled");
-            if (Boolean.parseBoolean(output.trim()) == disable) {
-                return;
-            }
-        }
-    }
-
     /** Wait for callback to be triggered. Waits for up to 5 minutes, checking every 5 seconds. */
     private void waitForCallback(AppCallback callback) {
-        waitForCallback(callback, CALLBACK_WAIT_TIME_INCREMENT_MS,
-                CALLBACK_WAIT_TIME_INCREMENTS_COUNT);
+        waitForCallback(
+                callback, CALLBACK_WAIT_TIME_INCREMENT_MS, CALLBACK_WAIT_TIME_INCREMENTS_COUNT);
     }
 
     /**
@@ -1458,7 +1563,9 @@ public final class ProfilingFrameworkTests {
      * every 5 seconds.
      */
     private void waitForCancelCallback(AppCallback callback) {
-        waitForCallback(callback, CALLBACK_WAIT_TIME_INCREMENT_MS,
+        waitForCallback(
+                callback,
+                CALLBACK_WAIT_TIME_INCREMENT_MS,
                 CALLBACK_CANCEL_WAIT_TIME_INCREMENTS_COUNT);
     }
 
@@ -1483,16 +1590,7 @@ public final class ProfilingFrameworkTests {
 
     /** Assert that result matches a success case, specifically: contains a path and no errors. */
     private void confirmCollectionSuccess(ProfilingResult result, String suffix, int triggerType) {
-        assertNotNull(result);
-        assertEquals(ProfilingResult.ERROR_NONE, result.getErrorCode());
-        assertNotNull(result.getResultFilePath());
-        assertTrue(result.getResultFilePath().contains(suffix));
-        if (Flags.addRateLimiterDisabledToResult()) {
-            assertNotNull(result.getErrorMessage());
-        } else {
-            assertNull(result.getErrorMessage());
-        }
-        assertEquals(triggerType, result.getTriggerType());
+        assertProfilingResultSuccess(expect, result, suffix, triggerType);
 
         // Confirm output file exists and is not empty.
         File file = new File(result.getResultFilePath());
@@ -1503,7 +1601,7 @@ public final class ProfilingFrameworkTests {
     /**
      * Copies the trace to an /sdcard directory that will be collected by the test runner.
      *
-     * Expected to be called only after validating that the profiling was successful.
+     * <p>Expected to be called only after validating that the profiling was successful.
      */
     private void dumpTrace(ProfilingResult result) {
         assertNotNull(result);
@@ -1513,73 +1611,91 @@ public final class ProfilingFrameworkTests {
         Path path = Paths.get(result.getResultFilePath());
         try {
             Files.createDirectories(DUMP_PATH);
-            String filename = mTestName.getMethodName() + "_" + path.getFileName()
-                    + ".perfetto-trace";
+            String filename =
+                    mTestName.getMethodName() + "_" + path.getFileName() + ".perfetto-trace";
             Files.copy(path, Paths.get(DUMP_PATH.toString(), filename));
         } catch (IOException e) {
             throw new AssertionError("Failed to copy to DUMP_PATH", e);
         }
     }
 
-    private void overrideJavaHeapDumpDeviceConfigValues(boolean killswitchEnabled, int durationMs,
-            int dataSourceTimeoutMs) throws Exception {
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_BOOL, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.KILLSWITCH_JAVA_HEAP_DUMP, killswitchEnabled);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.JAVA_HEAP_DUMP_DURATION_MS_DEFAULT, durationMs);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
+    private void overrideJavaHeapDumpDeviceConfigValues(
+            boolean killswitchEnabled, int durationMs, int dataSourceTimeoutMs) throws Exception {
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.KILLSWITCH_JAVA_HEAP_DUMP,
+                killswitchEnabled);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.JAVA_HEAP_DUMP_DURATION_MS_DEFAULT,
+                durationMs);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.JAVA_HEAP_DUMP_DATA_SOURCE_STOP_TIMEOUT_MS_DEFAULT,
                 dataSourceTimeoutMs);
     }
 
-    private void overrideHeapProfileDeviceConfigValues(boolean killswitchEnabled,
-            int durationDefaultMs, int durationMinMs, int durationMaxMs) throws Exception {
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_BOOL, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.KILLSWITCH_HEAP_PROFILE, killswitchEnabled);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_DEFAULT, durationDefaultMs);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_MIN, durationMinMs);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_MAX, durationMaxMs);
+    private void overrideHeapProfileDeviceConfigValues(
+            boolean killswitchEnabled, int durationDefaultMs, int durationMinMs, int durationMaxMs)
+            throws Exception {
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.KILLSWITCH_HEAP_PROFILE,
+                killswitchEnabled);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_DEFAULT,
+                durationDefaultMs);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_MIN,
+                durationMinMs);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_MAX,
+                durationMaxMs);
     }
 
-    private void overrideStackSamplingDeviceConfigValues(boolean killswitchEnabled,
-            int durationDefaultMs, int durationMinMs, int durationMaxMs) throws Exception {
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_BOOL, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.KILLSWITCH_STACK_SAMPLING, killswitchEnabled);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_DEFAULT, durationDefaultMs);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_MIN, durationMinMs);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_MAX, durationMaxMs);
+    private void overrideStackSamplingDeviceConfigValues(
+            boolean killswitchEnabled, int durationDefaultMs, int durationMinMs, int durationMaxMs)
+            throws Exception {
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.KILLSWITCH_STACK_SAMPLING,
+                killswitchEnabled);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_DEFAULT,
+                durationDefaultMs);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_MIN,
+                durationMinMs);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_MAX,
+                durationMaxMs);
     }
 
-    private void overrideSystemTraceDeviceConfigValues(boolean killswitchEnabled,
-            int durationDefaultMs, int durationMinMs, int durationMaxMs) throws Exception {
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_BOOL, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.KILLSWITCH_SYSTEM_TRACE, killswitchEnabled);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_DEFAULT, durationDefaultMs);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_MIN, durationMinMs);
-        executeShellCmd(COMMAND_OVERRIDE_DEVICE_CONFIG_INT, DeviceConfigHelper.NAMESPACE,
-                DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_MAX, durationMaxMs);
-    }
-
-    @FormatMethod
-    private String executeShellCmd(String cmdFormat, Object... args) throws Exception {
-        String cmd = String.format(cmdFormat, args);
-        return SystemUtil.runShellCommand(mInstrumentation, cmd);
-    }
-
-    private static void sleep(long ms) {
-        try {
-            Thread.sleep(ms);
-        } catch (InterruptedException e) {
-            // Do nothing.
-        }
+    private void overrideSystemTraceDeviceConfigValues(
+            boolean killswitchEnabled, int durationDefaultMs, int durationMinMs, int durationMaxMs)
+            throws Exception {
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.KILLSWITCH_SYSTEM_TRACE,
+                killswitchEnabled);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_DEFAULT,
+                durationDefaultMs);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_MIN,
+                durationMinMs);
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_MAX,
+                durationMaxMs);
     }
 
     private static native void doMallocAndFree();
@@ -1601,11 +1717,13 @@ public final class ProfilingFrameworkTests {
 
         BusyLoopThread() {
             mDone.set(false);
-            mThread = new Thread(() -> {
-                while (!mDone.get()) {
-                  // Keep spinning!
-                }
-            });
+            mThread =
+                    new Thread(
+                            () -> {
+                                while (!mDone.get()) {
+                                    // Keep spinning!
+                                }
+                            });
             mThread.start();
         }
 
@@ -1626,12 +1744,14 @@ public final class ProfilingFrameworkTests {
 
         MallocLoopThread() {
             mDone.set(false);
-            mThread = new Thread(() -> {
-                while (!mDone.get()) {
-                    doMallocAndFree();
-                    sleep(10);
-                }
-            });
+            mThread =
+                    new Thread(
+                            () -> {
+                                while (!mDone.get()) {
+                                    doMallocAndFree();
+                                    sleep(10);
+                                }
+                            });
             mThread.start();
         }
 

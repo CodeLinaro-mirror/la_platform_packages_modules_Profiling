@@ -17,7 +17,7 @@
 package android.os;
 
 /**
- * {@hide}
+ * @hide
  */
 parcelable ProfilingTriggerValueParcel {
     int triggerType;

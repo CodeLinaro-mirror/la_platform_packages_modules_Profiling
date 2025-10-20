@@ -14,15 +14,21 @@
  * limitations under the License.
  */
 
-package com.android.os.profiling.anomaly;
+package com.android.os.profiling.anomaly.core;
 
-import android.os.IAnomalyDetectorService;
+import java.util.Objects;
+import java.util.Set;
 
 /**
- * Implementation of {@link android.os.IAnomalyDetectorService} binder service.
+ * Defines a condition to detect and a set of actions to perform.
  *
+ * @param <T> The type of {@link BaseCondition} this rule handles.
  * @hide
  */
-public final class AnomalyDetectorServiceImpl extends IAnomalyDetectorService.Stub {
-    // Implement methods here.
+public record Rule<T extends BaseCondition>(T baseCondition, Set<Integer> actions) {
+    public Rule {
+        Objects.requireNonNull(baseCondition);
+        // Create a defensive, unmodifiable copy to ensure true immutability.
+        actions = Set.copyOf(Objects.requireNonNull(actions));
+    }
 }

@@ -19,12 +19,17 @@ package android.os;
 import android.annotation.FlaggedApi;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.annotation.RequiresNoPermission;
 import android.annotation.SystemApi;
 import android.annotation.SystemApi.Client;
+import android.app.ApplicationErrorReport;
 import android.os.profiling.Flags;
+import android.provider.DeviceConfig;
 import android.util.Log;
 
 import com.android.internal.annotations.GuardedBy;
+
+import java.util.concurrent.CountDownLatch;
 
 /**
  * Class for system to interact with {@link ProfilingService} to notify of trigger occurrences.
@@ -36,6 +41,14 @@ import com.android.internal.annotations.GuardedBy;
 public class ProfilingServiceHelper {
     private static final String TAG = ProfilingServiceHelper.class.getSimpleName();
     private static final boolean DEBUG = false;
+
+    private static final String CONFIG_NAMESPACE = "profiling";
+
+    // LINT.IfChange(oom_device_configs)
+    private static final String CONFIG_TIMEOUT_OOM = "trigger_timeout_oom";
+
+    private static final int TIMEOUT_DEFAULT_JAVA_HEAP_DUMP_SECONDS = 5;
+    // LINT.ThenChange(/tests/cts/src/android/profiling/cts/ProfilingFrameworkTests.java:oom_device_configs)
 
     private static final Object sLock = new Object();
 
@@ -65,9 +78,13 @@ public class ProfilingServiceHelper {
                 return sInstance;
             }
 
-            IProfilingService service = Flags.telemetryApis() ? IProfilingService.Stub.asInterface(
-                    ProfilingFrameworkInitializer.getProfilingServiceManager()
-                            .getProfilingServiceRegisterer().get()) : null;
+            IProfilingService service =
+                    Flags.telemetryApis()
+                            ? IProfilingService.Stub.asInterface(
+                                    ProfilingFrameworkInitializer.getProfilingServiceManager()
+                                            .getProfilingServiceRegisterer()
+                                            .get())
+                            : null;
 
             if (service == null) {
                 throw new IllegalStateException("ProfilingService not yet set up.");
@@ -83,11 +100,72 @@ public class ProfilingServiceHelper {
     public void onProfilingTriggerOccurred(int uid, @NonNull String packageName, int triggerType) {
         synchronized (mLock) {
             try {
-                mProfilingService.processTrigger(uid, packageName, triggerType, null);
+                mProfilingService.processTrigger(uid, packageName, triggerType, null, null);
             } catch (RemoteException e) {
                 // Exception sending trigger to service. Nothing to do here, trigger will be lost.
                 if (DEBUG) Log.e(TAG, "Exception sending trigger", e);
             }
         }
+    }
+
+    /**
+     * Handle profiling for an application crash. This is done by determining whether this is a
+     * crash type which profiling is collected for, mapping it to the appropriate trigger, and then
+     * notifying {@link ProfilingService} of the trigger. A countdown latch provided by the caller
+     * will be counted down when profiling is complete and the caller is ready to proceed, or sooner
+     * if no profiling is needed or if profiling fails for any reason.
+     *
+     * @return The recommended blocking timeout, in seconds, for profiling of the required type to
+     *     complete.
+     */
+    @FlaggedApi(Flags.FLAG_PROFILING_TRIGGER_OOM)
+    public int profileApplicationCrash(
+            int uid,
+            @NonNull String packageName,
+            @NonNull ApplicationErrorReport.CrashInfo crashInfo,
+            @NonNull CountDownLatch countDownLatch) {
+        int triggerType;
+        int delay;
+
+        if ("java.lang.OutOfMemoryError".equals(crashInfo.exceptionClassName)) {
+            // For OOM type crashes, set trigger type appropriately and delay to 5 seconds, which
+            triggerType = ProfilingTrigger.TRIGGER_TYPE_OOM;
+            delay =
+                    DeviceConfig.getInt(
+                            CONFIG_NAMESPACE,
+                            CONFIG_TIMEOUT_OOM,
+                            TIMEOUT_DEFAULT_JAVA_HEAP_DUMP_SECONDS);
+        } else {
+            // If the error does not map to a type that we collect profiling for, immediately count
+            // down the latch and return 0 to ensure that nothing is being blocked.
+            countDownLatch.countDown();
+            return 0;
+        }
+
+        synchronized (mLock) {
+            try {
+                mProfilingService.processTrigger(
+                        uid,
+                        packageName,
+                        triggerType,
+                        null,
+                        new IProfilingTriggerCallback.Stub() {
+                            @Override
+                            @RequiresNoPermission
+                            public void onComplete() {
+                                if (DEBUG) {
+                                    Log.d(TAG, "Trigger onComplete received, counting down.");
+                                }
+                                countDownLatch.countDown();
+                            }
+                        });
+            } catch (RemoteException e) {
+                // Exception sending trigger to service. Nothing to do here, trigger will be lost.
+                if (DEBUG) Log.e(TAG, "Exception sending trigger", e);
+                countDownLatch.countDown();
+            }
+        }
+
+        return delay;
     }
 }

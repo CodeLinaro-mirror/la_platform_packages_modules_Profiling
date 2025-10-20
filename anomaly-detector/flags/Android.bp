@@ -50,6 +50,7 @@ java_aconfig_library {
     defaults: ["framework-minus-apex-aconfig-java-defaults"],
     visibility: [
         "//packages/modules/Profiling:__subpackages__",
+        "//packages/modules/Permission:__subpackages__",
         "//frameworks/base:__subpackages__",
     ],
 }

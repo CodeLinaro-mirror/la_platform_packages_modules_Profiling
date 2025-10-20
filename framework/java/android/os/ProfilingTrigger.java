@@ -23,9 +23,7 @@ import android.os.profiling.Flags;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
-/**
- * Encapsulates a single profiling trigger.
- */
+/** Encapsulates a single profiling trigger. */
 @FlaggedApi(Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
 public final class ProfilingTrigger {
 
@@ -33,9 +31,10 @@ public final class ProfilingTrigger {
     public static final int TRIGGER_TYPE_NONE = 0;
 
     /**
-     * Trigger occurs after {@link Activity#reportFullyDrawn} is called for a cold start.
+     * Trigger occurs after {@link android.app.Activity#reportFullyDrawn} is called for a cold
+     * start.
      *
-     * System will provide a snapshot of a running system trace in response to this trigger.
+     * <p>System will provide a snapshot of a running system trace in response to this trigger.
      */
     public static final int TRIGGER_TYPE_APP_FULLY_DRAWN = 1;
 
@@ -43,15 +42,15 @@ public final class ProfilingTrigger {
      * Trigger occurs after an ANR has been identified, but before the system would attempt to kill
      * the app. The trigger does not necessarily indicate that the app was killed due to the ANR.
      *
-     * System will provide a snapshot of a running system trace in response to this trigger.
+     * <p>System will provide a snapshot of a running system trace in response to this trigger.
      */
     public static final int TRIGGER_TYPE_ANR = 2;
 
     /**
-     * Trigger occurs when an app requests the actively running trace by calling
-     * {@link ProfilingManager#requestRunningSystemTrace}.
+     * Trigger occurs when an app requests the actively running trace by calling {@link
+     * ProfilingManager#requestRunningSystemTrace}.
      *
-     * System will provide a snapshot of a running system trace in response to this trigger.
+     * <p>System will provide a snapshot of a running system trace in response to this trigger.
      */
     @FlaggedApi(Flags.FLAG_PROFILING_25Q4)
     public static final int TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE = 3;
@@ -60,7 +59,7 @@ public final class ProfilingTrigger {
      * Trigger occurs when an app is killed due to the user clicking the "Force stop" button of the
      * App info page in Settings.
      *
-     * System will provide a snapshot of a running system trace in response to this trigger.
+     * <p>System will provide a snapshot of a running system trace in response to this trigger.
      */
     @FlaggedApi(Flags.FLAG_PROFILING_25Q4)
     public static final int TRIGGER_TYPE_KILL_FORCE_STOP = 4;
@@ -69,7 +68,7 @@ public final class ProfilingTrigger {
      * Trigger occurs when an app is killed due to the user removing it in the <a
      * href="https://developer.android.com/guide/components/activities/recents">Recents screen</a>.
      *
-     * System will provide a snapshot of a running system trace in response to this trigger.
+     * <p>System will provide a snapshot of a running system trace in response to this trigger.
      */
     @FlaggedApi(Flags.FLAG_PROFILING_TRIGGER_KILL_RECENTS)
     public static final int TRIGGER_TYPE_KILL_RECENTS = 5;
@@ -80,28 +79,45 @@ public final class ProfilingTrigger {
      * "https://developer.android.com/develop/background-work/services/fgs/handle-user-stopping">
      * Task Manager</a>.
      *
-     * System will provide a snapshot of a running system trace in response to this trigger.
+     * <p>System will provide a snapshot of a running system trace in response to this trigger.
      */
     @FlaggedApi(Flags.FLAG_PROFILING_25Q4)
     public static final int TRIGGER_TYPE_KILL_TASK_MANAGER = 6;
 
+    /**
+     * Trigger occurs when an app has an Out Of Memory Exception.
+     *
+     * <p>System will provide a Java heap dump in response to this trigger.
+     *
+     * <p>Use of this trigger requires that any custom {@link
+     * java.lang.Thread.UncaughtExceptionHandler} call through to the default uncaught exception
+     * handler ({@link java.lang.Thread#getDefaultUncaughtExceptionHandler}). If the default
+     * uncaught exception handler is not called, then this trigger cannot be used. The app can still
+     * obtain a Java heap dump in this case, but will have to request the profiling itself using
+     * {@link ProfilingManager#requestProfiling}.
+     */
+    @FlaggedApi(Flags.FLAG_PROFILING_TRIGGER_OOM)
+    public static final int TRIGGER_TYPE_OOM = 7;
+
     /** @hide */
-    @IntDef(value = {
-        TRIGGER_TYPE_NONE,
-        TRIGGER_TYPE_APP_FULLY_DRAWN,
-        TRIGGER_TYPE_ANR,
-        TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE,
-        TRIGGER_TYPE_KILL_FORCE_STOP,
-        TRIGGER_TYPE_KILL_RECENTS,
-        TRIGGER_TYPE_KILL_TASK_MANAGER,
-    })
+    @IntDef(
+            value = {
+                TRIGGER_TYPE_NONE,
+                TRIGGER_TYPE_APP_FULLY_DRAWN,
+                TRIGGER_TYPE_ANR,
+                TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE,
+                TRIGGER_TYPE_KILL_FORCE_STOP,
+                TRIGGER_TYPE_KILL_RECENTS,
+                TRIGGER_TYPE_KILL_TASK_MANAGER,
+                TRIGGER_TYPE_OOM,
+            })
     @Retention(RetentionPolicy.SOURCE)
     @interface TriggerType {}
 
-    /** @see #getTriggerType */
+    /** {@link #getTriggerType} */
     private final @TriggerType int mTriggerType;
 
-    /** @see #getRateLimitingPeriodHours  */
+    /** {@link #getRateLimitingPeriodHours} */
     private final int mRateLimitingPeriodHours;
 
     private ProfilingTrigger(@TriggerType int triggerType, int rateLimitingPeriodHours) {
@@ -109,9 +125,7 @@ public final class ProfilingTrigger {
         mRateLimitingPeriodHours = rateLimitingPeriodHours;
     }
 
-    /**
-     * Builder class to create a {@link ProfilingTrigger} object.
-     */
+    /** Builder class to create a {@link ProfilingTrigger} object. */
     @FlaggedApi(Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public static final class Builder {
         // Trigger type has to be set, so make it an object and set to null.
@@ -123,9 +137,8 @@ public final class ProfilingTrigger {
         /**
          * Create a new builder instance to create a {@link ProfilingTrigger} object.
          *
-         * Requires a trigger type. An app can only have one registered trigger per trigger type.
+         * <p>Requires a trigger type. An app can only have one registered trigger per trigger type.
          * Adding a new trigger with the same type will override the previously set one.
-         *
          *
          * @throws IllegalArgumentException if the trigger type is not valid.
          */
@@ -140,20 +153,20 @@ public final class ProfilingTrigger {
         /** Build the {@link ProfilingTrigger} object. */
         @NonNull
         public ProfilingTrigger build() {
-            return new ProfilingTrigger(mBuilderTriggerType,
-                    mBuilderRateLimitingPeriodHours);
+            return new ProfilingTrigger(mBuilderTriggerType, mBuilderRateLimitingPeriodHours);
         }
 
         /**
          * Set a rate limiting period in hours.
          *
-         * The period is the minimum time the system should wait before providing another
+         * <p>The period is the minimum time the system should wait before providing another
          * profiling result for the same trigger; actual time between events may be longer.
          *
-         * If the rate limiting period is not provided or set to 0, no app-provided rate limiting
+         * <p>If the rate limiting period is not provided or set to 0, no app-provided rate limiting
          * will be used.
          *
-         * This rate limiting is in addition to any system level rate limiting that may be applied.
+         * <p>This rate limiting is in addition to any system level rate limiting that may be
+         * applied.
          *
          * @throws IllegalArgumentException if the value is less than 0.
          */
@@ -176,12 +189,12 @@ public final class ProfilingTrigger {
     /**
      * The requester set rate limiting period in hours.
      *
-     * The period is the minimum time the system should wait before providing another
-     * profiling result for the same trigger; actual time between events may be longer.
+     * <p>The period is the minimum time the system should wait before providing another profiling
+     * result for the same trigger; actual time between events may be longer.
      *
-     * If the rate limiting period is set to 0, no app-provided rate limiting will be used.
+     * <p>If the rate limiting period is set to 0, no app-provided rate limiting will be used.
      *
-     * This rate limiting is in addition to any system level rate limiting that may be applied.
+     * <p>This rate limiting is in addition to any system level rate limiting that may be applied.
      */
     public int getRateLimitingPeriodHours() {
         return mRateLimitingPeriodHours;
@@ -209,10 +222,11 @@ public final class ProfilingTrigger {
      */
     public static boolean isValidRequestTriggerType(int triggerType) {
         return triggerType == TRIGGER_TYPE_APP_FULLY_DRAWN
-            || triggerType == TRIGGER_TYPE_ANR
-            || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE)
-            || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_KILL_FORCE_STOP)
-            || (Flags.profilingTriggerKillRecents() && triggerType == TRIGGER_TYPE_KILL_RECENTS)
-            || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_KILL_TASK_MANAGER);
+                || triggerType == TRIGGER_TYPE_ANR
+                || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE)
+                || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_KILL_FORCE_STOP)
+                || (Flags.profilingTriggerKillRecents() && triggerType == TRIGGER_TYPE_KILL_RECENTS)
+                || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_KILL_TASK_MANAGER)
+                || (Flags.profilingTriggerOom() && triggerType == TRIGGER_TYPE_OOM);
     }
 }

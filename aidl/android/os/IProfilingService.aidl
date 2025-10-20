@@ -18,10 +18,11 @@ package android.os;
 
 import android.os.Bundle;
 import android.os.IProfilingResultCallback;
+import android.os.IProfilingTriggerCallback;
 import android.os.ProfilingTriggerValueParcel;
 
 /**
- * {@hide}
+ * @hide
  */
 interface IProfilingService {
 
@@ -47,6 +48,6 @@ interface IProfilingService {
 
     oneway void clearProfilingTriggers(String packageName);
 
-    oneway void processTrigger(int uid, String packageName, int triggerType, String tag);
+    oneway void processTrigger(int uid, String packageName, int triggerType, String tag, IProfilingTriggerCallback callback);
 
 }

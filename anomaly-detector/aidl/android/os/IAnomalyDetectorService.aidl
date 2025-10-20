@@ -16,10 +16,19 @@
 
 package android.os;
 
+import android.os.RuleParcel;
+
 /**
  * Binder interface to communicate with AnomalyDetectorService.
  *
- * {@hide}
+ * @hide
  */
 interface IAnomalyDetectorService {
+    /**
+     * Sets the list of rules to be used by the AnomalyDetectorService.
+     *
+     * @param ruleParcelList The list of rules to set.
+     */
+    @PermissionManuallyEnforced
+    void setRules(in List<RuleParcel> ruleParcelList);
 }

@@ -60,77 +60,81 @@ public final class LoggingHelper {
     public static final int BACKGROUND_TRACE_STATE_STOPPED = 5;
 
     @IntDef(
-        prefix = {"REQUEST_RESULT_"},
-        value = {
-            REQUEST_RESULT_UNSPECIFIED,
-            REQUEST_RESULT_ERROR,
-            REQUEST_RESULT_RATE_LIMIT_SYSTEM,
-            REQUEST_RESULT_RATE_LIMIT_PROCESS,
-            REQUEST_RESULT_INVALID,
-            REQUEST_RESULT_PROFILING_IN_PROGRESS,
-            REQUEST_RESULT_PROFILING_STARTED,
-        })
+            prefix = {"REQUEST_RESULT_"},
+            value = {
+                REQUEST_RESULT_UNSPECIFIED,
+                REQUEST_RESULT_ERROR,
+                REQUEST_RESULT_RATE_LIMIT_SYSTEM,
+                REQUEST_RESULT_RATE_LIMIT_PROCESS,
+                REQUEST_RESULT_INVALID,
+                REQUEST_RESULT_PROFILING_IN_PROGRESS,
+                REQUEST_RESULT_PROFILING_STARTED,
+            })
     @Retention(RetentionPolicy.SOURCE)
     public @interface RequestResult {}
 
-
     @IntDef(
-        prefix = {"PROFILING_STOPPED_REASON_"},
-        value = {
-            PROFILING_STOPPED_REASON_UNSPECIFIED,
-            PROFILING_STOPPED_REASON_APP_REQUESTED,
-            PROFILING_STOPPED_REASON_APP_DIED,
-            PROFILING_STOPPED_REASON_TIMED_OUT,
-            PROFILING_STOPPED_REASON_ERROR,
-        })
+            prefix = {"PROFILING_STOPPED_REASON_"},
+            value = {
+                PROFILING_STOPPED_REASON_UNSPECIFIED,
+                PROFILING_STOPPED_REASON_APP_REQUESTED,
+                PROFILING_STOPPED_REASON_APP_DIED,
+                PROFILING_STOPPED_REASON_TIMED_OUT,
+                PROFILING_STOPPED_REASON_ERROR,
+            })
     @Retention(RetentionPolicy.SOURCE)
     public @interface ProfilingStoppedReason {}
 
-
     @IntDef(
-        prefix = {"TRIGGER_STATUS_"},
-        value = {
-            TRIGGER_STATUS_UNSPECIFIED,
-            TRIGGER_STATUS_ERROR,
-            TRIGGER_STATUS_RATE_LIMIT_SYSTEM,
-            TRIGGER_STATUS_RATE_LIMIT_PROCESS,
-            TRIGGER_STATUS_RATE_LIMIT_APP,
-            TRIGGER_STATUS_NOT_REGISTERED,
-            TRIGGER_STATUS_NOT_RUNNING,
-            TRIGGER_STATUS_FULFILLED,
-            TRIGGER_STATUS_MISSING_NAME
-        })
+            prefix = {"TRIGGER_STATUS_"},
+            value = {
+                TRIGGER_STATUS_UNSPECIFIED,
+                TRIGGER_STATUS_ERROR,
+                TRIGGER_STATUS_RATE_LIMIT_SYSTEM,
+                TRIGGER_STATUS_RATE_LIMIT_PROCESS,
+                TRIGGER_STATUS_RATE_LIMIT_APP,
+                TRIGGER_STATUS_NOT_REGISTERED,
+                TRIGGER_STATUS_NOT_RUNNING,
+                TRIGGER_STATUS_FULFILLED,
+                TRIGGER_STATUS_MISSING_NAME
+            })
     @Retention(RetentionPolicy.SOURCE)
     public @interface TriggerStatus {}
 
-
     @IntDef(
-        prefix = {"BACKGROUND_TRACE_STATE_"},
-        value = {
-            BACKGROUND_TRACE_STATE_UNSPECIFIED,
-            BACKGROUND_TRACE_STATE_STARTED,
-            BACKGROUND_TRACE_STATE_NOT_STARTED_NO_TRIGGERS_REGISTERED,
-            BACKGROUND_TRACE_STATE_NOT_STARTED_TRIGGERS_NOT_LOADED,
-            BACKGROUND_TRACE_STATE_NOT_STARTED_ALREADY_RUNNING,
-            BACKGROUND_TRACE_STATE_STOPPED,
-        })
+            prefix = {"BACKGROUND_TRACE_STATE_"},
+            value = {
+                BACKGROUND_TRACE_STATE_UNSPECIFIED,
+                BACKGROUND_TRACE_STATE_STARTED,
+                BACKGROUND_TRACE_STATE_NOT_STARTED_NO_TRIGGERS_REGISTERED,
+                BACKGROUND_TRACE_STATE_NOT_STARTED_TRIGGERS_NOT_LOADED,
+                BACKGROUND_TRACE_STATE_NOT_STARTED_ALREADY_RUNNING,
+                BACKGROUND_TRACE_STATE_STOPPED,
+            })
     @Retention(RetentionPolicy.SOURCE)
     public @interface BackgroundTraceState {}
 
-
     /** Log that a profiling request was made. */
-    public static void logProfilingRequest(int uid, int profilingType, @Nullable Bundle params,
-            @RequestResult int requestResult) {
+    public static void logProfilingRequest(
+            int uid,
+            int profilingType,
+            @Nullable Bundle params,
+            @RequestResult int requestResult,
+            boolean isRateLimiterDisabled) {
         ProfilingStatsLog.write(
                 ProfilingStatsLog.PROFILING_REQUEST,
                 uid,
                 profilingTypeToEnumValue(profilingType),
                 params != null && !params.isEmpty(),
-                requestResult);
+                requestResult,
+                isRateLimiterDisabled);
     }
 
     /** Log that a profiling session was stopped. */
-    public static void logProfilingStopped(int uid, int profilingType, int triggerType,
+    public static void logProfilingStopped(
+            int uid,
+            int profilingType,
+            int triggerType,
             @ProfilingStoppedReason int profilingStoppedReason) {
         ProfilingStatsLog.write(
                 ProfilingStatsLog.PROFILING_STOPPED,
@@ -141,20 +145,19 @@ public final class LoggingHelper {
     }
 
     /** Log that a result callback was sent to an app. */
-    public static void logProfilingResultCallbackSent(int uid, int profilingType, int triggerType,
-            int errorCode) {
+    public static void logProfilingResultCallbackSent(
+            int uid, int profilingType, int triggerType, int errorCode) {
         ProfilingStatsLog.write(
                 ProfilingStatsLog.PROFILING_RESULT_CALLBACK_SENT,
                 uid,
                 profilingTypeToEnumValue(profilingType),
                 triggerTypeToEnumValue(triggerType),
                 errorCodeToEnumValue(errorCode));
-
     }
 
     /** Log that a trigger was registered. */
-    public static void logProfilingTriggerRegister(int uid, int triggerType,
-            @Nullable Bundle params) {
+    public static void logProfilingTriggerRegister(
+            int uid, int triggerType, @Nullable Bundle params) {
         ProfilingStatsLog.write(
                 ProfilingStatsLog.PROFILING_TRIGGER_REGISTER,
                 uid,
@@ -163,8 +166,8 @@ public final class LoggingHelper {
     }
 
     /** Log that a trigger was sent. */
-    public static void logProfilingTriggerSent(int uid, int triggerType,
-            @TriggerStatus int triggerStatus) {
+    public static void logProfilingTriggerSent(
+            int uid, int triggerType, @TriggerStatus int triggerStatus) {
         ProfilingStatsLog.write(
                 ProfilingStatsLog.PROFILING_TRIGGER_SENT,
                 uid,
@@ -176,21 +179,19 @@ public final class LoggingHelper {
     public static void logProfilingBackgroundTraceState(
             @BackgroundTraceState int backgroundTraceState) {
         ProfilingStatsLog.write(
-                ProfilingStatsLog.PROFILING_BACKGROUND_TRACE_STATE,
-                backgroundTraceState);
+                ProfilingStatsLog.PROFILING_BACKGROUND_TRACE_STATE, backgroundTraceState);
     }
 
     /** Log a global listener registration. */
     public static void logGlobalListenerRegister(int uid) {
-        ProfilingStatsLog.write(
-                ProfilingStatsLog.PROFILING_GLOBAL_LISTENER_REGISTER,
-                uid);
+        ProfilingStatsLog.write(ProfilingStatsLog.PROFILING_GLOBAL_LISTENER_REGISTER, uid);
     }
 
     /**
      * Convert API profiling type value to logging enum value.
      *
-     * Constants come from: frameworks/proto_logging/stats/enums/profiling/enums.proto:ProfilingType
+     * <p>Constants come from:
+     * frameworks/proto_logging/stats/enums/profiling/enums.proto:ProfilingType
      */
     private static int profilingTypeToEnumValue(int profilingType) {
         return switch (profilingType) {
@@ -205,7 +206,8 @@ public final class LoggingHelper {
     /**
      * Convert API trigger type value to logging enum value.
      *
-     * Constants come from: frameworks/proto_logging/stats/enums/profiling/enums.proto:TriggerType
+     * <p>Constants come from:
+     * frameworks/proto_logging/stats/enums/profiling/enums.proto:TriggerType
      */
     private static int triggerTypeToEnumValue(int triggerType) {
         return switch (triggerType) {
@@ -223,8 +225,8 @@ public final class LoggingHelper {
     /**
      * Convert API error code value to logging enum value.
      *
-     * Constants come from:
-     *      frameworks/proto_logging/stats/enums/profiling/enums.proto:ResultErrorCode
+     * <p>Constants come from:
+     * frameworks/proto_logging/stats/enums/profiling/enums.proto:ResultErrorCode
      */
     private static int errorCodeToEnumValue(int errorCode) {
         return switch (errorCode) {
