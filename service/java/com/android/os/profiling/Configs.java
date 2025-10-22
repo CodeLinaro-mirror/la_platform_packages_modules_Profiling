@@ -414,188 +414,19 @@ public final class Configs {
         switch (profilingType) {
             // Java heap dump
             case ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP:
-                // This should be unnecessary, but make sure configs are initialized just in case.
-                initializeJavaHeapDumpConfigsIfNecessary();
-
-                if (sKillswitchJavaHeapDump) {
-                    throw new IllegalArgumentException("Java heap dump is disabled");
-                }
-
-                int javaHeapDumpSizeKb =
-                        roundUpForBufferSize(
-                                getAndRemoveWithinBounds(
-                                        ProfilingManager.KEY_SIZE_KB,
-                                        sJavaHeapDumpSizeKbDefault,
-                                        sJavaHeapDumpSizeKbMin,
-                                        sJavaHeapDumpSizeKbMax,
-                                        paramsCopy));
-
-                confirmEmptyOrThrow(paramsCopy);
-
-                return generateJavaHeapDumpConfig(packageName, javaHeapDumpSizeKb);
+                return generateJavaHeapDumpConfig(packageName, paramsCopy);
 
             // Heap profile
             case ProfilingManager.PROFILING_TYPE_HEAP_PROFILE:
-                // This should be unnecessary, but make sure configs are initialized just in case.
-                initializeHeapProfileConfigsIfNecessary();
-
-                if (sKillswitchHeapProfile) {
-                    throw new IllegalArgumentException("Heap profile is disabled");
-                }
-
-                boolean trackJavaAllocations =
-                        getAndRemove(
-                                ProfilingManager.KEY_TRACK_JAVA_ALLOCATIONS,
-                                sHeapProfileTrackJavaAllocationsDefault,
-                                paramsCopy);
-                long samplingIntervalBytes =
-                        getAndRemoveWithinBounds(
-                                ProfilingManager.KEY_SAMPLING_INTERVAL_BYTES,
-                                sHeapProfileSamplingIntervalBytesDefault,
-                                sHeapProfileSamplingIntervalBytesMin,
-                                sHeapProfileSamplingIntervalBytesMax,
-                                paramsCopy);
-                int heapProfileDurationMs =
-                        getAndRemoveWithinBounds(
-                                ProfilingManager.KEY_DURATION_MS,
-                                sHeapProfileDurationMsDefault,
-                                sHeapProfileDurationMsMin,
-                                sHeapProfileDurationMsMax,
-                                paramsCopy);
-                int heapProfileSizeKb =
-                        roundUpForBufferSize(
-                                getAndRemoveWithinBounds(
-                                        ProfilingManager.KEY_SIZE_KB,
-                                        sHeapProfileSizeKbDefault,
-                                        sHeapProfileSizeKbMin,
-                                        sHeapProfileSizeKbMax,
-                                        paramsCopy));
-
-                confirmEmptyOrThrow(paramsCopy);
-
-                return generateHeapProfileConfig(
-                        packageName,
-                        heapProfileSizeKb,
-                        heapProfileDurationMs,
-                        samplingIntervalBytes,
-                        trackJavaAllocations);
+                return generateHeapProfileConfig(packageName, paramsCopy);
 
             // Stack sampling
             case ProfilingManager.PROFILING_TYPE_STACK_SAMPLING:
-                // This should be unnecessary, but make sure configs are initialized just in case.
-                initializeStackSamplingConfigsIfNecessary();
-
-                if (sKillswitchStackSampling) {
-                    throw new IllegalArgumentException("Stack sampling is disabled");
-                }
-
-                long frequency = getAndRemoveWithinBounds(ProfilingManager.KEY_FREQUENCY_HZ,
-                        sStackSamplingSamplingFrequencyDefault,
-                        sStackSamplingSamplingFrequencyMin,
-                        sStackSamplingSamplingFrequencyMax,
-                        paramsCopy);
-                int stackSamplingDurationMs = getAndRemoveWithinBounds(
-                        ProfilingManager.KEY_DURATION_MS,
-                        sStackSamplingDurationMsDefault,
-                        sStackSamplingDurationMsMin,
-                        sStackSamplingDurationMsMax,
-                        paramsCopy);
-                int stackSamplingSizeKb = roundUpForBufferSize(getAndRemoveWithinBounds(
-                        ProfilingManager.KEY_SIZE_KB,
-                        sStackSamplingSizeKbDefault,
-                        sStackSamplingSizeKbMin,
-                        sStackSamplingSizeKbMax,
-                        paramsCopy));
-                boolean sampleBinderOnly =
-                        getAndRemove(ProfilingManager.KEY_SAMPLE_BINDER_ONLY, false, paramsCopy);
-                TraceConfig.BufferConfig.FillPolicy stackSamplingBufferFillPolicy =
-                        getBufferFillPolicy(
-                                getAndRemove(
-                                        ProfilingManager.KEY_BUFFER_FILL_POLICY,
-                                        ProfilingManager.VALUE_BUFFER_FILL_POLICY_DISCARD,
-                                        paramsCopy));
-
-                confirmEmptyOrThrow(paramsCopy);
-
-                return generateStackSamplingConfig(
-                        packageName,
-                        stackSamplingSizeKb,
-                        stackSamplingDurationMs,
-                        frequency,
-                        sampleBinderOnly,
-                        stackSamplingBufferFillPolicy);
+                return generateStackSamplingConfig(packageName, paramsCopy);
 
             // System trace
             case ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE:
-                // This should be unnecessary, but make sure configs are initialized just in case.
-                initializeSystemTraceConfigsIfNecessary();
-
-                if (sKillswitchSystemTrace) {
-                    throw new IllegalArgumentException("System trace is disabled");
-                }
-
-                boolean collectStackSampling =
-                        getAndRemove(
-                                ProfilingManager.KEY_COLLECT_STACK_SAMPLING, false, paramsCopy);
-                long systemTraceFrequency = 0L;
-                boolean systemTraceSampleBinderOnly = false;
-
-                if (collectStackSampling) {
-                    if (!Flags.systemTraceAddStackSampling()) {
-                        throw new IllegalArgumentException(
-                                "Adding stack sampling to system trace is not supported.");
-                    }
-
-                    initializeStackSamplingConfigsIfNecessary();
-
-                    if (sKillswitchStackSampling) {
-                        throw new IllegalArgumentException("Stack sampling is disabled");
-                    }
-
-                    systemTraceFrequency =
-                            getAndRemoveWithinBounds(
-                                    ProfilingManager.KEY_FREQUENCY_HZ,
-                                    sStackSamplingSamplingFrequencyDefault,
-                                    sStackSamplingSamplingFrequencyMin,
-                                    sStackSamplingSamplingFrequencyMax,
-                                    paramsCopy);
-                    systemTraceSampleBinderOnly =
-                            getAndRemove(
-                                    ProfilingManager.KEY_SAMPLE_BINDER_ONLY, false, paramsCopy);
-                }
-
-                int systemTraceDurationMs =
-                        getAndRemoveWithinBounds(
-                                ProfilingManager.KEY_DURATION_MS,
-                                sSystemTraceDurationMsDefault,
-                                sSystemTraceDurationMsMin,
-                                sSystemTraceDurationMsMax,
-                                paramsCopy);
-                int systemTraceSizeKb =
-                        roundUpForBufferSize(
-                                getAndRemoveWithinBounds(
-                                        ProfilingManager.KEY_SIZE_KB,
-                                        sSystemTraceSizeKbDefault,
-                                        sSystemTraceSizeKbMin,
-                                        sSystemTraceSizeKbMax,
-                                        paramsCopy));
-                TraceConfig.BufferConfig.FillPolicy systemTraceBufferFillPolicy =
-                        getBufferFillPolicy(
-                                getAndRemove(
-                                        ProfilingManager.KEY_BUFFER_FILL_POLICY,
-                                        ProfilingManager.VALUE_BUFFER_FILL_POLICY_RING_BUFFER,
-                                        paramsCopy));
-
-                confirmEmptyOrThrow(paramsCopy);
-
-                return generateSystemTraceConfig(
-                        packageName,
-                        systemTraceSizeKb,
-                        systemTraceDurationMs,
-                        collectStackSampling,
-                        systemTraceFrequency,
-                        systemTraceSampleBinderOnly,
-                        systemTraceBufferFillPolicy);
+                return generateSystemTraceConfig(packageName, paramsCopy);
 
             // Invalid type
             default:
@@ -778,7 +609,25 @@ public final class Configs {
         }
     }
 
-    private static byte[] generateJavaHeapDumpConfig(String packageName, int bufferSizeKb) {
+    private static byte[] generateJavaHeapDumpConfig(String packageName, Bundle params) {
+        // This should be unnecessary, but make sure configs are initialized just in case.
+        initializeJavaHeapDumpConfigsIfNecessary();
+
+        if (sKillswitchJavaHeapDump) {
+            throw new IllegalArgumentException("Java heap dump is disabled");
+        }
+
+        int bufferSizeKb =
+                roundUpForBufferSize(
+                        getAndRemoveWithinBounds(
+                                ProfilingManager.KEY_SIZE_KB,
+                                sJavaHeapDumpSizeKbDefault,
+                                sJavaHeapDumpSizeKbMin,
+                                sJavaHeapDumpSizeKbMax,
+                                params));
+
+        confirmEmptyOrThrow(params);
+
         TraceConfig.Builder builder = TraceConfig.newBuilder();
 
         // Add a buffer
@@ -811,12 +660,44 @@ public final class Configs {
         return builder.build().toByteArray();
     }
 
-    private static byte[] generateHeapProfileConfig(
-            String packageName,
-            int bufferSizeKb,
-            int durationMs,
-            long samplingIntervalBytes,
-            boolean trackJavaAllocations) {
+    private static byte[] generateHeapProfileConfig(String packageName, Bundle params) {
+        // This should be unnecessary, but make sure configs are initialized just in case.
+        initializeHeapProfileConfigsIfNecessary();
+
+        if (sKillswitchHeapProfile) {
+            throw new IllegalArgumentException("Heap profile is disabled");
+        }
+
+        boolean trackJavaAllocations =
+                getAndRemove(
+                        ProfilingManager.KEY_TRACK_JAVA_ALLOCATIONS,
+                        sHeapProfileTrackJavaAllocationsDefault,
+                        params);
+        long samplingIntervalBytes =
+                getAndRemoveWithinBounds(
+                        ProfilingManager.KEY_SAMPLING_INTERVAL_BYTES,
+                        sHeapProfileSamplingIntervalBytesDefault,
+                        sHeapProfileSamplingIntervalBytesMin,
+                        sHeapProfileSamplingIntervalBytesMax,
+                        params);
+        int durationMs =
+                getAndRemoveWithinBounds(
+                        ProfilingManager.KEY_DURATION_MS,
+                        sHeapProfileDurationMsDefault,
+                        sHeapProfileDurationMsMin,
+                        sHeapProfileDurationMsMax,
+                        params);
+        int bufferSizeKb =
+                roundUpForBufferSize(
+                        getAndRemoveWithinBounds(
+                                ProfilingManager.KEY_SIZE_KB,
+                                sHeapProfileSizeKbDefault,
+                                sHeapProfileSizeKbMin,
+                                sHeapProfileSizeKbMax,
+                                params));
+
+        confirmEmptyOrThrow(params);
+
         TraceConfig.Builder builder = TraceConfig.newBuilder();
 
         // Add a buffer
@@ -852,13 +733,40 @@ public final class Configs {
         return builder.build().toByteArray();
     }
 
-    private static byte[] generateStackSamplingConfig(
-            String packageName,
-            int bufferSizeKb,
-            int durationMs,
-            long frequency,
-            boolean sampleBinderOnly,
-            TraceConfig.BufferConfig.FillPolicy bufferFillPolicy) {
+    private static byte[] generateStackSamplingConfig(String packageName, Bundle params) {
+
+        // This should be unnecessary, but make sure configs are initialized just in case.
+        initializeStackSamplingConfigsIfNecessary();
+
+        if (sKillswitchStackSampling) {
+            throw new IllegalArgumentException("Stack sampling is disabled");
+        }
+
+        int durationMs =
+                getAndRemoveWithinBounds(
+                        ProfilingManager.KEY_DURATION_MS,
+                        sStackSamplingDurationMsDefault,
+                        sStackSamplingDurationMsMin,
+                        sStackSamplingDurationMsMax,
+                        params);
+        int bufferSizeKb =
+                roundUpForBufferSize(
+                        getAndRemoveWithinBounds(
+                                ProfilingManager.KEY_SIZE_KB,
+                                sStackSamplingSizeKbDefault,
+                                sStackSamplingSizeKbMin,
+                                sStackSamplingSizeKbMax,
+                                params));
+        TraceConfig.BufferConfig.FillPolicy bufferFillPolicy =
+                getBufferFillPolicy(
+                        getAndRemove(
+                                ProfilingManager.KEY_BUFFER_FILL_POLICY,
+                                ProfilingManager.VALUE_BUFFER_FILL_POLICY_DISCARD,
+                                params));
+        StackSamplingParams stackSamplingParams = new StackSamplingParams(params);
+
+        confirmEmptyOrThrow(params);
+
         TraceConfig.Builder builder = TraceConfig.newBuilder();
 
         // Add a buffer
@@ -871,7 +779,7 @@ public final class Configs {
 
         // Use target buffer 0 as we just created the singular buffer above.
         addStackSamplingGeneralConfigs(
-                builder, 0 /* targetBuffer */, packageName, frequency, sampleBinderOnly);
+                builder, 0 /* targetBuffer */, packageName, stackSamplingParams);
 
         // Add duration
         builder.setDurationMs(durationMs);
@@ -883,26 +791,25 @@ public final class Configs {
             TraceConfig.Builder builder,
             int targetBuffer,
             String packageName,
-            long frequency,
-            boolean sampleBinderOnly) {
+            StackSamplingParams stackSamplingParams) {
 
         // Create appropriate timebase based on parameters.
         PerfEvents.Timebase timebase = null;
-        if (sampleBinderOnly) {
+        if (stackSamplingParams.mSampleBinderOnly) {
             PerfEvents.Tracepoint tracepoint =
                     PerfEvents.Tracepoint.newBuilder().setName("binder:binder_transaction").build();
             timebase =
                     PerfEvents.Timebase.newBuilder()
                             .setTracepoint(tracepoint)
                             .setName("binder_transaction")
-                            .setFrequency(frequency)
+                            .setFrequency(stackSamplingParams.mFrequency)
                             .setTimestampClock(PerfEvents.PerfClock.PERF_CLOCK_MONOTONIC)
                             .build();
         } else {
             timebase =
                     PerfEvents.Timebase.newBuilder()
                             .setCounter(PerfEvents.Counter.SW_CPU_CLOCK)
-                            .setFrequency(frequency)
+                            .setFrequency(stackSamplingParams.mFrequency)
                             .setTimestampClock(PerfEvents.PerfClock.PERF_CLOCK_MONOTONIC)
                             .build();
         }
@@ -934,14 +841,55 @@ public final class Configs {
         builder.setFlushTimeoutMs(sStackSamplingFlushTimeoutMsDefault);
     }
 
-    private static byte[] generateSystemTraceConfig(
-            String packageName,
-            int bufferSizeKb,
-            int durationMs,
-            boolean collectStackSampling,
-            long stackSamplingFrequency,
-            boolean stackSamplingSampleBinderOnly,
-            TraceConfig.BufferConfig.FillPolicy bufferFillPolicy) {
+    private static byte[] generateSystemTraceConfig(String packageName, Bundle params) {
+        // This should be unnecessary, but make sure configs are initialized just in case.
+        initializeSystemTraceConfigsIfNecessary();
+
+        if (sKillswitchSystemTrace) {
+            throw new IllegalArgumentException("System trace is disabled");
+        }
+
+        StackSamplingParams stackSamplingParams = null;
+
+        if (getAndRemove(ProfilingManager.KEY_COLLECT_STACK_SAMPLING, false, params)) {
+            if (!Flags.systemTraceAddStackSampling()) {
+                throw new IllegalArgumentException(
+                        "Adding stack sampling to system trace is not supported.");
+            }
+
+            initializeStackSamplingConfigsIfNecessary();
+
+            if (sKillswitchStackSampling) {
+                throw new IllegalArgumentException("Stack sampling is disabled");
+            }
+
+            stackSamplingParams = new StackSamplingParams(params);
+        }
+
+        int durationMs =
+                getAndRemoveWithinBounds(
+                        ProfilingManager.KEY_DURATION_MS,
+                        sSystemTraceDurationMsDefault,
+                        sSystemTraceDurationMsMin,
+                        sSystemTraceDurationMsMax,
+                        params);
+        int bufferSizeKb =
+                roundUpForBufferSize(
+                        getAndRemoveWithinBounds(
+                                ProfilingManager.KEY_SIZE_KB,
+                                sSystemTraceSizeKbDefault,
+                                sSystemTraceSizeKbMin,
+                                sSystemTraceSizeKbMax,
+                                params));
+        TraceConfig.BufferConfig.FillPolicy bufferFillPolicy =
+                getBufferFillPolicy(
+                        getAndRemove(
+                                ProfilingManager.KEY_BUFFER_FILL_POLICY,
+                                ProfilingManager.VALUE_BUFFER_FILL_POLICY_RING_BUFFER,
+                                params));
+
+        confirmEmptyOrThrow(params);
+
         TraceConfig.Builder builder = TraceConfig.newBuilder();
 
         addSystemTraceGeneralConfigs(
@@ -952,15 +900,11 @@ public final class Configs {
                 durationMs,
                 bufferFillPolicy);
 
-        if (collectStackSampling) {
+        if (stackSamplingParams != null) {
             // Use target buffer 1 as addSystemTraceGeneralConfigs will create 2 buffers: buffer 0
             // for one time collections on start, and buffer 1 for everything else.
             addStackSamplingGeneralConfigs(
-                    builder,
-                    1 /* targetBuffer */,
-                    packageName,
-                    stackSamplingFrequency,
-                    stackSamplingSampleBinderOnly);
+                    builder, 1 /* targetBuffer */, packageName, stackSamplingParams);
         }
 
         return builder.build().toByteArray();
@@ -1124,5 +1068,22 @@ public final class Configs {
 
         // Add duration
         builder.setDurationMs(durationMs);
+    }
+
+    private static final class StackSamplingParams {
+        final long mFrequency;
+        final boolean mSampleBinderOnly;
+
+        StackSamplingParams(Bundle params) {
+            mFrequency =
+                    getAndRemoveWithinBounds(
+                            ProfilingManager.KEY_FREQUENCY_HZ,
+                            sStackSamplingSamplingFrequencyDefault,
+                            sStackSamplingSamplingFrequencyMin,
+                            sStackSamplingSamplingFrequencyMax,
+                            params);
+            mSampleBinderOnly =
+                    getAndRemove(ProfilingManager.KEY_SAMPLE_BINDER_ONLY, false, params);
+        }
     }
 }
