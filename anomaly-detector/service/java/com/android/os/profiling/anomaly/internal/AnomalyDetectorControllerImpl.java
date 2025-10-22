@@ -117,8 +117,11 @@ public class AnomalyDetectorControllerImpl
     }
 
     private void saveRules(Set<Rule<?>> rules) {
+        // Per b/450098927, we are temporarily decoupling RuleStorage from the internal Rule
+        // representation. We save a dummy (empty) set of the new android.os.Rule objects
+        // to allow RuleStorage implementation to proceed.
         mRuleStorage.save(
-                rules,
+                new ArraySet<android.os.Rule>(),
                 mExecutor,
                 new OutcomeReceiver<Void, Throwable>() {
                     @Override
@@ -138,11 +141,17 @@ public class AnomalyDetectorControllerImpl
     public void onSystemServicesReady() {
         mRuleStorage.load(
                 mExecutor,
-                new OutcomeReceiver<Set<Rule<?>>, Throwable>() {
+                new OutcomeReceiver<Set<android.os.Rule>, Throwable>() {
                     @Override
-                    public void onResult(Set<Rule<?>> rules) {
-                        Slog.i(TAG, "Rules loaded from storage.");
-                        setRulesInternal(rules);
+                    public void onResult(Set<android.os.Rule> rules) {
+                        Slog.i(
+                                TAG,
+                                "Rules loaded from storage, but ignoring the result as per"
+                                        + " b/450098927.");
+                        // Per b/450098927, ignore the loaded rules for now.
+                        // We could initialize with an empty set, but it's safer to do nothing
+                        // and wait for a new set of rules to be pushed.
+                        // setRulesInternal(new ArraySet<>());
                     }
 
                     @Override
