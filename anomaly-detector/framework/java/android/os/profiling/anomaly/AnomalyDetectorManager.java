@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package android.os;
+package android.os.profiling.anomaly;
 
 import static android.Manifest.permission.CONFIGURE_ANOMALY_DETECTOR;
 
@@ -25,6 +25,7 @@ import android.annotation.RequiresPermission;
 import android.annotation.SystemApi;
 import android.annotation.SystemService;
 import android.content.Context;
+import android.os.RemoteException;
 import android.os.profiling.anomaly.flags.Flags;
 
 import java.util.ArrayList;

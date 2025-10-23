@@ -17,13 +17,14 @@
 package com.android.os.profiling.anomaly.internal;
 
 import static com.google.common.truth.Truth.assertThat;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 
 import android.content.Context;
 import android.os.Bundle;
 import android.os.OutcomeReceiver;
-import android.os.Rule;
+import android.os.profiling.anomaly.Rule;
 import android.os.profiling.anomaly.flags.Flags;
 import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
@@ -35,6 +36,7 @@ import androidx.test.runner.AndroidJUnit4;
 import com.android.server.anomaly.proto.BundleValue;
 import com.android.server.anomaly.proto.RuleProto;
 import com.android.server.anomaly.proto.RuleSetProto;
+
 import com.google.protobuf.InvalidProtocolBufferException;
 
 import org.junit.After;

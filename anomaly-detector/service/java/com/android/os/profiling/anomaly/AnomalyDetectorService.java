@@ -21,9 +21,10 @@ import static android.Manifest.permission.CONFIGURE_ANOMALY_DETECTOR;
 import android.annotation.FlaggedApi;
 import android.content.Context;
 import android.os.Environment;
-import android.os.IAnomalyDetectorService;
 import android.os.OutcomeReceiver;
-import android.os.RuleParcel;
+import android.os.profiling.anomaly.IAnomalyDetectorService;
+import android.os.profiling.anomaly.Rule;
+import android.os.profiling.anomaly.RuleParcel;
 import android.os.profiling.anomaly.flags.Flags;
 import android.util.Slog;
 
@@ -102,14 +103,13 @@ public final class AnomalyDetectorService extends SystemService {
                     new RuleStorage() {
                         @Override
                         public void load(
-                                Executor executor,
-                                OutcomeReceiver<Set<android.os.Rule>, Throwable> callback) {
+                                Executor executor, OutcomeReceiver<Set<Rule>, Throwable> callback) {
                             executor.execute(() -> callback.onResult(Set.of()));
                         }
 
                         @Override
                         public void save(
-                                Set<android.os.Rule> rules,
+                                Set<Rule> rules,
                                 Executor executor,
                                 OutcomeReceiver<Void, Throwable> callback) {
                             executor.execute(() -> callback.onResult(null));
