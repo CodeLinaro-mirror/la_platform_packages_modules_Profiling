@@ -17,6 +17,7 @@
 package com.android.os.profiling.anomaly.core;
 
 import android.os.OutcomeReceiver;
+import android.os.Rule;
 
 import java.util.Set;
 import java.util.concurrent.Executor;
@@ -34,7 +35,7 @@ public interface RuleStorage {
      * @param executor The executor to use for executing the callback.
      * @param callback The callback to receive the loaded rules or an error.
      */
-    void load(Executor executor, OutcomeReceiver<Set<Rule<?>>, Throwable> callback);
+    void load(Executor executor, OutcomeReceiver<Set<Rule>, Throwable> callback);
 
     /**
      * Saves a set of rules to storage.
@@ -44,5 +45,5 @@ public interface RuleStorage {
      * @param callback The callback to be notified when the save operation is complete or if an
      *     error occurs.
      */
-    void save(Set<Rule<?>> rules, Executor executor, OutcomeReceiver<Void, Throwable> callback);
+    void save(Set<Rule> rules, Executor executor, OutcomeReceiver<Void, Throwable> callback);
 }
