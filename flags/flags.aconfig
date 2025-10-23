@@ -108,3 +108,11 @@ flag {
         purpose: PURPOSE_BUGFIX
      }
 }
+
+flag {
+     name: "system_trace_add_stack_sampling"
+     namespace: "system_performance"
+     is_exported: false
+     description: "Enables adding stack sampling to system trace profiling type."
+     bug: "432284821"
+}

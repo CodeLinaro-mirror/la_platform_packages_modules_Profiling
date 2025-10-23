@@ -1539,13 +1539,7 @@ public class ProfilingService extends IProfilingService.Stub {
         // At this point we've identified the session that has sent us this file descriptor.
         // Now, we'll create a temporary file pointing to the profiling output for that session.
         // If that file looks good, we'll copy it to the app's local file descriptor.
-        File tempResultFile =
-                new File(
-                        TEMP_TRACE_PATH
-                                + (session.getProfilingType()
-                                                == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE
-                                        ? session.getRedactedFileName()
-                                        : session.getFileName()));
+        File tempResultFile = new File(TEMP_TRACE_PATH + getResultFileName(session));
         FileInputStream tempPerfettoFileInStream = null;
         FileOutputStream appFileOutStream = null;
 
@@ -1831,9 +1825,9 @@ public class ProfilingService extends IProfilingService.Stub {
                         + OUTPUT_FILE_SECTION_SEPARATOR
                         + getFormattedDate();
 
-        // Only trace files will go through the redaction process, set the name here for the file
-        // that will be created later when results are processed.
-        if (session.getProfilingType() == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE) {
+        if (needsRedaction(session)) {
+            // For files which will go through the redaction process, set the name here for the file
+            // that will be created later when results are processed.
             session.setRedactedFileName(baseFileName + OUTPUT_FILE_TRACE_SUFFIX);
         }
 
@@ -2732,13 +2726,9 @@ public class ProfilingService extends IProfilingService.Stub {
         List<IProfilingResultCallback> perUidCallbacks = mResultCallbacks.get(session.getUid());
         for (int i = 0; i < perUidCallbacks.size(); i++) {
             try {
-                String fileName =
-                        session.getProfilingType() == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE
-                                ? session.getRedactedFileName()
-                                : session.getFileName();
                 IProfilingResultCallback callback = perUidCallbacks.get(i);
                 if (callback.asBinder().isBinderAlive()) {
-                    callback.deleteFile(OUTPUT_FILE_RELATIVE_PATH + fileName);
+                    callback.deleteFile(OUTPUT_FILE_RELATIVE_PATH + getResultFileName(session));
                     // Only need one delete call, return.
                     return;
                 }
@@ -2761,10 +2751,6 @@ public class ProfilingService extends IProfilingService.Stub {
     @Nullable
     private void requestFileForResult(
             @NonNull List<IProfilingResultCallback> perUidCallbacks, TracingSession session) {
-        String fileName =
-                session.getProfilingType() == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE
-                        ? session.getRedactedFileName()
-                        : session.getFileName();
         for (int i = 0; i < perUidCallbacks.size(); i++) {
             try {
                 IProfilingResultCallback callback = perUidCallbacks.get(i);
@@ -2774,7 +2760,7 @@ public class ProfilingService extends IProfilingService.Stub {
                             .get(i)
                             .generateFile(
                                     OUTPUT_FILE_RELATIVE_PATH,
-                                    fileName,
+                                    getResultFileName(session),
                                     session.getKeyMostSigBits(),
                                     session.getKeyLeastSigBits());
                     return;
@@ -2933,7 +2919,7 @@ public class ProfilingService extends IProfilingService.Stub {
             boolean makeReadableSucceeded = makeFileReadable(session.getFileName());
             logRetainedFileDetails(session.getFileName(), makeReadableSucceeded);
 
-            if (session.getProfilingType() == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE) {
+            if (needsRedaction(session)) {
                 // For a trace, output the location of the redacted file.
                 makeReadableSucceeded = makeFileReadable(session.getRedactedFileName());
                 logRetainedFileDetails(session.getFileName(), makeReadableSucceeded);
@@ -3169,6 +3155,14 @@ public class ProfilingService extends IProfilingService.Stub {
 
     private boolean needsRedaction(TracingSession session) {
         return session.getProfilingType() == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE;
+    }
+
+    /**
+     * Obtain the final result file name, which is the redacted file name if the profiling type goes
+     * through redaction, or the general file name if not.
+     */
+    private String getResultFileName(TracingSession session) {
+        return needsRedaction(session) ? session.getRedactedFileName() : session.getFileName();
     }
 
     private Handler getHandler() {

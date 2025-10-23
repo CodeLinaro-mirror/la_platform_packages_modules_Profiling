@@ -326,6 +326,49 @@ public final class ProfilingFrameworkTests {
     }
 
     /**
+     * Test that profiling request for system trace with stack sampling succeeds and returns a
+     * non-empty file.
+     */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_SYSTEM_TRACE_ADD_STACK_SAMPLING)
+    public void testRequestSystemTraceWithStackSamplingSuccess() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        disableRateLimiter();
+
+        overrideStackSamplingDeviceConfigValues(
+                false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
+        overrideSystemTraceDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
+
+        AppCallback callback = new AppCallback();
+
+        Bundle params = getOneSecondDurationParamBundle();
+        params.putBoolean(ProfilingManager.KEY_COLLECT_STACK_SAMPLING, true);
+        params.putBoolean(ProfilingManager.KEY_SAMPLE_BINDER_ONLY, true);
+        params.putInt(ProfilingManager.KEY_FREQUENCY_HZ, 100);
+
+        // Now kick off the request.
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                params,
+                null,
+                null,
+                new ImmediateExecutor(),
+                callback);
+
+        BusyLoopThread busy = new BusyLoopThread();
+
+        // Wait until callback#onAccept is triggered so we can confirm the result.
+        waitForCallback(callback);
+
+        busy.stop();
+
+        // Assert that result matches assumptions for success.
+        confirmCollectionSuccess(callback.mResult, OUTPUT_FILE_TRACE_SUFFIX);
+        dumpTrace(callback.mResult);
+    }
+
+    /**
      * Test that profiling request for system trace fails as it's disabled until redaction is in
      * place.
      */
@@ -795,6 +838,64 @@ public final class ProfilingFrameworkTests {
         mProfilingManager.requestProfiling(
                 ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
                 null,
+                null,
+                null,
+                new ImmediateExecutor(),
+                callback);
+
+        // Wait until callback#onAccept is triggered so we can confirm the result.
+        waitForCallback(callback);
+
+        // Assert that request failed with correct error code.
+        assertEquals(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, callback.mResult.getErrorCode());
+    }
+
+    /**
+     * Test that either system trace or stack sampling killswitches disable collection of system
+     * trace with stack sampling type.
+     */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_SYSTEM_TRACE_ADD_STACK_SAMPLING)
+    public void testSystemTraceWithStackSamplingKillswitchEnabled() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        disableRateLimiter();
+
+        // First test the stack sampling killswitch.
+        overrideStackSamplingDeviceConfigValues(
+                true, ONE_SECOND_MS, FIVE_SECONDS_MS, TEN_SECONDS_MS);
+        overrideSystemTraceDeviceConfigValues(
+                false, ONE_SECOND_MS, FIVE_SECONDS_MS, TEN_SECONDS_MS);
+
+        AppCallback callback = new AppCallback();
+
+        Bundle params = getOneSecondDurationParamBundle();
+        params.putBoolean(ProfilingManager.KEY_COLLECT_STACK_SAMPLING, true);
+
+        // Now kick off the request.
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                params,
+                null,
+                null,
+                new ImmediateExecutor(),
+                callback);
+
+        // Wait until callback#onAccept is triggered so we can confirm the result.
+        waitForCallback(callback);
+
+        // Assert that request failed with correct error code.
+        assertEquals(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, callback.mResult.getErrorCode());
+
+        // Next test the system trace killswitch.
+        overrideStackSamplingDeviceConfigValues(
+                false, ONE_SECOND_MS, FIVE_SECONDS_MS, TEN_SECONDS_MS);
+        overrideSystemTraceDeviceConfigValues(true, ONE_SECOND_MS, FIVE_SECONDS_MS, TEN_SECONDS_MS);
+
+        // Now kick off the request.
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                params,
                 null,
                 null,
                 new ImmediateExecutor(),
