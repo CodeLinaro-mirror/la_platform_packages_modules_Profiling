@@ -21,7 +21,7 @@ import android.os.IProfilingResultCallback;
 import android.os.ProfilingTriggerValueParcel;
 
 /**
- * {@hide}
+ * @hide
  */
 interface IProfilingService {
 
