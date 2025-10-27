@@ -42,6 +42,7 @@ java_library {
         "profiling_flags_not_exported_lib",
         "service-profiling-proto",
         "perfetto_config_java_protos_system_server_current",
+        "anomaly-detector-aconfig-flags-lib",
     ],
     lint: {
         strict_updatability_linting: true,

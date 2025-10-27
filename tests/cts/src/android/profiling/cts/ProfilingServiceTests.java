@@ -61,6 +61,7 @@ import android.os.profiling.ProfilingTriggerData;
 import android.os.profiling.RateLimiter;
 import android.os.profiling.TracingSession;
 import android.platform.test.annotations.EnableFlags;
+import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
 import android.platform.test.flag.junit.SetFlagsRule;
@@ -128,6 +129,9 @@ public final class ProfilingServiceTests {
     private static final int DEFAULT_LIMIT_SYSTEM_WEEK = 100;
     private static final int DEFAULT_PROFILING_RUN_COST = 1;
     private static final int DEFAULT_PERSIST_TO_DISK_FREQUENCY = 0;
+
+    private static final String NOT_SYSTEM_CALLER_SECURITY_EXCEPTION =
+            "Calling system only method from non system process.";
 
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
@@ -2675,6 +2679,72 @@ public final class ProfilingServiceTests {
         // Confirm the startSystemTriggeredTrace and startProfilingProcess were not called.
         verify(mProfilingService, never()).startSystemTriggeredTrace();
         verify(mProfilingService, never()).startProfilingProcess(any(), anyString());
+    }
+
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public void testRegisterAnomalyCallbacks_failSecurityException() {
+        Throwable throwable =
+                assertThrows(
+                        SecurityException.class,
+                        () ->
+                                mProfilingService.isTriggerRegistered(
+                                        FAKE_UID,
+                                        APP_PACKAGE_NAME,
+                                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB));
+        assertThat(throwable).isNotNull();
+        assertThat(throwable.getMessage()).isEqualTo(NOT_SYSTEM_CALLER_SECURITY_EXCEPTION);
+    }
+
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public void testIsTriggerRegistered_failSecurityException() {
+        Throwable throwable =
+                assertThrows(
+                        SecurityException.class,
+                        () -> mProfilingService.registerAnomalyCallback(null));
+        assertThat(throwable).isNotNull();
+        assertThat(throwable.getMessage()).isEqualTo(NOT_SYSTEM_CALLER_SECURITY_EXCEPTION);
+    }
+
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public void testSendAnomalyProfile_failSecurityException() {
+        Throwable throwable =
+                assertThrows(
+                        SecurityException.class,
+                        () ->
+                                mProfilingService.sendAnomalyProfile(
+                                        0L,
+                                        0L,
+                                        FAKE_UID,
+                                        APP_PACKAGE_NAME,
+                                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                                        null,
+                                        "filename"));
+        assertThat(throwable).isNotNull();
+        assertThat(throwable.getMessage()).isEqualTo(NOT_SYSTEM_CALLER_SECURITY_EXCEPTION);
+    }
+
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public void testCollectAnomalyProfile_failSecurityException() {
+        Throwable throwable =
+                assertThrows(
+                        SecurityException.class,
+                        () ->
+                                mProfilingService.collectAnomalyProfile(
+                                        0L,
+                                        0L,
+                                        FAKE_UID,
+                                        APP_PACKAGE_NAME,
+                                        ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
+                                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                                        true,
+                                        null,
+                                        null));
+        assertThat(throwable).isNotNull();
+        assertThat(throwable.getMessage()).isEqualTo(NOT_SYSTEM_CALLER_SECURITY_EXCEPTION);
     }
 
     private File createAndConfirmFileExists(File directory, String fileName) throws Exception {

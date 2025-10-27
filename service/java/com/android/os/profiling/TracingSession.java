@@ -62,6 +62,7 @@ public final class TracingSession {
     private long mRedactionStartTimeMs;
     private int mMaxProfilingTimeAllowedMs = 0;
     @Nullable private IProfilingTriggerCallback mProfilingTriggerCallback = null;
+    private boolean mReturnToAnomalyDetectorOnly = false;
 
     public TracingSession(
             int profilingType, int uid, String packageName, int triggerType, String tag) {
@@ -235,6 +236,10 @@ public final class TracingSession {
         mProfilingTriggerCallback = profilingTriggerCallback;
     }
 
+    public void setReturnToAnomalyDetectorOnly(boolean returnToAnomalyDetectorOnly) {
+        mReturnToAnomalyDetectorOnly = returnToAnomalyDetectorOnly;
+    }
+
     @Nullable
     public Bundle getParams() {
         return mParams;
@@ -348,6 +353,10 @@ public final class TracingSession {
     @Nullable
     public IProfilingTriggerCallback getProfilingTriggerCallback() {
         return mProfilingTriggerCallback;
+    }
+
+    public boolean isReturnToAnomalyDetectorOnly() {
+        return mReturnToAnomalyDetectorOnly;
     }
 
     // LINT.IfChange(to_proto)
