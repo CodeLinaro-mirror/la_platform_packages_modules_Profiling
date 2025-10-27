@@ -169,4 +169,19 @@ public final class BinderSpamAnomalyDetectorTests {
 
         verify(mMockListener, never()).onAnomalyDetected(any());
     }
+
+    @Test
+    public void onDataAvailable_timespanTooShort_noAnomaly() {
+        BinderSpamData data =
+                new BinderSpamData.Builder()
+                        .setCallingUid(TEST_UID)
+                        .setCallCount(2) // 200 calls/sec
+                        .setInterfaceName(TEST_INTERFACE)
+                        .setMethodName(TEST_METHOD)
+                        .setTimespanMillis(10) // Less than 1000ms.
+                        .build();
+        mReceiver.onResult(data);
+
+        verify(mMockListener, never()).onAnomalyDetected(any());
+    }
 }

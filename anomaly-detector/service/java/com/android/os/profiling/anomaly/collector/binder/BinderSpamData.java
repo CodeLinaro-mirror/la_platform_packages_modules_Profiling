@@ -24,25 +24,26 @@ import android.annotation.SystemApi;
 import android.os.profiling.anomaly.flags.Flags;
 import android.text.TextUtils;
 
+import com.android.internal.annotations.VisibleForTesting;
 import com.android.os.profiling.anomaly.collector.SignalCollectorData;
 
 import java.util.Objects;
 
 /**
- * A signal type representing a binder spam event. Instances of this class contain the specific data
- * collected for a detected binder spam anomaly.
+ * A signal type representing a potential binder spam anomaly to be detected by anomaly detector.
+ * Instances of this class contain the specific data collected for binder transactions that are
+ * configured by {@link BinderSpamConfig} to be monitored.
  *
  * @hide
  */
 @SystemApi(client = SYSTEM_SERVER)
-// TODO(b/419590607): Use a separate flag to guard this API
 @FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE)
 public final class BinderSpamData implements SignalCollectorData {
     /** Either the direct client process UID or the source client process UID. */
     private final int mCallingUid;
 
-    /** The count of the binder calls from the calling UID within the timespan. */
-    private final long mCallCount;
+    /** The count of the binder calls from the calling UID incurred over the timespan. */
+    private final int mCallCount;
 
     /** The AIDL interface of the binder call. */
     private final String mInterfaceName;
@@ -50,7 +51,7 @@ public final class BinderSpamData implements SignalCollectorData {
     /** The AIDL method name of the binder call. */
     private final String mMethodName;
 
-    /** The timespan between first and last binder call in milliseconds. */
+    /** The timespan of the binder calls incurred over. */
     private final long mTimespanMillis;
 
     private BinderSpamData(Builder builder) {
@@ -61,8 +62,11 @@ public final class BinderSpamData implements SignalCollectorData {
         this.mTimespanMillis = builder.mTimespanMillis;
     }
 
-    /** Get the total call count of the binder transactions this signal contains. */
-    public long getCallCount() {
+    /**
+     * Get the count of the binder transactions that incurred over the timespan returned by {@link
+     * #getTimespanMillis()}. Note that this value is the maximum count since last report.
+     */
+    public int getCallCount() {
         return mCallCount;
     }
 
@@ -78,7 +82,10 @@ public final class BinderSpamData implements SignalCollectorData {
         return mMethodName;
     }
 
-    /** Get the timespan this data represents, in milliseconds. */
+    /**
+     * Get the timespan that the call count returned by {@link #getCallCount()} incurred over, in
+     * milliseconds. The default value is 1000 if not specifically set.
+     */
     public long getTimespanMillis() {
         return mTimespanMillis;
     }
@@ -89,11 +96,14 @@ public final class BinderSpamData implements SignalCollectorData {
     }
 
     public static final class Builder {
+        /** The default value of timespan in milliseconds. */
+        @VisibleForTesting static final long DEFAULT_TIMESPAN_MILLIS = 1000;
+
         /** Either the direct client process UID or the source client process UID. */
         private int mCallingUid = -1;
 
-        /** The count of the binder calls within the duration. */
-        private long mCallCount;
+        /** The count of the binder calls from the calling UID incurred over the timespan. */
+        private int mCallCount;
 
         /** The AIDL interface of the binder call. */
         private String mInterfaceName;
@@ -101,11 +111,8 @@ public final class BinderSpamData implements SignalCollectorData {
         /** The AIDL method name of the binder call. */
         private String mMethodName;
 
-        /**
-         * The timespan between the start of the first and end of the last binder call in
-         * milliseconds.
-         */
-        private long mTimespanMillis;
+        /** The timespan of the binder calls incurred over. */
+        private long mTimespanMillis = DEFAULT_TIMESPAN_MILLIS;
 
         /**
          * Set the calling UID.
@@ -122,11 +129,12 @@ public final class BinderSpamData implements SignalCollectorData {
         /**
          * Set the call count
          *
-         * @param callCount The total number of binder calls.
+         * @param callCount The count of the binder calls from the calling UID incurred over the
+         *     timespan set by {@link #setTimespanMillis(long)}.
          * @return this builder for method chaining
          */
         @NonNull
-        public Builder setCallCount(long callCount) {
+        public Builder setCallCount(int callCount) {
             mCallCount = callCount;
             return this;
         }
@@ -159,8 +167,8 @@ public final class BinderSpamData implements SignalCollectorData {
         /**
          * Set the duration of the timespan
          *
-         * @param timespanMillis The total milliseconds of the timespan between first and last
-         *     binder call.
+         * @param timespanMillis the timespan that the call count set by {@link #setCallCount(int)}
+         *     incurred over in milliseconds.
          * @return this builder for method chaining
          */
         @NonNull
@@ -176,6 +184,8 @@ public final class BinderSpamData implements SignalCollectorData {
          */
         @NonNull
         public BinderSpamData build() {
+            // Validate here instead of in the setters, because we do not want to build without
+            // these values being set.
             if (mCallingUid < 0) {
                 throw new IllegalArgumentException("Calling UID must be set to valid UID!");
             }
@@ -186,7 +196,7 @@ public final class BinderSpamData implements SignalCollectorData {
                 throw new IllegalArgumentException("Interface and method names must be set!");
             }
             if (mTimespanMillis <= 0) {
-                throw new IllegalArgumentException("Timespan must be greater than 0!");
+                throw new IllegalArgumentException("TimespanMillis must be greater than 0!");
             }
             return new BinderSpamData(this);
         }
