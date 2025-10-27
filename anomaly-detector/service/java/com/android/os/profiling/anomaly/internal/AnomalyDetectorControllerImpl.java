@@ -118,12 +118,12 @@ public class AnomalyDetectorControllerImpl
 
     private void saveRules(Set<Rule<?>> rules) {
         // Per b/450098927, we are temporarily decoupling RuleStorage from the internal Rule
-        // representation. We save a dummy (empty) set of the new android.os.Rule objects
-        // to allow RuleStorage implementation to proceed.
+        // representation. We save a dummy (empty) set of the new
+        // android.os.profiling.anomaly.Rule objects to allow RuleStorage implementation to proceed.
         mRuleStorage.save(
-                new ArraySet<android.os.Rule>(),
+                new ArraySet<>(),
                 mExecutor,
-                new OutcomeReceiver<Void, Throwable>() {
+                new OutcomeReceiver<>() {
                     @Override
                     public void onResult(Void result) {
                         Slog.i(TAG, "Rules saved to storage.");
@@ -141,9 +141,9 @@ public class AnomalyDetectorControllerImpl
     public void onSystemServicesReady() {
         mRuleStorage.load(
                 mExecutor,
-                new OutcomeReceiver<Set<android.os.Rule>, Throwable>() {
+                new OutcomeReceiver<>() {
                     @Override
-                    public void onResult(Set<android.os.Rule> rules) {
+                    public void onResult(Set<android.os.profiling.anomaly.Rule> rules) {
                         Slog.i(
                                 TAG,
                                 "Rules loaded from storage, but ignoring the result as per"
