@@ -134,7 +134,6 @@ public final class ProfilingFrameworkTests {
     private static final int TEN_SECONDS_MS = 10 * 1000;
     private static final int TEN_MINUTES_MS = 10 * 60 * 1000;
 
-    private static final int WAIT_TIME_CONFIG_UPDATE_MS = 500;
 
     private ProfilingManager mProfilingManager = null;
     private Context mContext = null;
@@ -1102,7 +1101,7 @@ public final class ProfilingFrameworkTests {
         mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ true);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME);
 
         // Now fake a system trigger.
         ProfilingServiceHelper.getInstance()
@@ -1148,7 +1147,7 @@ public final class ProfilingFrameworkTests {
         mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ true);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME);
 
         // Now fake a system trigger.
         ProfilingServiceHelper.getInstance()
@@ -1194,7 +1193,7 @@ public final class ProfilingFrameworkTests {
         mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ true);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME);
 
         String tag = "some_tag";
 
@@ -1239,7 +1238,7 @@ public final class ProfilingFrameworkTests {
         mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ true);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME);
 
         // Remove the trigger.
         mProfilingManager.removeProfilingTriggersByType(
@@ -1286,7 +1285,7 @@ public final class ProfilingFrameworkTests {
         mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Then start the system triggered trace for testing.
-        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ true);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME);
 
         // Clear all triggers for this process.
         mProfilingManager.clearProfilingTriggers();
@@ -1324,9 +1323,7 @@ public final class ProfilingFrameworkTests {
 
         // Start the system triggered trace for testing as this covers rate limiting override for
         // triggers.
-        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ false);
-        // Wait for configs to update.
-        sleep(WAIT_TIME_CONFIG_UPDATE_MS);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME);
 
         // Register for OOM trigger
         ProfilingTrigger trigger =
@@ -1383,9 +1380,7 @@ public final class ProfilingFrameworkTests {
 
         // Start the system triggered trace for testing as this covers rate limiting override for
         // triggers.
-        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ false);
-        // Wait for configs to update.
-        sleep(WAIT_TIME_CONFIG_UPDATE_MS);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME);
 
         // And add a global listener
         AppCallback callbackGeneral = new AppCallback();
@@ -1432,9 +1427,7 @@ public final class ProfilingFrameworkTests {
 
         // Start the system triggered trace for testing as this covers rate limiting override for
         // triggers.
-        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ false);
-        // Wait for configs to update.
-        sleep(WAIT_TIME_CONFIG_UPDATE_MS);
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME);
 
         mProfilingManager.addAllProfilingTriggers();
 
