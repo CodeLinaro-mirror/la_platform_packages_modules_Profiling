@@ -310,20 +310,20 @@ public final class ProfilingTestUtils {
     /**
      * Starts a system-triggered trace by setting the DeviceConfig for the test app package.
      *
+     * <p>It will wait for a short period to ensure the trace is started.
+     *
      * @param packageName The package name for which to trigger the trace.
-     * @param waitTraceStart Whether to wait for the trace to start.
      */
-    public static void startSystemTriggeredTraceForTesting(
-            String packageName, boolean waitTraceStart) {
+    public static void startSystemTriggeredTraceForTesting(String packageName) {
+        // ProfilingService listens for changes to this config via an OnPropertiesChangedListener
+        // and will start a system-triggered trace for the package name provided.
         overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE_TESTING,
                 DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
                 packageName);
 
-        if (waitTraceStart) {
-            // Wait a bit so the trace can get started and actually collect something.
-            sleep(WAIT_TIME_FOR_PROFILING_START_MS);
-        }
+        // Wait a bit so the trace can get started and actually collect something.
+        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
     }
 
     /**
