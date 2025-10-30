@@ -30,6 +30,8 @@ import static android.profiling.cts.ProfilingTestUtils.resetAllConfigs;
 import static android.profiling.cts.ProfilingTestUtils.sleep;
 import static android.profiling.cts.ProfilingTestUtils.startSystemTriggeredTraceForTesting;
 
+import static com.google.common.truth.Truth.assertThat;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -125,6 +127,8 @@ public final class ProfilingFrameworkTests {
     private static final int FIVE_SECONDS_MS = 5 * 1000;
     private static final int TEN_SECONDS_MS = 10 * 1000;
     private static final int TEN_MINUTES_MS = 10 * 60 * 1000;
+
+    private static final int WAIT_TIME_CONFIG_UPDATE_MS = 500;
 
     private ProfilingManager mProfilingManager = null;
     private Context mContext = null;
@@ -895,6 +899,9 @@ public final class ProfilingFrameworkTests {
 
         // Confirm that mProfilingService has been initialized.
         assertNotNull(mProfilingManager.mProfilingService);
+
+        // Now wait to receive the result to make sure it's not left in the queue.
+        waitForCallback(callback);
     }
 
     /**
@@ -1203,9 +1210,16 @@ public final class ProfilingFrameworkTests {
     public void testSystemTriggeredApplicationCrashSuccess() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
+        overrideJavaHeapDumpDeviceConfigValues(
+                false /* killswitchEnabled */,
+                ONE_SECOND_MS /* durationMs */,
+                TEN_SECONDS_MS /* dataSourceTimeoutMs */);
+
         // Start the system triggered trace for testing as this covers rate limiting override for
         // triggers.
         startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ false);
+        // Wait for configs to update.
+        sleep(WAIT_TIME_CONFIG_UPDATE_MS);
 
         // Register for OOM trigger
         ProfilingTrigger trigger =
@@ -1220,16 +1234,16 @@ public final class ProfilingFrameworkTests {
         CountDownLatch latch = new CountDownLatch(1);
 
         // Fake a system trigger.
-        ProfilingServiceHelper.getInstance()
+        int duration = ProfilingServiceHelper.getInstance()
                 .profileApplicationCrash(
                         Binder.getCallingUid(),
                         REAL_PACKAGE_NAME,
                         new ApplicationErrorReport.CrashInfo(new OutOfMemoryError()),
                         latch);
 
-        // Await up to 10 seconds, Java Heap Dump should take less than 5 seconds, so assert true
-        // to ensure exit was due to latch counting down rather than timeout.
-        assertTrue(latch.await(10, TimeUnit.SECONDS));
+        // Await for up to the duration plus 1 second. Assert true to ensure exit was due to latch
+        // counting down rather than timeout.
+        assertThat(latch.await(duration + 1, TimeUnit.SECONDS)).isTrue();
 
         // The latch counts down when collection is complete, but before a callback is necessarily
         // received, so wait for a bit.
@@ -1255,9 +1269,16 @@ public final class ProfilingFrameworkTests {
     public void testSystemTriggeredApplicationCrashNotRegistered() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
+        overrideJavaHeapDumpDeviceConfigValues(
+                false /* killswitchEnabled */,
+                ONE_SECOND_MS /* durationMs */,
+                TEN_SECONDS_MS /* dataSourceTimeoutMs */);
+
         // Start the system triggered trace for testing as this covers rate limiting override for
         // triggers.
         startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ false);
+        // Wait for configs to update.
+        sleep(WAIT_TIME_CONFIG_UPDATE_MS);
 
         // And add a global listener
         AppCallback callbackGeneral = new AppCallback();
@@ -1267,27 +1288,22 @@ public final class ProfilingFrameworkTests {
         CountDownLatch latch = new CountDownLatch(1);
 
         // Fake a system trigger.
-        ProfilingServiceHelper.getInstance()
+        int duration = ProfilingServiceHelper.getInstance()
                 .profileApplicationCrash(
                         Binder.getCallingUid(),
                         REAL_PACKAGE_NAME,
                         new ApplicationErrorReport.CrashInfo(new OutOfMemoryError()),
                         latch);
 
-        // Await up to 1 second, since the trigger is not registered the latch should be counted
-        // down in less than that time so assert true to ensure exit was not due to timeout.
-        assertTrue(latch.await(1, TimeUnit.SECONDS));
+        // Await for up to the duration. Assert true to ensure exit was due to latch counting down
+        // rather than timeout.
+        assertThat(latch.await(duration, TimeUnit.SECONDS)).isTrue();
 
-        // Set wait time to timeout plus post processing wait time
-        int waitTimeMs =
-                DeviceConfigHelper.getInt(
-                                        CONFIG_TIMEOUT_OOM, TIMEOUT_DEFAULT_JAVA_HEAP_DUMP_SECONDS)
-                                * 1000
-                        + WAIT_TIME_FOR_PROFILING_POST_PROCESSING_MS;
-        sleep(waitTimeMs);
+        // Wait for post processing time just to confirm that no result is eventually received.
+        sleep(WAIT_TIME_FOR_PROFILING_POST_PROCESSING_MS);
 
         // Confirm that no callback was received.
-        assertNull(callbackGeneral.mResult);
+        assertThat(callbackGeneral.mResult).isNull();
     }
 
     /**
@@ -1302,9 +1318,16 @@ public final class ProfilingFrameworkTests {
     public void testSystemTriggeredApplicationCrashNotProfilingEligible() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
+        overrideJavaHeapDumpDeviceConfigValues(
+                false /* killswitchEnabled */,
+                ONE_SECOND_MS /* durationMs */,
+                TEN_SECONDS_MS /* dataSourceTimeoutMs */);
+
         // Start the system triggered trace for testing as this covers rate limiting override for
         // triggers.
         startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME, /* waitTraceStart= */ false);
+        // Wait for configs to update.
+        sleep(WAIT_TIME_CONFIG_UPDATE_MS);
 
         mProfilingManager.addAllProfilingTriggers();
 
@@ -1316,27 +1339,23 @@ public final class ProfilingFrameworkTests {
         CountDownLatch latch = new CountDownLatch(1);
 
         // Fake a system trigger for a NPE, which is not a type that is eligible for profiling.
-        ProfilingServiceHelper.getInstance()
+        int duration = ProfilingServiceHelper.getInstance()
                 .profileApplicationCrash(
                         Binder.getCallingUid(),
                         REAL_PACKAGE_NAME,
                         new ApplicationErrorReport.CrashInfo(new NullPointerException()),
                         latch);
 
-        // Await up to 1 second, since the trigger is not registered the latch should be counted
-        // down in less than that time so assert true to ensure exit was not due to timeout.
-        assertTrue(latch.await(1, TimeUnit.SECONDS));
+        // Confirm that duration is 0 and that the latch is already counted down as the runnable
+        // should have run prior to the method above finishing.
+        expect.that(duration).isEqualTo(0);
+        expect.that(latch.getCount()).isEqualTo(0);
 
-        // Set wait time to timeout plus post processing wait time
-        int waitTimeMs =
-                DeviceConfigHelper.getInt(
-                                        CONFIG_TIMEOUT_OOM, TIMEOUT_DEFAULT_JAVA_HEAP_DUMP_SECONDS)
-                                * 1000
-                        + WAIT_TIME_FOR_PROFILING_POST_PROCESSING_MS;
-        sleep(waitTimeMs);
+        // Wait for post processing time just to confirm that no result is eventually received.
+        sleep(WAIT_TIME_FOR_PROFILING_POST_PROCESSING_MS);
 
         // Confirm that no callback was received.
-        assertNull(callbackGeneral.mResult);
+        assertThat(callbackGeneral.mResult).isNull();
     }
 
     /**
@@ -1392,17 +1411,28 @@ public final class ProfilingFrameworkTests {
         // limits but less than the process limits.
         overrideSystemTraceDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, 10);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR,
+                10);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, 10);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR,
+                10);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, 10);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY,
+                10);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, Integer.MAX_VALUE);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR,
+                Integer.MAX_VALUE);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_7_DAY, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_7_DAY,
+                Integer.MAX_VALUE);
         overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.COST_SYSTEM_TRACE, 100);
 
@@ -1442,11 +1472,17 @@ public final class ProfilingFrameworkTests {
         // limits but less than the system limits.
         overrideSystemTraceDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR,
+                Integer.MAX_VALUE);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR,
+                Integer.MAX_VALUE);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY,
+                Integer.MAX_VALUE);
         overrideDeviceConfig(
                 DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, 10);
         overrideDeviceConfig(
@@ -1487,19 +1523,31 @@ public final class ProfilingFrameworkTests {
         // and process limits.
         overrideSystemTraceDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR,
+                Integer.MAX_VALUE);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR,
+                Integer.MAX_VALUE);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY,
+                Integer.MAX_VALUE);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR,
+                Integer.MAX_VALUE);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR,
+                Integer.MAX_VALUE);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.MAX_COST_PROCESS_7_DAY, 1000);
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MAX_COST_PROCESS_7_DAY,
+                Integer.MAX_VALUE);
         overrideDeviceConfig(
-                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.COST_SYSTEM_TRACE, 100);
+                DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.COST_SYSTEM_TRACE, 1);
 
         AppCallback callback = new AppCallback();
 
