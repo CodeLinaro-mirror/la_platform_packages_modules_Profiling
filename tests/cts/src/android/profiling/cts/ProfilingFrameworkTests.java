@@ -1122,6 +1122,50 @@ public final class ProfilingFrameworkTests {
     }
 
     /**
+     * Test adding a profiling trigger for excessive cpu usage and receiving a result works
+     * correctly.
+     *
+     * <p>This is done by: adding the trigger through the public api, force starting a system
+     * triggered trace, sending a fake trigger as if from the system, and then confirming the result
+     * is received.
+     */
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_PROFILING_TRIGGER_KILL_EXCESSIVE_CPU_USAGE)
+    public void testSystemTriggeredProfilingKillExcessiveCpuUsage() {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // First add a trigger
+        ProfilingTrigger trigger =
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE)
+                        .build();
+        mProfilingManager.addProfilingTriggers(List.of(trigger));
+
+        // And add a global listener
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
+
+        // Then start the system triggered trace for testing.
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME);
+
+        // Now fake a system trigger.
+        ProfilingServiceHelper.getInstance()
+                .onProfilingTriggerOccurred(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        ProfilingTrigger.TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE);
+
+        // Wait for the trace to process.
+        waitForCallback(callbackGeneral);
+
+        // Finally, confirm that a result was received.
+        confirmCollectionSuccess(
+                callbackGeneral.mResult,
+                OUTPUT_FILE_TRACE_SUFFIX,
+                ProfilingTrigger.TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE);
+    }
+
+    /**
      * Test add all profiling triggers and receiving a result works correctly.
      *
      * <p>This is done by:
