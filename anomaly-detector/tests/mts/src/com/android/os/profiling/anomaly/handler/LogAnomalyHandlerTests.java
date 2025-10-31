@@ -19,11 +19,6 @@ package com.android.os.profiling.anomaly.handler;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import android.os.profiling.anomaly.flags.Flags;
-import android.platform.test.annotations.RequiresFlagsEnabled;
-import android.platform.test.flag.junit.CheckFlagsRule;
-import android.platform.test.flag.junit.DeviceFlagsValueProvider;
-
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.os.profiling.anomaly.attribute.SummaryAttribute;
@@ -39,12 +34,7 @@ import org.mockito.junit.MockitoRule;
 
 /** Tests for {@link LogAnomalyHandler}. */
 @RunWith(AndroidJUnit4.class)
-@RequiresFlagsEnabled(Flags.FLAG_ANOMALY_DETECTOR_CORE)
 public final class LogAnomalyHandlerTests {
-
-    @Rule
-    public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
-
     @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
 
     @Mock private AnomalyReport mMockReport;
