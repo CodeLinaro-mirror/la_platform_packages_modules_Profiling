@@ -17,7 +17,7 @@
 package com.android.os.profiling.anomaly.core;
 
 import android.os.OutcomeReceiver;
-import android.os.Rule;
+import android.os.profiling.anomaly.Rule;
 
 import java.util.Set;
 import java.util.concurrent.Executor;

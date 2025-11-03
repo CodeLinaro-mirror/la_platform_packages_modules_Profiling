@@ -24,10 +24,6 @@ import static org.mockito.Mockito.when;
 
 import android.app.ActivityManager;
 import android.os.Process;
-import android.os.profiling.anomaly.flags.Flags;
-import android.platform.test.annotations.RequiresFlagsEnabled;
-import android.platform.test.flag.junit.CheckFlagsRule;
-import android.platform.test.flag.junit.DeviceFlagsValueProvider;
 
 import androidx.test.runner.AndroidJUnit4;
 
@@ -49,14 +45,10 @@ import java.util.Collections;
 
 /** Tests for {@link KillAnomalyHandler}. */
 @RunWith(AndroidJUnit4.class)
-@RequiresFlagsEnabled(Flags.FLAG_ANOMALY_DETECTOR_CORE)
 public final class KillAnomalyHandlerTests {
 
     private static final int INVALID_UID = -1;
     private static final int TEST_APP_UID = Process.FIRST_APPLICATION_UID + 1;
-
-    @Rule
-    public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
 
     @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
 

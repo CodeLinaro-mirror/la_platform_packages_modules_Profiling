@@ -17,17 +17,14 @@
 package com.android.os.profiling.anomaly.internal;
 
 import static com.google.common.truth.Truth.assertThat;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 
 import android.content.Context;
 import android.os.Bundle;
 import android.os.OutcomeReceiver;
-import android.os.Rule;
-import android.os.profiling.anomaly.flags.Flags;
-import android.platform.test.annotations.RequiresFlagsEnabled;
-import android.platform.test.flag.junit.CheckFlagsRule;
-import android.platform.test.flag.junit.DeviceFlagsValueProvider;
+import android.os.profiling.anomaly.Rule;
 
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
@@ -35,6 +32,7 @@ import androidx.test.runner.AndroidJUnit4;
 import com.android.server.anomaly.proto.BundleValue;
 import com.android.server.anomaly.proto.RuleProto;
 import com.android.server.anomaly.proto.RuleSetProto;
+
 import com.google.protobuf.InvalidProtocolBufferException;
 
 import org.junit.After;
@@ -56,12 +54,8 @@ import java.util.concurrent.Executor;
 
 /** Tests for {@link RuleStorageImpl}. */
 @RunWith(AndroidJUnit4.class)
-@RequiresFlagsEnabled(Flags.FLAG_ANOMALY_DETECTOR_CORE)
 public final class RuleStorageImplTests {
     private static final String TEST_FILE_NAME = "test_anomaly_rules.pb";
-
-    @org.junit.Rule
-    public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
 
     @org.junit.Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
 

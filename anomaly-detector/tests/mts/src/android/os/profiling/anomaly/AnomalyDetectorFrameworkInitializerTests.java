@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package android.os;
+package android.os.profiling.anomaly;
 
 import static org.junit.Assert.assertThrows;
 

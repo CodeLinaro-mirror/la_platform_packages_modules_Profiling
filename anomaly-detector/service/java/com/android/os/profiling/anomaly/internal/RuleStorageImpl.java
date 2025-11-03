@@ -18,7 +18,7 @@ package com.android.os.profiling.anomaly.internal;
 
 import android.os.Bundle;
 import android.os.OutcomeReceiver;
-import android.os.Rule;
+import android.os.profiling.anomaly.Rule;
 import android.util.AtomicFile;
 import android.util.Slog;
 

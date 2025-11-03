@@ -22,11 +22,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import android.os.profiling.anomaly.flags.Flags;
-import android.platform.test.annotations.RequiresFlagsEnabled;
-import android.platform.test.flag.junit.CheckFlagsRule;
-import android.platform.test.flag.junit.DeviceFlagsValueProvider;
-
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.os.profiling.anomaly.collector.SignalCollector;
@@ -55,12 +50,7 @@ import java.util.function.Consumer;
 
 /** Tests for {@link AnomalyDetectorControllerImpl}. */
 @RunWith(AndroidJUnit4.class)
-@RequiresFlagsEnabled(Flags.FLAG_ANOMALY_DETECTOR_CORE)
 public final class AnomalyDetectorControllerImplTests {
-
-    @Rule
-    public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
-
     @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
 
     @Mock private RuleStorage mMockRuleStorage;

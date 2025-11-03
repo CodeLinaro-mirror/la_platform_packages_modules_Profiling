@@ -24,10 +24,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import android.os.OutcomeReceiver;
-import android.os.profiling.anomaly.flags.Flags;
-import android.platform.test.annotations.RequiresFlagsEnabled;
-import android.platform.test.flag.junit.CheckFlagsRule;
-import android.platform.test.flag.junit.DeviceFlagsValueProvider;
 
 import androidx.test.runner.AndroidJUnit4;
 
@@ -56,15 +52,11 @@ import java.util.Collections;
 
 /** Tests for {@link BinderSpamAnomalyDetector}. */
 @RunWith(AndroidJUnit4.class)
-@RequiresFlagsEnabled(Flags.FLAG_ANOMALY_DETECTOR_CORE)
 public final class BinderSpamAnomalyDetectorTests {
 
     private static final String TEST_INTERFACE = "com.android.test.ITest";
     private static final String TEST_METHOD = "testMethod";
     private static final int TEST_UID = 10001;
-
-    @Rule
-    public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
 
     @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
 
@@ -164,6 +156,21 @@ public final class BinderSpamAnomalyDetectorTests {
                         .setInterfaceName("com.android.test.WRONG_INTERFACE")
                         .setMethodName(TEST_METHOD)
                         .setTimespanMillis(1000)
+                        .build();
+        mReceiver.onResult(data);
+
+        verify(mMockListener, never()).onAnomalyDetected(any());
+    }
+
+    @Test
+    public void onDataAvailable_timespanTooShort_noAnomaly() {
+        BinderSpamData data =
+                new BinderSpamData.Builder()
+                        .setCallingUid(TEST_UID)
+                        .setCallCount(2) // 200 calls/sec
+                        .setInterfaceName(TEST_INTERFACE)
+                        .setMethodName(TEST_METHOD)
+                        .setTimespanMillis(10) // Less than 1000ms.
                         .build();
         mReceiver.onResult(data);
 
