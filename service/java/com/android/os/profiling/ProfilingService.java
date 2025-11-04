@@ -99,6 +99,8 @@ public class ProfilingService extends IProfilingService.Stub {
     // /tests/cts/src/android/profiling/cts/ProfilingTestUtils.java:output_file_suffix)
 
     private static final String OUTPUT_FILE_UNREDACTED_TRACE_SUFFIX = ".perfetto-trace-unredacted";
+    private static final String OUTPUT_FILE_UNREDACTED_STACK_SAMPLING_SUFFIX =
+            ".perfetto-stack-sample-unredacted";
     private static final String OUTPUT_FILE_TRIGGER = "trigger-type";
     private static final String OUTPUT_FILE_IN_PROGRESS = "in-progress";
 
@@ -1898,7 +1900,8 @@ public class ProfilingService extends IProfilingService.Stub {
         if (needsRedaction(session)) {
             // For files which will go through the redaction process, set the name here for the file
             // that will be created later when results are processed.
-            session.setRedactedFileName(baseFileName + OUTPUT_FILE_TRACE_SUFFIX);
+            session.setRedactedFileName(
+                    baseFileName + getRedactedFileSuffixForRequest(session.getProfilingType()));
         }
 
         session.setFileName(baseFileName + suffix);
@@ -3629,7 +3632,9 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     private boolean needsRedaction(TracingSession session) {
-        return session.getProfilingType() == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE;
+        return session.getProfilingType() == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE
+                || (session.getProfilingType() == ProfilingManager.PROFILING_TYPE_STACK_SAMPLING
+                        && Flags.redactStackSampling());
     }
 
     /**
@@ -3681,12 +3686,23 @@ public class ProfilingService extends IProfilingService.Stub {
             case ProfilingManager.PROFILING_TYPE_HEAP_PROFILE:
                 return OUTPUT_FILE_HEAP_PROFILE_SUFFIX;
             case ProfilingManager.PROFILING_TYPE_STACK_SAMPLING:
-                return OUTPUT_FILE_STACK_SAMPLING_SUFFIX;
+                return Flags.redactStackSampling()
+                        ? OUTPUT_FILE_UNREDACTED_STACK_SAMPLING_SUFFIX
+                        : OUTPUT_FILE_STACK_SAMPLING_SUFFIX;
             case ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE:
                 return OUTPUT_FILE_UNREDACTED_TRACE_SUFFIX;
             default:
                 throw new IllegalArgumentException("Invalid profiling type");
         }
+    }
+
+    private static String getRedactedFileSuffixForRequest(int profilingType) {
+        return switch (profilingType) {
+            case ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE -> OUTPUT_FILE_TRACE_SUFFIX;
+            case ProfilingManager.PROFILING_TYPE_STACK_SAMPLING ->
+                    OUTPUT_FILE_STACK_SAMPLING_SUFFIX;
+            default -> throw new IllegalArgumentException("Invalid profiling type for redaction");
+        };
     }
 
     private static String removeInvalidFilenameChars(String original) {

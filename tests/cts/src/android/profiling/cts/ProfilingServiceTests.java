@@ -1871,7 +1871,7 @@ public final class ProfilingServiceTests {
         List<TracingSession> queue = new ArrayList<TracingSession>();
         TracingSession session =
                 new TracingSession(
-                        ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
+                        ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
                         new Bundle(),
                         uid,
                         APP_PACKAGE_NAME,
@@ -1998,6 +1998,50 @@ public final class ProfilingServiceTests {
         TracingSession session =
                 new TracingSession(
                         ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                        new Bundle(),
+                        uid,
+                        APP_PACKAGE_NAME,
+                        REQUEST_TAG,
+                        KEY_LEAST_SIG_BITS,
+                        KEY_MOST_SIG_BITS,
+                        TRIGGER_TYPE_NONE);
+        session.setState(TracingState.REDACTED);
+        session.setProfilingStartTimeMs(System.currentTimeMillis());
+        queue.add(session);
+        mProfilingService.mQueuedTracingResults.put(uid, queue);
+
+        // Add a callback directly
+        ProfilingResultCallback callback = new ProfilingResultCallback();
+        mProfilingService.mResultCallbacks.put(uid, Arrays.asList(callback));
+
+        // Trigger handle queued results
+        mProfilingService.handleQueuedResults(uid);
+
+        // Confirm that the correct path was called.
+        verify(mProfilingService, times(1)).beginMoveFileToAppStorage(any());
+        verify(mProfilingService, times(1)).processTracingSessionResultCallback(any(), eq(false));
+        expect.that(callback.mFileRequested).isTrue();
+        expect.that(callback.mResultSent).isTrue();
+        expect.that(callback.mStatus).isEqualTo(ProfilingResult.ERROR_FAILED_POST_PROCESSING);
+    }
+
+    /**
+     * Test that a queued result for an unredacted stack sampling session follows the path to be
+     * redacted.
+     */
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_REDACT_STACK_SAMPLING)
+    public void testQueuedResult_StackSampling_RedactionEnabled() {
+        // Clear all existing queued results.
+        mProfilingService.mQueuedTracingResults.clear();
+
+        int uid = Binder.getCallingUid();
+
+        // Add a in progress session to queue with state redacted
+        List<TracingSession> queue = new ArrayList<TracingSession>();
+        TracingSession session =
+                new TracingSession(
+                        ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
                         new Bundle(),
                         uid,
                         APP_PACKAGE_NAME,
