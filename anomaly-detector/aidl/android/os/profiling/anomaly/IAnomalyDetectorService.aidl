@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-package android.os;
+package android.os.profiling.anomaly;
 
-import android.os.RuleParcel;
+import android.os.profiling.anomaly.RuleParcel;
 
 /**
  * Binder interface to communicate with AnomalyDetectorService.

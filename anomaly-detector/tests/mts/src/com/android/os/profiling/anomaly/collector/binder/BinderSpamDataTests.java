@@ -40,7 +40,7 @@ public final class BinderSpamDataTests {
     private static final int CALL_COUNT = 100;
     private static final String INTERFACE_NAME = "android.app.IActivityManager";
     private static final String METHOD_NAME = "startService";
-    private static final long TIMESPAN_MILLIS = 3 * 1000;
+    private static final int TIMESPAN_MILLIS = 3 * 1000;
 
     private static final BinderSpamData BINDER_SPAM_SIGNAL =
             new BinderSpamData.Builder()
@@ -127,6 +127,19 @@ public final class BinderSpamDataTests {
                                 .setMethodName(METHOD_NAME)
                                 .setTimespanMillis(0)
                                 .build());
+    }
+
+    @Test
+    public void builder_withoutTimespanMillisecond() {
+        assertThat(
+                        new BinderSpamData.Builder()
+                                .setCallingUid(CALLING_UID)
+                                .setCallCount(CALL_COUNT)
+                                .setInterfaceName(INTERFACE_NAME)
+                                .setMethodName(METHOD_NAME)
+                                .build()
+                                .getTimespanMillis())
+                .isEqualTo(BinderSpamData.Builder.DEFAULT_TIMESPAN_MILLIS);
     }
 
     @Test

@@ -14,32 +14,32 @@
  * limitations under the License.
  */
 
-package android.os;
+package android.os.profiling.anomaly;
 
 import android.os.Bundle;
 
 /**
- * Parcelable to represent a {@link android.os.Rule} for the anomaly detector.
+ * Parcelable to represent a {@link android.os.profiling.anomaly.Rule} for the anomaly detector.
  *
  * @hide
  */
 parcelable RuleParcel {
    /**
     * The actions to take when the anomaly condition is met.
-    * {@see android.os.Rule#mAnomalyActions}
+    * {@see android.os.profiling.anomaly.Rule#mAnomalyActions}
     */
    int[] anomalyActions;
 
    /**
     * The type of condition that this rule contains.
-    * {@see android.os.Rule#mConditionType}
+    * {@see android.os.profiling.anomaly.Rule#mConditionType}
     */
    String conditionType;
 
    /**
     * A Bundle containing the specific parameters for the rule condition.
     * The contents of this Bundle depend on the {@code conditionType}.
-    * {@see android.os.Rule#mRuleCondition}.
+    * {@see android.os.profiling.anomaly.Rule#mRuleCondition}.
     */
    Bundle ruleCondition;
 }

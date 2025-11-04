@@ -52,6 +52,7 @@ java_sdk_library {
     static_libs: [
         "modules-utils-build",
         "profiling_flags_not_exported_lib",
+        "anomaly-detector-aconfig-flags-lib",
     ],
 
     permitted_packages: [

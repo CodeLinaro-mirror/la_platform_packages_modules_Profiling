@@ -22,6 +22,7 @@ import static com.google.common.truth.Truth.assertThat;
 
 import android.os.Bundle;
 import android.os.ProfilingResult;
+import android.os.ProfilingTrigger;
 import android.os.profiling.DeviceConfigHelper;
 import android.os.profiling.Flags;
 import android.util.Log;
@@ -114,6 +115,17 @@ public final class ProfilingTestUtils {
     }
 
     /**
+     * Overrides the system caller enforcement within ProfilingService allowing the test app to make
+     * calls which are reserved for the system.
+     */
+    public static void overrideSystemCallerEnforcement() {
+        overrideDeviceConfig(
+                DeviceConfigHelper.NAMESPACE_TESTING,
+                DeviceConfigHelper.DISABLE_SYSTEM_CALLER_ENFORCEMENT,
+                true);
+    }
+
+    /**
      * Reset all profiling device configs from both namespaces.
      *
      * <p>This should be called in the cleanup of any test which modified device config values.
@@ -132,6 +144,9 @@ public final class ProfilingTestUtils {
         deleteDeviceConfig(
                 DeviceConfigHelper.NAMESPACE_TESTING,
                 DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE_TESTING,
+                DeviceConfigHelper.DISABLE_SYSTEM_CALLER_ENFORCEMENT);
 
         // Config namespace
         deleteDeviceConfig(
@@ -330,7 +345,11 @@ public final class ProfilingTestUtils {
         expect.that(result.getResultFilePath()).contains(expectedFileSuffix);
         expect.that(result.getTriggerType()).isEqualTo(expectedTriggerType);
 
-        if (Flags.addRateLimiterDisabledToResult()) {
+        if (ProfilingTrigger.isAnomalyTriggerType(expectedTriggerType)) {
+            // Anomaly trigger types do not respect Profiling rate limiting, so the rate limiter
+            // disabled message would not be relevant and is therefore not added.
+            expect.that(result.getErrorMessage()).isNull();
+        } else if (Flags.addRateLimiterDisabledToResult()) {
             expect.that(result.getErrorMessage()).isNotNull();
         } else {
             expect.that(result.getErrorMessage()).isNull();

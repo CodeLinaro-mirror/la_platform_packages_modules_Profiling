@@ -36,7 +36,7 @@ package com.android.os.profiling.anomaly.collector.binder {
   }
 
   @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public final class BinderSpamData implements com.android.os.profiling.anomaly.collector.SignalCollectorData {
-    method public long getCallCount();
+    method public int getCallCount();
     method public int getCallingUid();
     method @NonNull public String getInterfaceName();
     method @NonNull public String getMethodName();
@@ -46,7 +46,7 @@ package com.android.os.profiling.anomaly.collector.binder {
   public static final class BinderSpamData.Builder {
     ctor public BinderSpamData.Builder();
     method @NonNull public com.android.os.profiling.anomaly.collector.binder.BinderSpamData build();
-    method @NonNull public com.android.os.profiling.anomaly.collector.binder.BinderSpamData.Builder setCallCount(long);
+    method @NonNull public com.android.os.profiling.anomaly.collector.binder.BinderSpamData.Builder setCallCount(int);
     method @NonNull public com.android.os.profiling.anomaly.collector.binder.BinderSpamData.Builder setCallingUid(int);
     method @NonNull public com.android.os.profiling.anomaly.collector.binder.BinderSpamData.Builder setInterfaceName(@NonNull String);
     method @NonNull public com.android.os.profiling.anomaly.collector.binder.BinderSpamData.Builder setMethodName(@NonNull String);
