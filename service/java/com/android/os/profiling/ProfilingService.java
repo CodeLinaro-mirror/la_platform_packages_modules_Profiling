@@ -139,6 +139,8 @@ public class ProfilingService extends IProfilingService.Stub {
     private static final int DEFAULT_SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS = 18 * 60 * 60;
     private static final int DEFAULT_SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS = 30 * 60 * 60;
 
+    private static final int PROFILING_TRIGGER_COLD_START_TRACE_DURATION_DEFAULT_MS = 5_000;
+
     private final Context mContext;
     private final Object mLock = new Object();
     private final HandlerThread mHandlerThread = new HandlerThread("ProfilingService");
@@ -2090,7 +2092,9 @@ public class ProfilingService extends IProfilingService.Stub {
                 || (Flags.profiling25q4()
                         && triggerType == ProfilingTrigger.TRIGGER_TYPE_KILL_TASK_MANAGER)
                 || (Flags.profilingTriggerKillExcessiveCpuUsage()
-                        && triggerType == ProfilingTrigger.TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE)) {
+                        && triggerType == ProfilingTrigger.TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE)
+                || (Flags.profilingTriggerColdStart()
+                        && triggerType == ProfilingTrigger.TRIGGER_TYPE_COLD_START)) {
             return ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE;
         }
 
@@ -2131,7 +2135,8 @@ public class ProfilingService extends IProfilingService.Stub {
 
         // If a future trigger requires starting a new trace rather than leveraging the existing
         // one, then an additional condition will need to be added to this check.
-        if (profilingType == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE) {
+        if (profilingType == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE
+                && triggerType != ProfilingTrigger.TRIGGER_TYPE_COLD_START) {
             processTriggerInternalRunningTrace(
                     uid,
                     packageName,
@@ -2151,7 +2156,7 @@ public class ProfilingService extends IProfilingService.Stub {
                     0L, /* keyMostSigBits */
                     0L, /* keyLeastSigBits */
                     false, /* returnToAnomalyDetectorOnly */
-                    null, /* params */
+                    getParamsForTriggerType(triggerType),
                     callback);
         }
     }
@@ -3926,6 +3931,29 @@ public class ProfilingService extends IProfilingService.Stub {
                 Log.w(TAG, "Exception notifying caller of process trigger complete.", e);
             }
         }
+    }
+
+    /**
+     * Returns a Bundle of parameters for a given trigger type, or null if no specific parameters
+     * are needed.
+     */
+    private @Nullable Bundle getParamsForTriggerType(int triggerType) {
+        if (triggerType == ProfilingTrigger.TRIGGER_TYPE_COLD_START) {
+            Bundle params = new Bundle();
+            // Collect both system trace and stack sampling.
+            params.putBoolean(ProfilingManager.KEY_COLLECT_STACK_SAMPLING, true);
+            params.putInt(
+                    ProfilingManager.KEY_DURATION_MS,
+                    DeviceConfigHelper.getInt(
+                            DeviceConfigHelper.PROFILING_TRIGGER_COLD_START_TRACE_DURATION_MS,
+                            PROFILING_TRIGGER_COLD_START_TRACE_DURATION_DEFAULT_MS));
+            // Persist the beginning part of the collected trace.
+            params.putInt(
+                    ProfilingManager.KEY_BUFFER_FILL_POLICY,
+                    ProfilingManager.VALUE_BUFFER_FILL_POLICY_DISCARD);
+            return params;
+        }
+        return null;
     }
 
     private class ProfilingDeathRecipient implements IBinder.DeathRecipient {

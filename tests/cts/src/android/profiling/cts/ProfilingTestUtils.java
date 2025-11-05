@@ -282,6 +282,9 @@ public final class ProfilingTestUtils {
                 DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.REDACTION_CHECK_FREQUENCY_MS);
         deleteDeviceConfig(
                 DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.REDACTION_MAX_RUNTIME_ALLOTTED_MS);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.PROFILING_TRIGGER_COLD_START_TRACE_DURATION_MS);
         // LINT.ThenChange(/service/java/com/android/os/profiling/DeviceConfigHelper.java:configs)
     }
 

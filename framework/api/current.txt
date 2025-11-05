@@ -43,6 +43,7 @@ package android.os {
     field public static final int TRIGGER_TYPE_ANR = 2; // 0x2
     field public static final int TRIGGER_TYPE_APP_FULLY_DRAWN = 1; // 0x1
     field @FlaggedApi("android.os.profiling.profiling_25q4") public static final int TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE = 3; // 0x3
+    field @FlaggedApi("android.os.profiling.profiling_trigger_cold_start") public static final int TRIGGER_TYPE_COLD_START = 10; // 0xa
     field @FlaggedApi("android.os.profiling.profiling_trigger_kill_excessive_cpu_usage") public static final int TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE = 9; // 0x9
     field @FlaggedApi("android.os.profiling.profiling_25q4") public static final int TRIGGER_TYPE_KILL_FORCE_STOP = 4; // 0x4
     field @FlaggedApi("android.os.profiling.profiling_trigger_kill_recents") public static final int TRIGGER_TYPE_KILL_RECENTS = 5; // 0x5

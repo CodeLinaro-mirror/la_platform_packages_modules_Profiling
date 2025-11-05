@@ -119,6 +119,21 @@ public final class ProfilingTrigger {
     @FlaggedApi(Flags.FLAG_PROFILING_TRIGGER_KILL_EXCESSIVE_CPU_USAGE)
     public static final int TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE = 9;
 
+    /**
+     * Trigger occurs as early as possible when an app cold starts.
+     *
+     * <p>This happens when the {@link android.app.ApplicationStartInfo#getStartType} start type is
+     * {@link android.app.ApplicationStartInfo#START_TYPE_COLD}.
+     *
+     * <p>The system will provide a newly started system trace and stack sampling profile in
+     * response to this trigger.
+     *
+     * <p>Note: There might be a delay before profiling begins, similar to when {@link
+     * ProfilingManager#requestProfiling} is used.
+     */
+    @FlaggedApi(Flags.FLAG_PROFILING_TRIGGER_COLD_START)
+    public static final int TRIGGER_TYPE_COLD_START = 10;
+
     /** @hide */
     @IntDef(
             value = {
@@ -132,6 +147,7 @@ public final class ProfilingTrigger {
                 TRIGGER_TYPE_OOM,
                 TRIGGER_TYPE_ANOMALY,
                 TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE,
+                TRIGGER_TYPE_COLD_START,
             })
     @Retention(RetentionPolicy.SOURCE)
     @interface TriggerType {}
@@ -253,7 +269,8 @@ public final class ProfilingTrigger {
                 || (android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()
                         && triggerType == TRIGGER_TYPE_ANOMALY)
                 || (Flags.profilingTriggerKillExcessiveCpuUsage()
-                        && triggerType == TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE);
+                        && triggerType == TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE)
+                || (Flags.profilingTriggerColdStart() && triggerType == TRIGGER_TYPE_COLD_START);
     }
 
     /**
