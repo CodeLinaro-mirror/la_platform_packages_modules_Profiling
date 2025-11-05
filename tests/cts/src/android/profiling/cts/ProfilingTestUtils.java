@@ -238,6 +238,9 @@ public final class ProfilingTestUtils {
                 DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.STACK_SAMPLING_FREQUENCY_MAX);
         deleteDeviceConfig(
                 DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.STACK_SAMPLING_DISCARD_BUFFER_SIZE_KB);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.COST_SYSTEM_TRIGGERED_SYSTEM_TRACE);
         deleteDeviceConfig(
                 DeviceConfigHelper.NAMESPACE,
