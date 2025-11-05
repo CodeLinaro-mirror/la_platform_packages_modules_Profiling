@@ -20,8 +20,11 @@ import static android.Manifest.permission.CONFIGURE_ANOMALY_DETECTOR;
 
 import android.annotation.FlaggedApi;
 import android.content.Context;
-import android.os.IAnomalyDetectorService;
-import android.os.RuleParcel;
+import android.os.Environment;
+import android.os.OutcomeReceiver;
+import android.os.profiling.anomaly.IAnomalyDetectorService;
+import android.os.profiling.anomaly.Rule;
+import android.os.profiling.anomaly.RuleParcel;
 import android.os.profiling.anomaly.flags.Flags;
 import android.util.Slog;
 
@@ -44,8 +47,10 @@ import com.android.os.profiling.anomaly.internal.SignalCollectorRegistryImpl;
 import com.android.server.LocalManagerRegistry;
 import com.android.server.SystemService;
 
+import java.io.File;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
 /**
@@ -82,8 +87,37 @@ public final class AnomalyDetectorService extends SystemService {
     public AnomalyDetectorService(Context context) {
         super(context);
 
+        // Dedicated executor for background I/O operations.
+        Executor ioExecutor = Executors.newSingleThreadExecutor();
+
+        File systemDir = new File(Environment.getDataDirectory(), "system");
+        File anomalyServiceDir = new File(systemDir, "anomaly_service");
+        RuleStorage ruleStorage;
+        if (anomalyServiceDir.exists() || anomalyServiceDir.mkdirs()) {
+            File rulesFile = new File(anomalyServiceDir, "rules.pb");
+            ruleStorage = new RuleStorageImpl(rulesFile, ioExecutor);
+        } else {
+            Slog.e(TAG, "Failed to create directory: " + anomalyServiceDir.getPath());
+            // Create a no-op storage if the directory cannot be created.
+            ruleStorage =
+                    new RuleStorage() {
+                        @Override
+                        public void load(
+                                Executor executor, OutcomeReceiver<Set<Rule>, Throwable> callback) {
+                            executor.execute(() -> callback.onResult(Set.of()));
+                        }
+
+                        @Override
+                        public void save(
+                                Set<Rule> rules,
+                                Executor executor,
+                                OutcomeReceiver<Void, Throwable> callback) {
+                            executor.execute(() -> callback.onResult(null));
+                        }
+                    };
+        }
+
         mSignalCollectorRegistry = new SignalCollectorRegistryImpl();
-        RuleStorage ruleStorage = new RuleStorageImpl();
         AnomalyHandlerRegistry handlerRegistry = new AnomalyHandlerRegistryImpl(context);
 
         // Manually create the set of all known detector factories.

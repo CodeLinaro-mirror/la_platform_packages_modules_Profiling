@@ -1,0 +1,40 @@
+syntax = "proto2";
+
+package com.android.server.anomaly;
+
+option optimize_for = LITE_RUNTIME;
+
+option java_package = "com.android.server.anomaly.proto";
+option java_multiple_files = true;
+
+// This RuleSetProto is the top-level object that will be saved to the file.
+message RuleSetProto {
+  repeated RuleProto rules = 1;
+}
+
+// Represents a single android.os.Rule.
+message RuleProto {
+  // List of anomaly actions to be taken when the rule is triggered.
+  repeated int32 anomaly_actions = 1;
+
+  // Type of condition the rule monitors.
+  optional string condition_type = 2;
+
+  // Map of the specific parameters for the rule's condition. The key is the
+  // parameter name, and the value is the parameter value, corresponding to an
+  // Android Bundle.
+  map<string, BundleValue> rule_condition = 3;
+}
+
+// Represents a single value in an Android Bundle.
+message BundleValue {
+  oneof value_type {
+    string string_value = 1;
+    int32 int_value = 2;
+    int64 long_value = 3;
+    bool bool_value = 4;
+    double double_value = 5;
+    float float_value = 6;
+    // Add other types of values here as needed.
+  }
+}
