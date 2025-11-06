@@ -25,10 +25,6 @@ import android.content.Context;
 import android.os.Bundle;
 import android.os.OutcomeReceiver;
 import android.os.profiling.anomaly.Rule;
-import android.os.profiling.anomaly.flags.Flags;
-import android.platform.test.annotations.RequiresFlagsEnabled;
-import android.platform.test.flag.junit.CheckFlagsRule;
-import android.platform.test.flag.junit.DeviceFlagsValueProvider;
 
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
@@ -58,12 +54,8 @@ import java.util.concurrent.Executor;
 
 /** Tests for {@link RuleStorageImpl}. */
 @RunWith(AndroidJUnit4.class)
-@RequiresFlagsEnabled(Flags.FLAG_ANOMALY_DETECTOR_CORE)
 public final class RuleStorageImplTests {
     private static final String TEST_FILE_NAME = "test_anomaly_rules.pb";
-
-    @org.junit.Rule
-    public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
 
     @org.junit.Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
 

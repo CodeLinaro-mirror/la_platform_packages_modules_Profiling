@@ -113,7 +113,7 @@ public class ProfilingAppTriggeredTests {
         // Stop the test app.
         executeShellCmd("am force-stop " + STUB_PACKAGE_NAME);
 
-        startSystemTriggeredTraceForTesting(STUB_PACKAGE_NAME, /* waitTraceStart= */ true);
+        startSystemTriggeredTraceForTesting(STUB_PACKAGE_NAME);
 
         // Start the test app again to trigger reportFullyDrawn().
         startActivityWithAction(ACTION_REGISTER_AND_REPORT_FULLY_DRAWN);

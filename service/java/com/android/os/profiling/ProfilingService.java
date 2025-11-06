@@ -2088,7 +2088,9 @@ public class ProfilingService extends IProfilingService.Stub {
                 || (Flags.profilingTriggerKillRecents()
                         && triggerType == ProfilingTrigger.TRIGGER_TYPE_KILL_RECENTS)
                 || (Flags.profiling25q4()
-                        && triggerType == ProfilingTrigger.TRIGGER_TYPE_KILL_TASK_MANAGER)) {
+                        && triggerType == ProfilingTrigger.TRIGGER_TYPE_KILL_TASK_MANAGER)
+                || (Flags.profilingTriggerKillExcessiveCpuUsage()
+                        && triggerType == ProfilingTrigger.TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE)) {
             return ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE;
         }
 
