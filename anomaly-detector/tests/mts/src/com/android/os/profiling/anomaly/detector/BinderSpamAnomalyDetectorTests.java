@@ -23,7 +23,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import android.os.Bundle;
 import android.os.OutcomeReceiver;
+import android.os.profiling.anomaly.Rule;
 
 import androidx.test.runner.AndroidJUnit4;
 
@@ -33,13 +35,11 @@ import com.android.os.profiling.anomaly.collector.SignalCollector;
 import com.android.os.profiling.anomaly.collector.SubscriptionId;
 import com.android.os.profiling.anomaly.collector.binder.BinderSpamConfig;
 import com.android.os.profiling.anomaly.collector.binder.BinderSpamData;
-import com.android.os.profiling.anomaly.condition.BinderSpamCondition;
 import com.android.os.profiling.anomaly.core.AnomalyDetector;
 import com.android.os.profiling.anomaly.core.AnomalyReport;
 import com.android.os.profiling.anomaly.core.SignalCollectorRegistry;
 
 import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
@@ -47,8 +47,6 @@ import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-
-import java.util.Collections;
 
 /** Tests for {@link BinderSpamAnomalyDetector}. */
 @RunWith(AndroidJUnit4.class)
@@ -58,7 +56,7 @@ public final class BinderSpamAnomalyDetectorTests {
     private static final String TEST_METHOD = "testMethod";
     private static final int TEST_UID = 10001;
 
-    @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
+    @org.junit.Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
 
     @Mock private SignalCollectorRegistry mMockRegistry;
     @Mock private SignalCollector<BinderSpamConfig, BinderSpamData> mMockCollector;
@@ -81,9 +79,17 @@ public final class BinderSpamAnomalyDetectorTests {
         // Capture the receiver to simulate data arriving from the collector
         ArgumentCaptor<OutcomeReceiver<BinderSpamData, Throwable>> receiverCaptor =
                 ArgumentCaptor.forClass(OutcomeReceiver.class);
-        BinderSpamCondition condition = new BinderSpamCondition(100, TEST_INTERFACE, TEST_METHOD);
-        com.android.os.profiling.anomaly.core.Rule<BinderSpamCondition> rule =
-                new com.android.os.profiling.anomaly.core.Rule<>(condition, Collections.emptySet());
+        Bundle condition = new Bundle();
+        condition.putString(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME, TEST_INTERFACE);
+        condition.putString(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME, TEST_METHOD);
+        condition.putInt(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT, 100);
+        condition.putLong(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS, 1000);
+        Rule rule =
+                new Rule.Builder()
+                        .setConditionType(Rule.CONDITION_TYPE_BINDER_SPAM)
+                        .setRuleCondition(condition)
+                        .addAnomalyAction(Rule.ACTION_TYPE_LOG)
+                        .build();
         mDetector.setRule(rule);
         verify(mMockCollector).subscribe(any(), receiverCaptor.capture());
         mReceiver = receiverCaptor.getValue();
