@@ -117,14 +117,14 @@ public class ProfilingServiceHelper {
      * @param uid The UID of the process that is crashing.
      * @param packageName The package name of the process that is crashing.
      * @param crashInfo Description of the crash.
-     * @param executor The executor on which to execute the runOnComplete runnable provided below.
-     * @param runOnComplete Will run when profiling is complete, whether successful or not. Run
+     * @param executor The executor on which to execute the onComplete runnable provided below.
+     * @param onComplete Will run when profiling is complete, whether successful or not. Run
      *     immediately if no profiling will occur.
      * @return The recommended blocking timeout for profiling of the required type to complete. This
      *     timeout is an estimate for how long profiling will take and has no influence on the
      *     actual profiling collection. May be 0 indicating that no profiling will be collected, in
-     *     which case blocking is not necessary and the provided runnable will be run before the
-     *     method completes.
+     *     which case blocking is not necessary and the provided runnable will be queued to the
+     *     executor before the method completes.
      */
     @FlaggedApi(Flags.FLAG_PROFILING_TRIGGER_OOM)
     @NonNull
@@ -133,7 +133,7 @@ public class ProfilingServiceHelper {
             @NonNull String packageName,
             @NonNull ApplicationErrorReport.CrashInfo crashInfo,
             @NonNull Executor executor,
-            @NonNull Runnable runOnComplete) {
+            @NonNull Runnable onComplete) {
         int triggerType;
         int delay;
 
@@ -148,7 +148,7 @@ public class ProfilingServiceHelper {
         } else {
             // If the error does not map to a type that we collect profiling for, immediately run
             // the provided runnable and return 0 to ensure that nothing is being blocked.
-            executor.execute(() -> runOnComplete.run());
+            executor.execute(() -> onComplete.run());
             return Duration.ZERO;
         }
 
@@ -166,13 +166,13 @@ public class ProfilingServiceHelper {
                                 if (DEBUG) {
                                     Log.d(TAG, "Trigger onComplete received, counting down.");
                                 }
-                                executor.execute(() -> runOnComplete.run());
+                                executor.execute(() -> onComplete.run());
                             }
                         });
             } catch (RemoteException e) {
                 // Exception sending trigger to service. Nothing to do here, trigger will be lost.
                 if (DEBUG) Log.e(TAG, "Exception sending trigger", e);
-                executor.execute(() -> runOnComplete.run());
+                executor.execute(() -> onComplete.run());
             }
         }
 
