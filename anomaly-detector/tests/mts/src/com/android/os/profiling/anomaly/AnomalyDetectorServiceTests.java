@@ -19,10 +19,6 @@ package com.android.os.profiling.anomaly;
 import static org.junit.Assert.assertThrows;
 
 import android.content.Context;
-import android.os.profiling.anomaly.flags.Flags;
-import android.platform.test.annotations.RequiresFlagsEnabled;
-import android.platform.test.flag.junit.CheckFlagsRule;
-import android.platform.test.flag.junit.DeviceFlagsValueProvider;
 
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.runner.AndroidJUnit4;
@@ -48,12 +44,7 @@ import org.mockito.junit.MockitoRule;
  * access its local manager.
  */
 @RunWith(AndroidJUnit4.class)
-@RequiresFlagsEnabled(Flags.FLAG_ANOMALY_DETECTOR_CORE)
 public final class AnomalyDetectorServiceTests {
-
-    @Rule
-    public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
-
     @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
 
     @Mock private SignalCollector<TestConfig, TestData> mTestCollector;

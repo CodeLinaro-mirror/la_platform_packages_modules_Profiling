@@ -20,20 +20,13 @@ import static com.google.common.truth.Truth.assertThat;
 
 import static org.junit.Assert.assertThrows;
 
-import android.os.profiling.anomaly.flags.Flags;
-import android.platform.test.annotations.RequiresFlagsEnabled;
-import android.platform.test.flag.junit.CheckFlagsRule;
-import android.platform.test.flag.junit.DeviceFlagsValueProvider;
-
 import androidx.test.runner.AndroidJUnit4;
 
-import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
 /** Tests for the {@link BinderSpamConfig} value object. */
 @RunWith(AndroidJUnit4.class)
-@RequiresFlagsEnabled(Flags.FLAG_ANOMALY_DETECTOR_CORE)
 public class BinderSpamConfigTests {
     private static final String TEST_INTERFACE_NAME = "com.test.service";
     private static final String TEST_METHOD_NAME = "method";
@@ -43,9 +36,6 @@ public class BinderSpamConfigTests {
                     .setInterfaceName(TEST_INTERFACE_NAME)
                     .setMethodName(TEST_METHOD_NAME)
                     .build();
-
-    @Rule
-    public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
 
     @Test
     public void builder_withInvalidInterfaceName_throwException() {
