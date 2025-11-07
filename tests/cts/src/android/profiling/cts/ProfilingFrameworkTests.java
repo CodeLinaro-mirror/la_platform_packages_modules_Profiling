@@ -1756,7 +1756,7 @@ public final class ProfilingFrameworkTests {
 
         // Register a trigger to this process.
         ProfilingTrigger trigger =
-                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB).build();
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY).build();
         mProfilingManager.addProfilingTriggers(List.of(trigger));
 
         AnomalyProfilingManager anomalyProfilingManager = new AnomalyProfilingManager();
@@ -1767,7 +1767,7 @@ public final class ProfilingFrameworkTests {
                         anomalyProfilingManager.isTriggerRegistered(
                                 Binder.getCallingUid(),
                                 REAL_PACKAGE_NAME,
-                                ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB))
+                                ProfilingTrigger.TRIGGER_TYPE_ANOMALY))
                 .isTrue();
 
         // Check that another not-registered trigger is not showing as registered to this process.
@@ -1775,7 +1775,7 @@ public final class ProfilingFrameworkTests {
                         anomalyProfilingManager.isTriggerRegistered(
                                 Binder.getCallingUid(),
                                 REAL_PACKAGE_NAME,
-                                ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB))
+                                ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN))
                 .isFalse();
     }
 
@@ -1802,7 +1802,7 @@ public final class ProfilingFrameworkTests {
 
         // Register a trigger to this process.
         ProfilingTrigger trigger =
-                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB).build();
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY).build();
         mProfilingManager.addProfilingTriggers(List.of(trigger));
 
         // Add a global listener
@@ -1840,7 +1840,7 @@ public final class ProfilingFrameworkTests {
                 anomalyProfilingManager.sendAnomalyProfile(
                         Binder.getCallingUid(),
                         REAL_PACKAGE_NAME,
-                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
                         REQUEST_TAG_TEXT,
                         fileName);
 
@@ -1851,7 +1851,7 @@ public final class ProfilingFrameworkTests {
         confirmCollectionSuccess(
                 callbackGeneral.mResult,
                 OUTPUT_FILE_STACK_SAMPLING_SUFFIX,
-                ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB);
+                ProfilingTrigger.TRIGGER_TYPE_ANOMALY);
 
         // Confirm that anomaly results are as expected.
         confirmAnomalyResult(
@@ -1873,7 +1873,7 @@ public final class ProfilingFrameworkTests {
 
         // Register a trigger to this process.
         ProfilingTrigger trigger =
-                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB).build();
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY).build();
         mProfilingManager.addProfilingTriggers(List.of(trigger));
 
         // Add a global listener.
@@ -1900,7 +1900,7 @@ public final class ProfilingFrameworkTests {
                         Binder.getCallingUid(),
                         REAL_PACKAGE_NAME,
                         AnomalyProfilingManager.PROFILING_TYPE_SYSTEM_TRACE_ONGOING,
-                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
                         REQUEST_TAG_TEXT,
                         null);
 
@@ -1927,7 +1927,7 @@ public final class ProfilingFrameworkTests {
 
         // Register a trigger to this process.
         ProfilingTrigger trigger =
-                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB).build();
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY).build();
         mProfilingManager.addProfilingTriggers(List.of(trigger));
 
         // Add a global listener.
@@ -1948,7 +1948,7 @@ public final class ProfilingFrameworkTests {
                         Binder.getCallingUid(),
                         REAL_PACKAGE_NAME,
                         ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
-                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
                         REQUEST_TAG_TEXT,
                         getOneSecondDurationParamBundle());
 
@@ -1979,7 +1979,7 @@ public final class ProfilingFrameworkTests {
 
         // Register a trigger to this process.
         ProfilingTrigger trigger =
-                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB).build();
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY).build();
         mProfilingManager.addProfilingTriggers(List.of(trigger));
 
         // Add a global listener.
@@ -2006,7 +2006,7 @@ public final class ProfilingFrameworkTests {
                         Binder.getCallingUid(),
                         REAL_PACKAGE_NAME,
                         AnomalyProfilingManager.PROFILING_TYPE_SYSTEM_TRACE_ONGOING,
-                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
                         REQUEST_TAG_TEXT,
                         null);
 
@@ -2017,7 +2017,7 @@ public final class ProfilingFrameworkTests {
         confirmCollectionSuccess(
                 callbackGeneral.mResult,
                 OUTPUT_FILE_TRACE_SUFFIX,
-                ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB);
+                ProfilingTrigger.TRIGGER_TYPE_ANOMALY);
 
         // Confirm that anomaly results are as expected.
         confirmAnomalyResult(
@@ -2037,7 +2037,7 @@ public final class ProfilingFrameworkTests {
 
         // Register a trigger to this process.
         ProfilingTrigger trigger =
-                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB).build();
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY).build();
         mProfilingManager.addProfilingTriggers(List.of(trigger));
 
         // Add a global listener.
@@ -2058,7 +2058,7 @@ public final class ProfilingFrameworkTests {
                         Binder.getCallingUid(),
                         REAL_PACKAGE_NAME,
                         ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
-                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
                         REQUEST_TAG_TEXT,
                         getOneSecondDurationParamBundle());
 
@@ -2068,7 +2068,7 @@ public final class ProfilingFrameworkTests {
         confirmCollectionSuccess(
                 callbackGeneral.mResult,
                 OUTPUT_FILE_STACK_SAMPLING_SUFFIX,
-                ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB);
+                ProfilingTrigger.TRIGGER_TYPE_ANOMALY);
 
         // Confirm that anomaly results are as expected.
         confirmAnomalyResult(
@@ -2105,7 +2105,7 @@ public final class ProfilingFrameworkTests {
                         Binder.getCallingUid(),
                         REAL_PACKAGE_NAME,
                         ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
-                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
                         REQUEST_TAG_TEXT,
                         getOneSecondDurationParamBundle());
 
@@ -2164,7 +2164,7 @@ public final class ProfilingFrameworkTests {
                         Binder.getCallingUid(),
                         REAL_PACKAGE_NAME,
                         AnomalyProfilingManager.PROFILING_TYPE_SYSTEM_TRACE_ONGOING,
-                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
                         REQUEST_TAG_TEXT,
                         getOneSecondDurationParamBundle());
 
@@ -2197,7 +2197,7 @@ public final class ProfilingFrameworkTests {
 
         // Register a trigger to this process.
         ProfilingTrigger trigger =
-                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB).build();
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY).build();
         mProfilingManager.addProfilingTriggers(List.of(trigger));
 
         // Add a global listener.
@@ -2218,7 +2218,7 @@ public final class ProfilingFrameworkTests {
                         Binder.getCallingUid(),
                         REAL_PACKAGE_NAME,
                         AnomalyProfilingManager.PROFILING_TYPE_SYSTEM_TRACE_ONGOING,
-                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
                         REQUEST_TAG_TEXT,
                         null);
 
