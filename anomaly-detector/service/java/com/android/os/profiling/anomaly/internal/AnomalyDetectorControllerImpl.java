@@ -17,21 +17,21 @@
 package com.android.os.profiling.anomaly.internal;
 
 import android.os.OutcomeReceiver;
+import android.os.profiling.anomaly.Rule;
+import android.os.profiling.anomaly.Rule.AnomalyActionType;
+import android.os.profiling.anomaly.Rule.ConditionType;
 import android.util.ArrayMap;
 import android.util.ArraySet;
 import android.util.Slog;
 
 import com.android.internal.annotations.GuardedBy;
 import com.android.os.profiling.anomaly.collector.SignalCollector;
-import com.android.os.profiling.anomaly.core.AnomalyAction;
 import com.android.os.profiling.anomaly.core.AnomalyDetector;
 import com.android.os.profiling.anomaly.core.AnomalyDetectorController;
 import com.android.os.profiling.anomaly.core.AnomalyDetectorRegistry;
 import com.android.os.profiling.anomaly.core.AnomalyHandler;
 import com.android.os.profiling.anomaly.core.AnomalyHandlerRegistry;
 import com.android.os.profiling.anomaly.core.AnomalyReport;
-import com.android.os.profiling.anomaly.core.BaseCondition;
-import com.android.os.profiling.anomaly.core.Rule;
 import com.android.os.profiling.anomaly.core.RuleStorage;
 import com.android.os.profiling.anomaly.core.SignalCollectorRegistry;
 
@@ -60,10 +60,10 @@ public class AnomalyDetectorControllerImpl
     private final Object mLock = new Object();
 
     @GuardedBy("mLock")
-    private final Map<Rule<?>, AnomalyDetector<?>> mActiveDetectors = new ArrayMap<>();
+    private final Map<Rule, AnomalyDetector> mActiveDetectors = new ArrayMap<>();
 
     @GuardedBy("mLock")
-    private Set<Rule<?>> mRules = new ArraySet<>();
+    private Set<Rule> mRules = new ArraySet<>();
 
     /**
      * Constructs a new AnomalyDetectorControllerImpl.
@@ -91,8 +91,8 @@ public class AnomalyDetectorControllerImpl
 
     /** {@inheritDoc} */
     @Override
-    public void setRules(Set<Rule<?>> rules) {
-        Objects.requireNonNull(rules, "Set<Rule<?>> cannot be null");
+    public void setRules(Set<Rule> rules) {
+        Objects.requireNonNull(rules, "Set<Rule> cannot be null");
         // Asynchronously save rules to storage.
         saveRules(rules);
         // Set the new rules without waiting for the save to complete. This makes sure
@@ -100,28 +100,25 @@ public class AnomalyDetectorControllerImpl
         setRulesInternal(rules);
     }
 
-    private void setRulesInternal(Set<Rule<?>> rules) {
+    private void setRulesInternal(Set<Rule> rules) {
         synchronized (mLock) {
             // Flush old rules and detectors
-            for (AnomalyDetector<?> detector : mActiveDetectors.values()) {
+            for (AnomalyDetector detector : mActiveDetectors.values()) {
                 detector.setRule(null);
             }
             mActiveDetectors.clear();
 
             mRules = rules;
 
-            for (Rule<?> rule : mRules) {
+            for (Rule rule : mRules) {
                 tryToActivateRule(rule);
             }
         }
     }
 
-    private void saveRules(Set<Rule<?>> rules) {
-        // Per b/450098927, we are temporarily decoupling RuleStorage from the internal Rule
-        // representation. We save a dummy (empty) set of the new
-        // android.os.profiling.anomaly.Rule objects to allow RuleStorage implementation to proceed.
+    private void saveRules(Set<Rule> rules) {
         mRuleStorage.save(
-                new ArraySet<>(),
+                rules,
                 mExecutor,
                 new OutcomeReceiver<>() {
                     @Override
@@ -141,17 +138,11 @@ public class AnomalyDetectorControllerImpl
     public void onSystemServicesReady() {
         mRuleStorage.load(
                 mExecutor,
-                new OutcomeReceiver<>() {
+                new OutcomeReceiver<Set<Rule>, Throwable>() {
                     @Override
-                    public void onResult(Set<android.os.profiling.anomaly.Rule> rules) {
-                        Slog.i(
-                                TAG,
-                                "Rules loaded from storage, but ignoring the result as per"
-                                        + " b/450098927.");
-                        // Per b/450098927, ignore the loaded rules for now.
-                        // We could initialize with an empty set, but it's safer to do nothing
-                        // and wait for a new set of rules to be pushed.
-                        // setRulesInternal(new ArraySet<>());
+                    public void onResult(Set<Rule> rules) {
+                        Slog.i(TAG, "Rules loaded from storage.");
+                        setRulesInternal(rules);
                     }
 
                     @Override
@@ -170,20 +161,17 @@ public class AnomalyDetectorControllerImpl
      * @param rule The rule to be activated.
      */
     @GuardedBy("mLock")
-    private void tryToActivateRule(Rule<?> rule) {
-        BaseCondition condition = rule.baseCondition();
-        AnomalyDetector.AnomalyDetectorFactory<?> factory =
-                mAnomalyDetectorRegistry.getFactory(condition.getClass());
+    private void tryToActivateRule(Rule rule) {
+        @ConditionType String conditionType = rule.getConditionType();
+        AnomalyDetector.AnomalyDetectorFactory factory =
+                mAnomalyDetectorRegistry.getFactory(conditionType);
 
         if (factory == null) {
-            Slog.w(
-                    TAG,
-                    "No AnomalyDetectorFactory for condition: "
-                            + condition.getClass().getSimpleName());
+            Slog.w(TAG, "No AnomalyDetectorFactory for condition: " + conditionType);
             return;
         }
 
-        AnomalyDetector<? extends BaseCondition> detector =
+        AnomalyDetector detector =
                 mAnomalyDetectorRegistry.createDetectorForRule(rule, mSignalCollectorRegistry);
 
         if (detector != null) {
@@ -200,7 +188,7 @@ public class AnomalyDetectorControllerImpl
     public void onAnomalyDetected(AnomalyReport report) {
         Slog.i(TAG, "Anomaly detected");
 
-        for (@AnomalyAction.Action int action : report.getRule().actions()) {
+        for (@AnomalyActionType int action : report.getRule().getAnomalyActions()) {
             AnomalyHandler handler = mAnomalyHandlerRegistry.getHandler(action);
             if (handler != null) {
                 handler.execute(report);
@@ -226,7 +214,7 @@ public class AnomalyDetectorControllerImpl
                             + collector.getClass().getSimpleName()
                             + ". Re-evaluating rules.");
 
-            for (Rule<?> rule : mRules) {
+            for (Rule rule : mRules) {
                 if (!mActiveDetectors.containsKey(rule)) {
                     Slog.i(TAG, "Re-evaluating rule that was not previously activated: " + rule);
                     tryToActivateRule(rule);

@@ -18,43 +18,33 @@ package com.android.os.profiling.anomaly.handler;
 
 import static com.google.common.truth.Truth.assertThat;
 
-import android.content.Context;
+import android.os.profiling.anomaly.Rule;
+import android.os.profiling.anomaly.Rule.AnomalyActionType;
 
 import androidx.test.runner.AndroidJUnit4;
 
-import com.android.os.profiling.anomaly.core.AnomalyAction;
 import com.android.os.profiling.anomaly.internal.AnomalyHandlerRegistryImpl;
 
 import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 /** Tests for {@link AnomalyHandlerRegistryImpl}. */
 @RunWith(AndroidJUnit4.class)
 public final class AnomalyHandlerRegistryImplTests {
-    private static final int UNREGISTERED_ACTION = 999;
-
-    @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
-
-    @Mock private Context mMockContext;
+    @AnomalyActionType private static final int UNREGISTERED_ACTION = 999;
 
     private AnomalyHandlerRegistryImpl mRegistry;
 
     @Before
     public void setUp() {
-        mRegistry = new AnomalyHandlerRegistryImpl(mMockContext);
+        mRegistry = new AnomalyHandlerRegistryImpl();
     }
 
     @Test
     public void constructor_registersDefaultHandlers() {
-        assertThat(mRegistry.getHandler(AnomalyAction.ACTION_LOG))
+        assertThat(mRegistry.getHandler(Rule.ACTION_TYPE_LOG))
                 .isInstanceOf(LogAnomalyHandler.class);
-        assertThat(mRegistry.getHandler(AnomalyAction.ACTION_KILL))
-                .isInstanceOf(KillAnomalyHandler.class);
     }
 
     @Test
