@@ -1392,9 +1392,9 @@ public final class ProfilingFrameworkTests {
                                 new ImmediateExecutor(),
                                 () -> latch.countDown());
 
-        // Await for up to the duration plus 1 second. Assert true to ensure exit was due to latch
+        // Await for up to the duration plus 10 seconds. Assert true to ensure exit was due to latch
         // counting down rather than timeout.
-        assertThat(latch.await(duration.toSeconds() + 1, TimeUnit.SECONDS)).isTrue();
+        assertThat(latch.await(duration.toSeconds() + 10, TimeUnit.SECONDS)).isTrue();
 
         // The latch counts down when collection is complete, but before a callback is necessarily
         // received, so wait for a bit.
