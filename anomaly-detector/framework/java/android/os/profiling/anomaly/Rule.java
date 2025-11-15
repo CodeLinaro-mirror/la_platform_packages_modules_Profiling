@@ -19,7 +19,6 @@ package android.os.profiling.anomaly;
 import android.annotation.FlaggedApi;
 import android.annotation.IntDef;
 import android.annotation.NonNull;
-import android.annotation.RequiresApi;
 import android.annotation.StringDef;
 import android.annotation.SystemApi;
 import android.os.Bundle;
@@ -47,7 +46,6 @@ import java.util.Set;
  * @hide
  */
 @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
-@RequiresApi(37)
 @FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE)
 public final class Rule {
     /**

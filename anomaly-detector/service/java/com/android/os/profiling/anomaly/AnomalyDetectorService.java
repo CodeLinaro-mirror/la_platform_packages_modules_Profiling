@@ -19,6 +19,7 @@ package com.android.os.profiling.anomaly;
 import static android.Manifest.permission.CONFIGURE_ANOMALY_DETECTOR;
 
 import android.annotation.FlaggedApi;
+import android.annotation.PermissionManuallyEnforced;
 import android.content.Context;
 import android.os.Environment;
 import android.os.OutcomeReceiver;
@@ -172,6 +173,7 @@ public final class AnomalyDetectorService extends SystemService {
         }
 
         @Override
+        @PermissionManuallyEnforced
         public void setRules(List<RuleParcel> ruleParcelList) {
             mContext.enforceCallingOrSelfPermission(
                     CONFIGURE_ANOMALY_DETECTOR,
