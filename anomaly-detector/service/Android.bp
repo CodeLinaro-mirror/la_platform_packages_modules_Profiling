@@ -37,7 +37,6 @@ java_sdk_library {
         "framework-annotations-lib",
         "framework-anomaly-detector.impl",
         "framework-configinfrastructure.stubs.module_lib",
-        "androidx.annotation_annotation",
     ],
     static_libs: [
         "anomaly-detector-aconfig-flags-lib",
