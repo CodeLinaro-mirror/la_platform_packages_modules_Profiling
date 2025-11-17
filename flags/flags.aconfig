@@ -124,3 +124,11 @@ flag {
      description: "Enable profiling manager kill excessive cpu usage trigger."
      bug: "448360513"
 }
+
+flag {
+    name: "profiling_trigger_cold_start"
+    namespace: "system_performance"
+    is_exported: true
+    description: "Enable profiling manager cold start trigger."
+    bug: "458051536"
+}

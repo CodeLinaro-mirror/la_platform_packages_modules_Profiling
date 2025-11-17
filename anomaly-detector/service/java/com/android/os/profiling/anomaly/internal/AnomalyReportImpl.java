@@ -17,10 +17,10 @@
 package com.android.os.profiling.anomaly.internal;
 
 import android.annotation.Nullable;
+import android.os.profiling.anomaly.Rule;
 
 import com.android.os.profiling.anomaly.core.AnomalyAttribute;
 import com.android.os.profiling.anomaly.core.AnomalyReport;
-import com.android.os.profiling.anomaly.core.Rule;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -36,7 +36,7 @@ import java.util.Objects;
  * @hide
  */
 public final class AnomalyReportImpl implements AnomalyReport {
-    private final Rule<?> mRule;
+    private final Rule mRule;
     private final Map<Class<?>, AnomalyAttribute> mAttributes;
 
     private AnomalyReportImpl(Builder builder) {
@@ -46,7 +46,7 @@ public final class AnomalyReportImpl implements AnomalyReport {
 
     /** {@inheritDoc} */
     @Override
-    public Rule<?> getRule() {
+    public Rule getRule() {
         return mRule;
     }
 
@@ -59,10 +59,10 @@ public final class AnomalyReportImpl implements AnomalyReport {
 
     /** Builder for creating an AnomalyReport. */
     public static final class Builder {
-        private final Rule<?> mRule;
+        private final Rule mRule;
         private final Map<Class<?>, AnomalyAttribute> mAttributes = new HashMap<>();
 
-        public Builder(Rule<?> rule) {
+        public Builder(Rule rule) {
             mRule = Objects.requireNonNull(rule);
         }
 

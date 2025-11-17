@@ -16,7 +16,9 @@
 
 package com.android.os.profiling.anomaly.detector;
 
+import android.os.Bundle;
 import android.os.OutcomeReceiver;
+import android.os.profiling.anomaly.Rule;
 import android.util.Slog;
 
 import com.android.internal.annotations.GuardedBy;
@@ -26,10 +28,8 @@ import com.android.os.profiling.anomaly.collector.SignalCollector;
 import com.android.os.profiling.anomaly.collector.SubscriptionId;
 import com.android.os.profiling.anomaly.collector.binder.BinderSpamConfig;
 import com.android.os.profiling.anomaly.collector.binder.BinderSpamData;
-import com.android.os.profiling.anomaly.condition.BinderSpamCondition;
 import com.android.os.profiling.anomaly.core.AnomalyDetector;
 import com.android.os.profiling.anomaly.core.AnomalyReport;
-import com.android.os.profiling.anomaly.core.Rule;
 import com.android.os.profiling.anomaly.core.SignalCollectorRegistry;
 import com.android.os.profiling.anomaly.core.SignalTypeId;
 import com.android.os.profiling.anomaly.internal.AnomalyReportImpl;
@@ -41,7 +41,7 @@ import java.util.Set;
  *
  * @hide
  */
-public final class BinderSpamAnomalyDetector extends AnomalyDetector<BinderSpamCondition> {
+public final class BinderSpamAnomalyDetector extends AnomalyDetector {
     private static final String TAG = "BinderSpamAnomalyDetector";
 
     private static final long MILLIS_PER_SECOND = 1000L;
@@ -50,7 +50,7 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector<BinderSpamC
     private final Object mLock = new Object();
 
     @GuardedBy("mLock")
-    private Rule<BinderSpamCondition> mRule;
+    private Rule mRule;
 
     @GuardedBy("mLock")
     private SubscriptionId mSubscriptionId;
@@ -67,11 +67,10 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector<BinderSpamC
         mRegistry = registry;
     }
 
-    public static final AnomalyDetector.AnomalyDetectorFactory<BinderSpamCondition> FACTORY =
-            new AnomalyDetector.AnomalyDetectorFactory<BinderSpamCondition>() {
+    public static final AnomalyDetector.AnomalyDetectorFactory FACTORY =
+            new AnomalyDetector.AnomalyDetectorFactory() {
                 @Override
-                public AnomalyDetector<BinderSpamCondition> create(
-                        SignalCollectorRegistry registry) {
+                public AnomalyDetector create(SignalCollectorRegistry registry) {
                     return new BinderSpamAnomalyDetector(registry);
                 }
 
@@ -81,14 +80,14 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector<BinderSpamC
                 }
 
                 @Override
-                public Class<BinderSpamCondition> getConditionClass() {
-                    return BinderSpamCondition.class;
+                public String getConditionType() {
+                    return Rule.CONDITION_TYPE_BINDER_SPAM;
                 }
             };
 
     /** {@inheritDoc} */
     @Override
-    public void setRule(Rule<BinderSpamCondition> rule) {
+    public void setRule(Rule rule) {
         synchronized (mLock) {
             if (mSubscriptionId != null && mCollector != null) {
                 mCollector.unsubscribe(mSubscriptionId);
@@ -102,15 +101,19 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector<BinderSpamC
                 return;
             }
 
-            BinderSpamCondition condition = mRule.baseCondition();
+            Bundle condition = mRule.getRuleCondition();
 
             mCollector = mRegistry.getSignalCollector(BinderSpamConfig.class, BinderSpamData.class);
 
             if (mCollector != null) {
+                String interfaceName =
+                        condition.getString(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME);
+                String methodName =
+                        condition.getString(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME);
                 BinderSpamConfig config =
                         new BinderSpamConfig.Builder()
-                                .setInterfaceName(condition.interfaceName())
-                                .setMethodName(condition.methodName())
+                                .setInterfaceName(interfaceName)
+                                .setMethodName(methodName)
                                 .build();
 
                 mSubscriptionId =
@@ -144,10 +147,13 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector<BinderSpamC
                 return;
             }
 
-            BinderSpamCondition condition = mRule.baseCondition();
-            int callCount = binderData.getCallCount();
+            Bundle condition = mRule.getRuleCondition();
+            long callCount = binderData.getCallCount();
             long timespanMillis = binderData.getTimespanMillis();
-            long threshold = condition.callCountThreshold();
+            long threshold = condition.getInt(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT);
+            long intervalMillis =
+                    condition.getLong(
+                            Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS);
 
             // Timespan must not be less than 1000ms to calculate a rate, because short timespan may
             // cause an exaggerated call-rate, e,g, 2 calls over 10ms makes call-rate to be 200/s.
@@ -156,11 +162,15 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector<BinderSpamC
                 return;
             }
 
-            boolean isRateExceeded = callCount * MILLIS_PER_SECOND > threshold * timespanMillis;
+            boolean isRateExceeded = callCount * intervalMillis > threshold * timespanMillis;
 
             if (isRateExceeded
-                    && condition.interfaceName().equals(binderData.getInterfaceName())
-                    && condition.methodName().equals(binderData.getMethodName())) {
+                    && condition
+                            .getString(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME)
+                            .equals(binderData.getInterfaceName())
+                    && condition
+                            .getString(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME)
+                            .equals(binderData.getMethodName())) {
                 Slog.d(TAG, "Binder spam condition met. Creating a report.");
 
                 // For logging purposes, calculate the actual rate.

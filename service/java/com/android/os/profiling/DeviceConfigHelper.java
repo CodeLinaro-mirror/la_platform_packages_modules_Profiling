@@ -155,6 +155,10 @@ public final class DeviceConfigHelper {
     public static final String REDACTION_MAX_RUNTIME_ALLOTTED_MS =
             "redaction_max_runtime_allotted_ms";
 
+    // Trigger configs
+    public static final String PROFILING_TRIGGER_COLD_START_TRACE_DURATION_MS =
+            "profiling_trigger_cold_start_trace_duration_ms";
+
     // End section: Server registered constants
     // LINT.ThenChange(/tests/cts/src/android/profiling/cts/ProfilingTestUtils.java:reset_configs)
 
