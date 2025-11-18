@@ -42,6 +42,7 @@ java_sdk_library {
         "anomaly-detector-aconfig-flags-lib",
         "anomaly-detector-rules-proto-lite",
     ],
+    jarjar_rules: "jarjar-rules.txt",
     lint: {
         strict_updatability_linting: true,
     },
