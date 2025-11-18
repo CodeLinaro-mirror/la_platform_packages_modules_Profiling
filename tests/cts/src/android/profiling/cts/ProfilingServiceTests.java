@@ -2694,6 +2694,17 @@ public final class ProfilingServiceTests {
                                         ProfilingTrigger.TRIGGER_TYPE_ANOMALY));
         assertThat(throwable).isNotNull();
         assertThat(throwable.getMessage()).isEqualTo(NOT_SYSTEM_CALLER_SECURITY_EXCEPTION);
+
+        throwable =
+                assertThrows(
+                        SecurityException.class,
+                        () ->
+                                mProfilingService.isTriggerRegistered(
+                                        FAKE_UID,
+                                        APP_PACKAGE_NAME,
+                                        ProfilingTrigger.TRIGGER_TYPE_APP_COMPAT));
+        assertThat(throwable).isNotNull();
+        assertThat(throwable.getMessage()).isEqualTo(NOT_SYSTEM_CALLER_SECURITY_EXCEPTION);
     }
 
     @Test
@@ -2724,6 +2735,21 @@ public final class ProfilingServiceTests {
                                         "filename"));
         assertThat(throwable).isNotNull();
         assertThat(throwable.getMessage()).isEqualTo(NOT_SYSTEM_CALLER_SECURITY_EXCEPTION);
+
+        throwable =
+                assertThrows(
+                        SecurityException.class,
+                        () ->
+                                mProfilingService.sendAnomalyProfile(
+                                        0L,
+                                        0L,
+                                        FAKE_UID,
+                                        APP_PACKAGE_NAME,
+                                        ProfilingTrigger.TRIGGER_TYPE_APP_COMPAT,
+                                        null,
+                                        "filename"));
+        assertThat(throwable).isNotNull();
+        assertThat(throwable.getMessage()).isEqualTo(NOT_SYSTEM_CALLER_SECURITY_EXCEPTION);
     }
 
     @Test
@@ -2740,6 +2766,23 @@ public final class ProfilingServiceTests {
                                         APP_PACKAGE_NAME,
                                         ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
                                         ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
+                                        true,
+                                        null,
+                                        null));
+        assertThat(throwable).isNotNull();
+        assertThat(throwable.getMessage()).isEqualTo(NOT_SYSTEM_CALLER_SECURITY_EXCEPTION);
+
+        throwable =
+                assertThrows(
+                        SecurityException.class,
+                        () ->
+                                mProfilingService.collectAnomalyProfile(
+                                        0L,
+                                        0L,
+                                        FAKE_UID,
+                                        APP_PACKAGE_NAME,
+                                        ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
+                                        ProfilingTrigger.TRIGGER_TYPE_APP_COMPAT,
                                         true,
                                         null,
                                         null));

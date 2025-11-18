@@ -134,6 +134,16 @@ public final class ProfilingTrigger {
     @FlaggedApi(Flags.FLAG_PROFILING_TRIGGER_COLD_START)
     public static final int TRIGGER_TYPE_COLD_START = 10;
 
+    /**
+     * Trigger occurs when the system detects an anomalous behavior by the app which will become
+     * unsupported in future Android versions. The artifact returned will vary by the anomaly.
+     *
+     * <p>The tag returned with the {@link ProfilingResult#getTag()} will contain additional
+     * information about the app compatibility issues.
+     */
+    @FlaggedApi(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public static final int TRIGGER_TYPE_APP_COMPAT = 11;
+
     /** @hide */
     @IntDef(
             value = {
@@ -148,6 +158,7 @@ public final class ProfilingTrigger {
                 TRIGGER_TYPE_ANOMALY,
                 TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE,
                 TRIGGER_TYPE_COLD_START,
+                TRIGGER_TYPE_APP_COMPAT,
             })
     @Retention(RetentionPolicy.SOURCE)
     @interface TriggerType {}
@@ -270,7 +281,9 @@ public final class ProfilingTrigger {
                         && triggerType == TRIGGER_TYPE_ANOMALY)
                 || (Flags.profilingTriggerKillExcessiveCpuUsage()
                         && triggerType == TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE)
-                || (Flags.profilingTriggerColdStart() && triggerType == TRIGGER_TYPE_COLD_START);
+                || (Flags.profilingTriggerColdStart() && triggerType == TRIGGER_TYPE_COLD_START)
+                || (android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()
+                        && triggerType == TRIGGER_TYPE_APP_COMPAT);
     }
 
     /**
@@ -282,10 +295,10 @@ public final class ProfilingTrigger {
         if (!android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()) {
             // If the flag is off then it can't be an anomaly trigger.
             return false;
+        } else if (triggerType == ProfilingTrigger.TRIGGER_TYPE_ANOMALY
+                || triggerType == ProfilingTrigger.TRIGGER_TYPE_APP_COMPAT) {
+            return true;
         }
-        if (triggerType != ProfilingTrigger.TRIGGER_TYPE_ANOMALY) {
-            return false;
-        }
-        return true;
+        return false;
     }
 }
