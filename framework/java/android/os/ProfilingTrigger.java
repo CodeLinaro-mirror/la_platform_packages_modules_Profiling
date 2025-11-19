@@ -100,12 +100,14 @@ public final class ProfilingTrigger {
     public static final int TRIGGER_TYPE_OOM = 7;
 
     /**
-     * Stub trigger for anomalies.
+     * Trigger occurs when the system detects an anomalous behavior by the app. Anomalous behaviors
+     * may span all areas. The artifact returned will vary by the anomaly.
      *
-     * @hide
+     * <p>The tag returned with the {@link ProfilingResult#getTag()} will contain additional
+     * information about the type of anomaly.
      */
     @FlaggedApi(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
-    public static final int TRIGGER_TYPE_ANOMALY_STUB = 8;
+    public static final int TRIGGER_TYPE_ANOMALY = 8;
 
     /**
      * Trigger occurs when an app is killed due to excessive CPU usage with an {@link
@@ -116,6 +118,21 @@ public final class ProfilingTrigger {
      */
     @FlaggedApi(Flags.FLAG_PROFILING_TRIGGER_KILL_EXCESSIVE_CPU_USAGE)
     public static final int TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE = 9;
+
+    /**
+     * Trigger occurs as early as possible when an app cold starts.
+     *
+     * <p>This happens when the {@link android.app.ApplicationStartInfo#getStartType} start type is
+     * {@link android.app.ApplicationStartInfo#START_TYPE_COLD}.
+     *
+     * <p>The system will provide a newly started system trace and stack sampling profile in
+     * response to this trigger.
+     *
+     * <p>Note: There might be a delay before profiling begins, similar to when {@link
+     * ProfilingManager#requestProfiling} is used.
+     */
+    @FlaggedApi(Flags.FLAG_PROFILING_TRIGGER_COLD_START)
+    public static final int TRIGGER_TYPE_COLD_START = 10;
 
     /** @hide */
     @IntDef(
@@ -128,8 +145,9 @@ public final class ProfilingTrigger {
                 TRIGGER_TYPE_KILL_RECENTS,
                 TRIGGER_TYPE_KILL_TASK_MANAGER,
                 TRIGGER_TYPE_OOM,
-                TRIGGER_TYPE_ANOMALY_STUB,
+                TRIGGER_TYPE_ANOMALY,
                 TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE,
+                TRIGGER_TYPE_COLD_START,
             })
     @Retention(RetentionPolicy.SOURCE)
     @interface TriggerType {}
@@ -249,9 +267,10 @@ public final class ProfilingTrigger {
                 || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_KILL_TASK_MANAGER)
                 || (Flags.profilingTriggerOom() && triggerType == TRIGGER_TYPE_OOM)
                 || (android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()
-                        && triggerType == TRIGGER_TYPE_ANOMALY_STUB)
+                        && triggerType == TRIGGER_TYPE_ANOMALY)
                 || (Flags.profilingTriggerKillExcessiveCpuUsage()
-                        && triggerType == TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE);
+                        && triggerType == TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE)
+                || (Flags.profilingTriggerColdStart() && triggerType == TRIGGER_TYPE_COLD_START);
     }
 
     /**
@@ -264,7 +283,7 @@ public final class ProfilingTrigger {
             // If the flag is off then it can't be an anomaly trigger.
             return false;
         }
-        if (triggerType != ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB) {
+        if (triggerType != ProfilingTrigger.TRIGGER_TYPE_ANOMALY) {
             return false;
         }
         return true;

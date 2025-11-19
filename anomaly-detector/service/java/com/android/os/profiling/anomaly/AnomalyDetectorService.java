@@ -24,8 +24,10 @@ import android.os.Environment;
 import android.os.OutcomeReceiver;
 import android.os.profiling.anomaly.IAnomalyDetectorService;
 import android.os.profiling.anomaly.Rule;
+import android.os.profiling.anomaly.Rule.AnomalyActionType;
 import android.os.profiling.anomaly.RuleParcel;
 import android.os.profiling.anomaly.flags.Flags;
+import android.util.ArraySet;
 import android.util.Slog;
 
 import com.android.internal.annotations.VisibleForTesting;
@@ -118,11 +120,11 @@ public final class AnomalyDetectorService extends SystemService {
         }
 
         mSignalCollectorRegistry = new SignalCollectorRegistryImpl();
-        AnomalyHandlerRegistry handlerRegistry = new AnomalyHandlerRegistryImpl(context);
+        AnomalyHandlerRegistry handlerRegistry = new AnomalyHandlerRegistryImpl();
 
         // Manually create the set of all known detector factories.
         // This is the central place to register a new detector with the system.
-        Set<AnomalyDetector.AnomalyDetectorFactory<?>> allFactories =
+        Set<AnomalyDetector.AnomalyDetectorFactory> allFactories =
                 Set.of(BinderSpamAnomalyDetector.FACTORY);
 
         AnomalyDetectorRegistry anomalyDetectorRegistry =
@@ -175,7 +177,22 @@ public final class AnomalyDetectorService extends SystemService {
                     CONFIGURE_ANOMALY_DETECTOR,
                     "the caller does not have the required permission to set anomaly detector"
                             + " rules");
-            // TODO(b/423096026): Use the rules to detect anomalies.
+            mController.setRules(convertRuleParcelsToRules(ruleParcelList));
+        }
+
+        private static Set<Rule> convertRuleParcelsToRules(List<RuleParcel> ruleParcelList) {
+            Set<Rule> rules = new ArraySet<>();
+            for (RuleParcel ruleParcel : ruleParcelList) {
+                Rule.Builder ruleBuilder =
+                        new Rule.Builder()
+                                .setConditionType(ruleParcel.conditionType)
+                                .setRuleCondition(ruleParcel.ruleCondition);
+                for (@AnomalyActionType int action : ruleParcel.anomalyActions) {
+                    ruleBuilder.addAnomalyAction(action);
+                }
+                rules.add(ruleBuilder.build());
+            }
+            return rules;
         }
     }
 
