@@ -1200,7 +1200,13 @@ public class ProfilingService extends IProfilingService.Stub {
         }
     }
 
-    private void enforceSystemCaller() {
+    /**
+     * Enforce that the caller is the system process.
+     *
+     * @throws SecurityException if the caller is not the system process.
+     */
+    @VisibleForTesting
+    public void enforceSystemCaller() {
         if (mSkipEnforceSystemCaller.get()) {
             if (DEBUG) Log.d(TAG, "System caller enforcement disabled.", new Throwable());
             return;
@@ -2107,6 +2113,38 @@ public class ProfilingService extends IProfilingService.Stub {
                         });
     }
 
+    /**
+     * Stops all profiling sessions that matches the provided uid, package name, and trigger type.
+     */
+    public void stopActiveProfiling(int uid, @NonNull String packageName, int triggerType) {
+        enforceSystemCaller();
+
+        // StopActiveProfiling works with specific trigger types only.
+        if (triggerType != ProfilingTrigger.TRIGGER_TYPE_COLD_START) {
+            return;
+        }
+
+        // Don't block the calling thread.
+        getHandler()
+                .post(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                for (int i = 0; i < mActiveTracingSessions.size(); i++) {
+                                    TracingSession session = mActiveTracingSessions.valueAt(i);
+                                    if (session.getUid() == uid
+                                            && session.getPackageName().equals(packageName)
+                                            && session.getTriggerType() == triggerType) {
+                                        stopProfiling(
+                                                session,
+                                                LoggingHelper
+                                                        .PROFILING_STOPPED_REASON_SYSTEM_REQUESTED);
+                                    }
+                                }
+                            }
+                        });
+    }
+
     /** Returns the correct profiling type for each trigger. */
     private int getProfilingTypeForTrigger(int triggerType) {
         if (triggerType == ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN
@@ -3008,7 +3046,8 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     /** Stop active profiling for the given session. */
-    private void stopProfiling(TracingSession session, int loggingReason) {
+    @VisibleForTesting
+    public void stopProfiling(TracingSession session, int loggingReason) {
         if (session == null || session.getActiveTrace() == null) {
             if (DEBUG) Log.d(TAG, "No active trace, nothing to stop.");
             return;
@@ -3601,7 +3640,9 @@ public class ProfilingService extends IProfilingService.Stub {
         return needsRedaction(session) ? session.getRedactedFileName() : session.getFileName();
     }
 
-    private Handler getHandler() {
+    /** Returns the handler for the ProfilingService's internal thread. */
+    @VisibleForTesting
+    public Handler getHandler() {
         if (mHandler == null) {
             mHandler = new Handler(mHandlerThread.getLooper());
         }

@@ -51,6 +51,8 @@ interface IProfilingService {
 
     oneway void processTrigger(int uid, String packageName, int triggerType, String tag, IProfilingTriggerCallback callback);
 
+    oneway void stopActiveProfiling(int uid, String packageName, int triggerType);
+
     oneway void registerAnomalyCallback(IProfilingAnomalyCallback callbacks);
 
     boolean isTriggerRegistered(int uid, String packageName, int triggerType);
