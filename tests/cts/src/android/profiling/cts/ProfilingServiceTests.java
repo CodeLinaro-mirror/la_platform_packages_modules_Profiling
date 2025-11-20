@@ -2691,7 +2691,7 @@ public final class ProfilingServiceTests {
                                 mProfilingService.isTriggerRegistered(
                                         FAKE_UID,
                                         APP_PACKAGE_NAME,
-                                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB));
+                                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY));
         assertThat(throwable).isNotNull();
         assertThat(throwable.getMessage()).isEqualTo(NOT_SYSTEM_CALLER_SECURITY_EXCEPTION);
     }
@@ -2719,7 +2719,7 @@ public final class ProfilingServiceTests {
                                         0L,
                                         FAKE_UID,
                                         APP_PACKAGE_NAME,
-                                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
                                         null,
                                         "filename"));
         assertThat(throwable).isNotNull();
@@ -2739,7 +2739,7 @@ public final class ProfilingServiceTests {
                                         FAKE_UID,
                                         APP_PACKAGE_NAME,
                                         ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
-                                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
                                         true,
                                         null,
                                         null));

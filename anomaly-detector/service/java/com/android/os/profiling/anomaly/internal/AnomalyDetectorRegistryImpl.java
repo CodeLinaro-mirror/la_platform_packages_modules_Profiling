@@ -17,14 +17,14 @@
 package com.android.os.profiling.anomaly.internal;
 
 import android.annotation.Nullable;
+import android.os.profiling.anomaly.Rule;
+import android.os.profiling.anomaly.Rule.ConditionType;
 import android.util.ArrayMap;
 import android.util.Log;
 
 import com.android.os.profiling.anomaly.core.AnomalyDetector;
 import com.android.os.profiling.anomaly.core.AnomalyDetector.AnomalyDetectorFactory;
 import com.android.os.profiling.anomaly.core.AnomalyDetectorRegistry;
-import com.android.os.profiling.anomaly.core.BaseCondition;
-import com.android.os.profiling.anomaly.core.Rule;
 import com.android.os.profiling.anomaly.core.SignalCollectorRegistry;
 
 import java.util.Map;
@@ -38,55 +38,40 @@ import java.util.Set;
 public final class AnomalyDetectorRegistryImpl implements AnomalyDetectorRegistry {
     private static final String TAG = "AnomalyDetectorRegistry";
 
-    // TODO: This will need to be changed once the new API providing ConditionType instead of
-    // BaseCondition is available.
-    private final Map<Class<? extends BaseCondition>, AnomalyDetectorFactory<?>> mFactories;
+    private final Map<String, AnomalyDetectorFactory> mFactories;
 
     /**
      * Constructs a new AnomalyDetectorRegistryImpl.
      *
      * @param factories The set of all available detector factories to be included in the registry.
      */
-    public AnomalyDetectorRegistryImpl(Set<AnomalyDetector.AnomalyDetectorFactory<?>> factories) {
+    public AnomalyDetectorRegistryImpl(Set<AnomalyDetector.AnomalyDetectorFactory> factories) {
         mFactories = new ArrayMap<>(factories.size());
-        for (AnomalyDetector.AnomalyDetectorFactory<?> factory : factories) {
-            mFactories.put(factory.getConditionClass(), factory);
+        for (AnomalyDetector.AnomalyDetectorFactory factory : factories) {
+            mFactories.put(factory.getConditionType(), factory);
         }
     }
 
     /** {@inheritDoc} */
     @Override
     @Nullable
-    public AnomalyDetector.AnomalyDetectorFactory<?> getFactory(
-            Class<? extends BaseCondition> conditionClass) {
-        return mFactories.get(conditionClass);
+    public AnomalyDetector.AnomalyDetectorFactory getFactory(@ConditionType String conditionType) {
+        return mFactories.get(conditionType);
     }
 
     /** {@inheritDoc} */
     @Override
-    public AnomalyDetector<? extends BaseCondition> createDetectorForRule(
-            Rule<? extends BaseCondition> rule, SignalCollectorRegistry registry) {
-        BaseCondition condition = rule.baseCondition();
-        AnomalyDetector.AnomalyDetectorFactory<?> factory = getFactory(condition.getClass());
+    public AnomalyDetector createDetectorForRule(Rule rule, SignalCollectorRegistry registry) {
+        @ConditionType String conditionType = rule.getConditionType();
+        AnomalyDetector.AnomalyDetectorFactory factory = getFactory(conditionType);
 
         if (factory == null) {
-            Log.w(
-                    TAG,
-                    "No AnomalyDetectorFactory found for condition: "
-                            + condition.getClass().getSimpleName());
+            Log.w(TAG, "No AnomalyDetectorFactory found for condition: " + conditionType);
             return null;
         }
 
-        // Use a helper to resolve generics and ensure type safety.
-        return createAndSetRuleHelper(factory, rule, registry);
-    }
-
-    /** A type-safe helper to create the detector and set its rule. */
-    @SuppressWarnings("unchecked")
-    private <T extends BaseCondition> AnomalyDetector<T> createAndSetRuleHelper(
-            AnomalyDetectorFactory<T> factory, Rule<?> rule, SignalCollectorRegistry registry) {
-        AnomalyDetector<T> detector = factory.create(registry);
-        detector.setRule((Rule<T>) rule);
+        AnomalyDetector detector = factory.create(registry);
+        detector.setRule(rule);
         return detector;
     }
 }

@@ -16,15 +16,13 @@
 
 package com.android.os.profiling.anomaly.internal;
 
-import android.content.Context;
+import android.os.profiling.anomaly.Rule;
+import android.os.profiling.anomaly.Rule.AnomalyActionType;
 import android.util.SparseArray;
 
-import com.android.os.profiling.anomaly.core.AnomalyAction;
 import com.android.os.profiling.anomaly.core.AnomalyHandler;
 import com.android.os.profiling.anomaly.core.AnomalyHandlerRegistry;
-import com.android.os.profiling.anomaly.handler.KillAnomalyHandler;
 import com.android.os.profiling.anomaly.handler.LogAnomalyHandler;
-import com.android.os.profiling.anomaly.wrapper.ContextSystemServiceFetcher;
 
 /**
  * A registry for mapping action types to their handlers.
@@ -34,21 +32,18 @@ import com.android.os.profiling.anomaly.wrapper.ContextSystemServiceFetcher;
 public final class AnomalyHandlerRegistryImpl implements AnomalyHandlerRegistry {
     private final SparseArray<AnomalyHandler> mHandlers = new SparseArray<>();
 
-    public AnomalyHandlerRegistryImpl(Context context) {
-        register(AnomalyAction.ACTION_LOG, new LogAnomalyHandler());
-        register(
-                AnomalyAction.ACTION_KILL,
-                new KillAnomalyHandler(new ContextSystemServiceFetcher(context)));
+    public AnomalyHandlerRegistryImpl() {
+        register(Rule.ACTION_TYPE_LOG, new LogAnomalyHandler());
     }
 
     /** Registers a handler for a given action type. */
-    private void register(@AnomalyAction.Action int action, AnomalyHandler handler) {
+    private void register(@AnomalyActionType int action, AnomalyHandler handler) {
         mHandlers.put(action, handler);
     }
 
     /** Returns the handler for a given action type. */
     @Override
-    public AnomalyHandler getHandler(@AnomalyAction.Action int action) {
+    public AnomalyHandler getHandler(@AnomalyActionType int action) {
         return mHandlers.get(action);
     }
 }

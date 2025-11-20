@@ -17,6 +17,8 @@
 package com.android.os.profiling.anomaly.core;
 
 import android.annotation.Nullable;
+import android.os.profiling.anomaly.Rule;
+import android.os.profiling.anomaly.Rule.ConditionType;
 
 import java.util.Set;
 
@@ -26,10 +28,9 @@ import java.util.Set;
  * <p>Each detector is responsible for evaluating data against a single {@link Rule} and reporting
  * when an anomaly is found.
  *
- * @param <T> The type of {@link BaseCondition} this detector handles.
  * @hide
  */
-public abstract class AnomalyDetector<T extends BaseCondition> {
+public abstract class AnomalyDetector {
 
     /** Listener for when an anomaly is detected. */
     public interface OnAnomalyDetectedListener {
@@ -43,24 +44,21 @@ public abstract class AnomalyDetector<T extends BaseCondition> {
 
     private OnAnomalyDetectedListener mListener;
 
-    /**
-     * A factory for creating anomaly detectors and getting their metadata.
-     *
-     * @param <T> The type of {@link BaseCondition} this factory's detectors handle.
-     */
-    public interface AnomalyDetectorFactory<T extends BaseCondition> {
+    /** A factory for creating anomaly detectors and getting their metadata. */
+    public interface AnomalyDetectorFactory {
         /**
          * Creates a new instance of the anomaly detector.
          *
          * @param registry The registry used to look up signal collectors.
          */
-        AnomalyDetector<T> create(SignalCollectorRegistry registry);
+        AnomalyDetector create(SignalCollectorRegistry registry);
 
         /** Returns the set of signal collector types required by this anomaly detector. */
         Set<SignalTypeId> getRequiredSignalCollectorTypes();
 
-        /** Returns the condition class that this factory's detectors handle. */
-        Class<T> getConditionClass();
+        /** Returns the condition type that this factory's detectors handle. */
+        @ConditionType
+        String getConditionType();
     }
 
     /**
@@ -71,7 +69,7 @@ public abstract class AnomalyDetector<T extends BaseCondition> {
      *
      * @param rule The rule to apply, or {@code null} to clear the current rule.
      */
-    public abstract void setRule(Rule<T> rule);
+    public abstract void setRule(Rule rule);
 
     /**
      * Sets the listener to be notified when an anomaly is detected.
