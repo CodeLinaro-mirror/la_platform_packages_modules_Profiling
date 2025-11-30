@@ -12,5 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-rule android.os.profiling.anomaly.flags.** android.os.profiling.anomaly.mts.flags.@1
 rule com.google.protobuf.** com.android.os.profiling.anomaly.jarjar.protobuf.@0

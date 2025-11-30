@@ -40,10 +40,6 @@ java_sdk_library {
         ":framework-anomaly-detector-sources",
     ],
 
-    libs: [
-        "androidx.annotation_annotation",
-    ],
-
     aconfig_declarations: [
         "android.os.profiling.anomaly.flags-aconfig",
     ],
