@@ -37,6 +37,9 @@ java_sdk_library {
         "framework-annotations-lib",
         "framework-anomaly-detector.impl",
         "framework-configinfrastructure.stubs.module_lib",
+        // TODO: b/467021367 - Maybe add a build target to Profiling/framework/Android.bp that
+        // contains only more specific classes that are needeed by Pulse, e.g. a java_library
+        "framework-profiling.impl",
     ],
     static_libs: [
         "anomaly-detector-aconfig-flags-lib",
