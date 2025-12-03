@@ -17,6 +17,8 @@
 package android.os.profiling;
 
 import static android.os.Process.SYSTEM_UID;
+import static android.os.profiling.DeviceConfigHelper.updateBoolean;
+import static android.os.profiling.DeviceConfigHelper.updateInt;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
@@ -367,7 +369,8 @@ public class ProfilingService extends IProfilingService.Stub {
         synchronized (mLock) {
             mKeepResultInTempDir =
                     DeviceConfigHelper.getTestBoolean(
-                            DeviceConfigHelper.DISABLE_DELETE_TEMPORARY_RESULTS, false);
+                            DeviceConfigHelper.DISABLE_DELETE_TEMPORARY_RESULTS,
+                            DeviceConfigHelper.DEFAULT_DISABLE_DELETE_TEMPORARY_RESULTS);
 
             mPersistFrequencyMs =
                     new AtomicInteger(
@@ -399,9 +402,12 @@ public class ProfilingService extends IProfilingService.Stub {
                             // the value is unchanged when the specific config is not present in the
                             // update config.
                             mKeepResultInTempDir =
-                                    properties.getBoolean(
+                                    updateBoolean(
+                                            properties,
                                             DeviceConfigHelper.DISABLE_DELETE_TEMPORARY_RESULTS,
-                                            mKeepResultInTempDir);
+                                            mKeepResultInTempDir,
+                                            DeviceConfigHelper
+                                                    .DEFAULT_DISABLE_DELETE_TEMPORARY_RESULTS);
 
                             getRateLimiter().maybeUpdateRateLimiterDisabled(properties);
 
@@ -425,9 +431,12 @@ public class ProfilingService extends IProfilingService.Stub {
                             }
 
                             mSkipEnforceSystemCaller.set(
-                                    properties.getBoolean(
+                                    updateBoolean(
+                                            properties,
                                             DeviceConfigHelper.DISABLE_SYSTEM_CALLER_ENFORCEMENT,
-                                            mSkipEnforceSystemCaller.get()));
+                                            mSkipEnforceSystemCaller.get(),
+                                            DeviceConfigHelper
+                                                    .DEFAULT_DISABLE_SYSTEM_CALLER_ENFORCEMENT));
                         }
                     }
                 });
@@ -444,25 +453,33 @@ public class ProfilingService extends IProfilingService.Stub {
                             Configs.maybeUpdateConfigs(properties);
 
                             mPerfettoDestroyTimeoutMs =
-                                    properties.getInt(
+                                    updateInt(
+                                            properties,
                                             DeviceConfigHelper.PERFETTO_DESTROY_TIMEOUT_MS,
-                                            mPerfettoDestroyTimeoutMs);
+                                            mPerfettoDestroyTimeoutMs,
+                                            PERFETTO_DESTROY_DEFAULT_TIMEOUT_MS);
 
                             mMaxResultRedeliveryCount =
-                                    properties.getInt(
+                                    updateInt(
+                                            properties,
                                             DeviceConfigHelper.MAX_RESULT_REDELIVERY_COUNT,
-                                            mMaxResultRedeliveryCount);
+                                            mMaxResultRedeliveryCount,
+                                            DEFAULT_MAX_RESULT_REDELIVERY_COUNT);
 
                             mProfilingRecheckDelayMs =
-                                    properties.getInt(
+                                    updateInt(
+                                            properties,
                                             DeviceConfigHelper.PROFILING_RECHECK_DELAY_MS,
-                                            mProfilingRecheckDelayMs);
+                                            mProfilingRecheckDelayMs,
+                                            PROFILING_DEFAULT_RECHECK_DELAY_MS);
 
                             mClearTemporaryDirectoryFrequencyMs =
-                                    properties.getInt(
+                                    updateInt(
+                                            properties,
                                             DeviceConfigHelper
                                                     .CLEAR_TEMPORARY_DIRECTORY_FREQUENCY_MS,
-                                            mClearTemporaryDirectoryFrequencyMs);
+                                            mClearTemporaryDirectoryFrequencyMs,
+                                            CLEAR_TEMPORARY_DIRECTORY_FREQUENCY_DEFAULT_MS);
 
                             // No need to handle updates for
                             // {@link mClearTemporaryDirectoryBootDelayMs} as it's only used on
@@ -470,31 +487,41 @@ public class ProfilingService extends IProfilingService.Stub {
                             // be used again.
 
                             mRedactionCheckFrequencyMs =
-                                    properties.getInt(
+                                    updateInt(
+                                            properties,
                                             DeviceConfigHelper.REDACTION_CHECK_FREQUENCY_MS,
-                                            mRedactionCheckFrequencyMs);
+                                            mRedactionCheckFrequencyMs,
+                                            REDACTION_DEFAULT_CHECK_FREQUENCY_MS);
 
                             mRedactionMaxRuntimeAllottedMs =
-                                    properties.getInt(
+                                    updateInt(
+                                            properties,
                                             DeviceConfigHelper.REDACTION_MAX_RUNTIME_ALLOTTED_MS,
-                                            mRedactionMaxRuntimeAllottedMs);
+                                            mRedactionMaxRuntimeAllottedMs,
+                                            REDACTION_DEFAULT_MAX_RUNTIME_ALLOTTED_MS);
 
                             mPersistFrequencyMs.set(
-                                    properties.getInt(
+                                    updateInt(
+                                            properties,
                                             DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS,
-                                            mPersistFrequencyMs.get()));
+                                            mPersistFrequencyMs.get(),
+                                            PERSIST_TO_DISK_DEFAULT_FREQUENCY_MS));
 
                             mSystemTriggeredTraceMinPeriodSeconds.set(
-                                    DeviceConfigHelper.getInt(
+                                    updateInt(
+                                            properties,
                                             DeviceConfigHelper
                                                     .SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS,
-                                            mSystemTriggeredTraceMinPeriodSeconds.get()));
+                                            mSystemTriggeredTraceMinPeriodSeconds.get(),
+                                            DEFAULT_SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS));
 
                             mSystemTriggeredTraceMaxPeriodSeconds.set(
-                                    DeviceConfigHelper.getInt(
+                                    updateInt(
+                                            properties,
                                             DeviceConfigHelper
                                                     .SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS,
-                                            mSystemTriggeredTraceMaxPeriodSeconds.get()));
+                                            mSystemTriggeredTraceMaxPeriodSeconds.get(),
+                                            DEFAULT_SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS));
                         }
                     }
                 });

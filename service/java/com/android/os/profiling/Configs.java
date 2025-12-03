@@ -16,6 +16,10 @@
 
 package android.os.profiling;
 
+import static android.os.profiling.DeviceConfigHelper.updateBoolean;
+import static android.os.profiling.DeviceConfigHelper.updateInt;
+import static android.os.profiling.DeviceConfigHelper.updateLong;
+
 import android.annotation.Nullable;
 import android.os.Bundle;
 import android.os.ProfilingManager;
@@ -130,18 +134,33 @@ public final class Configs {
         DeviceConfig.Properties properties = DeviceConfigHelper.getAllSystemTraceProperties();
 
         sKillswitchSystemTrace =
-                properties.getBoolean(DeviceConfigHelper.KILLSWITCH_SYSTEM_TRACE, false);
+                properties.getBoolean(
+                        DeviceConfigHelper.KILLSWITCH_SYSTEM_TRACE,
+                        DeviceConfigHelper.DEFAULT_KILLSWITCH_SYSTEM_TRACE);
         sSystemTraceDurationMsDefault =
-                properties.getInt(DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_DEFAULT, 300000);
+                properties.getInt(
+                        DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_DEFAULT,
+                        DeviceConfigHelper.DEFAULT_SYSTEM_TRACE_DURATION_MS_DEFAULT);
         sSystemTraceDurationMsMin =
-                properties.getInt(DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_MIN, 1000);
+                properties.getInt(
+                        DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_MIN,
+                        DeviceConfigHelper.DEFAULT_SYSTEM_TRACE_DURATION_MS_MIN);
         sSystemTraceDurationMsMax =
-                properties.getInt(DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_MAX, 600000);
+                properties.getInt(
+                        DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_MAX,
+                        DeviceConfigHelper.DEFAULT_SYSTEM_TRACE_DURATION_MS_MAX);
         sSystemTraceSizeKbDefault =
-                properties.getInt(DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_DEFAULT, 32768);
-        sSystemTraceSizeKbMin = properties.getInt(DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_MIN, 64);
+                properties.getInt(
+                        DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_DEFAULT,
+                        DeviceConfigHelper.DEFAULT_SYSTEM_TRACE_SIZE_KB_DEFAULT);
+        sSystemTraceSizeKbMin =
+                properties.getInt(
+                        DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_MIN,
+                        DeviceConfigHelper.DEFAULT_SYSTEM_TRACE_SIZE_KB_MIN);
         sSystemTraceSizeKbMax =
-                properties.getInt(DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_MAX, 32768);
+                properties.getInt(
+                        DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_MAX,
+                        DeviceConfigHelper.DEFAULT_SYSTEM_TRACE_SIZE_KB_MAX);
 
         sSystemTraceConfigsInitialized = true;
     }
@@ -155,19 +174,30 @@ public final class Configs {
         DeviceConfig.Properties properties = DeviceConfigHelper.getAllJavaHeapDumpProperties();
 
         sKillswitchJavaHeapDump =
-                properties.getBoolean(DeviceConfigHelper.KILLSWITCH_JAVA_HEAP_DUMP, false);
+                properties.getBoolean(
+                        DeviceConfigHelper.KILLSWITCH_JAVA_HEAP_DUMP,
+                        DeviceConfigHelper.DEFAULT_KILLSWITCH_JAVA_HEAP_DUMP);
         sJavaHeapDumpDurationMsDefault =
-                properties.getInt(DeviceConfigHelper.JAVA_HEAP_DUMP_DURATION_MS_DEFAULT, 1000);
+                properties.getInt(
+                        DeviceConfigHelper.JAVA_HEAP_DUMP_DURATION_MS_DEFAULT,
+                        DeviceConfigHelper.DEFAULT_JAVA_HEAP_DUMP_DURATION_MS_DEFAULT);
         sJavaHeapDumpDataSourceStopTimeoutMsDefault =
                 properties.getInt(
                         DeviceConfigHelper.JAVA_HEAP_DUMP_DATA_SOURCE_STOP_TIMEOUT_MS_DEFAULT,
-                        100000);
+                        DeviceConfigHelper
+                                .DEFAULT_JAVA_HEAP_DUMP_DATA_SOURCE_STOP_TIMEOUT_MS_DEFAULT);
         sJavaHeapDumpSizeKbDefault =
-                properties.getInt(DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_DEFAULT, 256000);
+                properties.getInt(
+                        DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_DEFAULT,
+                        DeviceConfigHelper.DEFAULT_JAVA_HEAP_DUMP_SIZE_KB_DEFAULT);
         sJavaHeapDumpSizeKbMin =
-                properties.getInt(DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_MIN, 8192 /* 8 MB */);
+                properties.getInt(
+                        DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_MIN,
+                        DeviceConfigHelper.DEFAULT_JAVA_HEAP_DUMP_SIZE_KB_MIN);
         sJavaHeapDumpSizeKbMax =
-                properties.getInt(DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_MAX, 256000);
+                properties.getInt(
+                        DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_MAX,
+                        DeviceConfigHelper.DEFAULT_JAVA_HEAP_DUMP_SIZE_KB_MAX);
 
         sJavaHeapDumpConfigsInitialized = true;
     }
@@ -181,31 +211,53 @@ public final class Configs {
         DeviceConfig.Properties properties = DeviceConfigHelper.getAllHeapProfileProperties();
 
         sKillswitchHeapProfile =
-                properties.getBoolean(DeviceConfigHelper.KILLSWITCH_HEAP_PROFILE, false);
+                properties.getBoolean(
+                        DeviceConfigHelper.KILLSWITCH_HEAP_PROFILE,
+                        DeviceConfigHelper.DEFAULT_KILLSWITCH_HEAP_PROFILE);
         sHeapProfileTrackJavaAllocationsDefault =
                 properties.getBoolean(
-                        DeviceConfigHelper.HEAP_PROFILE_TRACK_JAVA_ALLOCATIONS_DEFAULT, false);
+                        DeviceConfigHelper.HEAP_PROFILE_TRACK_JAVA_ALLOCATIONS_DEFAULT,
+                        DeviceConfigHelper.DEFAULT_HEAP_PROFILE_TRACK_JAVA_ALLOCATIONS_DEFAULT);
         sHeapProfileFlushTimeoutMsDefault =
-                properties.getInt(DeviceConfigHelper.HEAP_PROFILE_FLUSH_TIMEOUT_MS_DEFAULT, 30000);
+                properties.getInt(
+                        DeviceConfigHelper.HEAP_PROFILE_FLUSH_TIMEOUT_MS_DEFAULT,
+                        DeviceConfigHelper.DEFAULT_HEAP_PROFILE_FLUSH_TIMEOUT_MS_DEFAULT);
         sHeapProfileDurationMsDefault =
-                properties.getInt(DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_DEFAULT, 120000);
+                properties.getInt(
+                        DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_DEFAULT,
+                        DeviceConfigHelper.DEFAULT_HEAP_PROFILE_DURATION_MS_DEFAULT);
         sHeapProfileDurationMsMin =
-                properties.getInt(DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_MIN, 1000);
+                properties.getInt(
+                        DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_MIN,
+                        DeviceConfigHelper.DEFAULT_HEAP_PROFILE_DURATION_MS_MIN);
         sHeapProfileDurationMsMax =
-                properties.getInt(DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_MAX, 300000);
+                properties.getInt(
+                        DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_MAX,
+                        DeviceConfigHelper.DEFAULT_HEAP_PROFILE_DURATION_MS_MAX);
         sHeapProfileSizeKbDefault =
-                properties.getInt(DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_DEFAULT, 65536);
-        sHeapProfileSizeKbMin = properties.getInt(DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MIN, 256);
+                properties.getInt(
+                        DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_DEFAULT,
+                        DeviceConfigHelper.DEFAULT_HEAP_PROFILE_SIZE_KB_DEFAULT);
+        sHeapProfileSizeKbMin =
+                properties.getInt(
+                        DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MIN,
+                        DeviceConfigHelper.DEFAULT_HEAP_PROFILE_SIZE_KB_MIN);
         sHeapProfileSizeKbMax =
-                properties.getInt(DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MAX, 65536);
+                properties.getInt(
+                        DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MAX,
+                        DeviceConfigHelper.DEFAULT_HEAP_PROFILE_SIZE_KB_MAX);
         sHeapProfileSamplingIntervalBytesDefault =
                 properties.getLong(
-                        DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_DEFAULT, 4096L);
+                        DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_DEFAULT,
+                        DeviceConfigHelper.DEFAULT_HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_DEFAULT);
         sHeapProfileSamplingIntervalBytesMin =
-                properties.getLong(DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MIN, 1L);
+                properties.getLong(
+                        DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MIN,
+                        DeviceConfigHelper.DEFAULT_HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MIN);
         sHeapProfileSamplingIntervalBytesMax =
                 properties.getLong(
-                        DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MAX, 65536L);
+                        DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MAX,
+                        DeviceConfigHelper.DEFAULT_HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MAX);
 
         sHeapProfileConfigsInitialized = true;
     }
@@ -219,29 +271,49 @@ public final class Configs {
         DeviceConfig.Properties properties = DeviceConfigHelper.getAllStackSamplingProperties();
 
         sKillswitchStackSampling =
-                properties.getBoolean(DeviceConfigHelper.KILLSWITCH_STACK_SAMPLING, false);
+                properties.getBoolean(
+                        DeviceConfigHelper.KILLSWITCH_STACK_SAMPLING,
+                        DeviceConfigHelper.DEFAULT_KILLSWITCH_STACK_SAMPLING);
         sStackSamplingFlushTimeoutMsDefault =
                 properties.getInt(
-                        DeviceConfigHelper.STACK_SAMPLING_FLUSH_TIMEOUT_MS_DEFAULT, 30000);
+                        DeviceConfigHelper.STACK_SAMPLING_FLUSH_TIMEOUT_MS_DEFAULT,
+                        DeviceConfigHelper.DEFAULT_STACK_SAMPLING_FLUSH_TIMEOUT_MS_DEFAULT);
         sStackSamplingDurationMsDefault =
-                properties.getInt(DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_DEFAULT, 60000);
+                properties.getInt(
+                        DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_DEFAULT,
+                        DeviceConfigHelper.DEFAULT_STACK_SAMPLING_DURATION_MS_DEFAULT);
         sStackSamplingDurationMsMin =
-                properties.getInt(DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_MIN, 1000);
+                properties.getInt(
+                        DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_MIN,
+                        DeviceConfigHelper.DEFAULT_STACK_SAMPLING_DURATION_MS_MIN);
         sStackSamplingDurationMsMax =
-                properties.getInt(DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_MAX, 300000);
+                properties.getInt(
+                        DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_MAX,
+                        DeviceConfigHelper.DEFAULT_STACK_SAMPLING_DURATION_MS_MAX);
         sStackSamplingSizeKbDefault =
                 properties.getInt(
-                        DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_DEFAULT, 65536);
+                        DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_DEFAULT,
+                        DeviceConfigHelper.DEFAULT_STACK_SAMPLING_SAMPLING_SIZE_KB_DEFAULT);
         sStackSamplingSizeKbMin =
-                properties.getInt(DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_MIN, 64);
+                properties.getInt(
+                        DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_MIN,
+                        DeviceConfigHelper.DEFAULT_STACK_SAMPLING_SAMPLING_SIZE_KB_MIN);
         sStackSamplingSizeKbMax =
-                properties.getInt(DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_MAX, 65536);
+                properties.getInt(
+                        DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_MAX,
+                        DeviceConfigHelper.DEFAULT_STACK_SAMPLING_SAMPLING_SIZE_KB_MAX);
         sStackSamplingSamplingFrequencyDefault =
-                properties.getInt(DeviceConfigHelper.STACK_SAMPLING_FREQUENCY_DEFAULT, 100);
+                properties.getInt(
+                        DeviceConfigHelper.STACK_SAMPLING_FREQUENCY_DEFAULT,
+                        DeviceConfigHelper.DEFAULT_STACK_SAMPLING_FREQUENCY_DEFAULT);
         sStackSamplingSamplingFrequencyMin =
-                properties.getInt(DeviceConfigHelper.STACK_SAMPLING_FREQUENCY_MIN, 1);
+                properties.getInt(
+                        DeviceConfigHelper.STACK_SAMPLING_FREQUENCY_MIN,
+                        DeviceConfigHelper.DEFAULT_STACK_SAMPLING_FREQUENCY_MIN);
         sStackSamplingSamplingFrequencyMax =
-                properties.getInt(DeviceConfigHelper.STACK_SAMPLING_FREQUENCY_MAX, 200);
+                properties.getInt(
+                        DeviceConfigHelper.STACK_SAMPLING_FREQUENCY_MAX,
+                        DeviceConfigHelper.DEFAULT_STACK_SAMPLING_FREQUENCY_MAX);
 
         sStackSamplingConfigsInitialized = true;
     }
@@ -258,148 +330,232 @@ public final class Configs {
 
         if (sSystemTraceConfigsInitialized) {
             sKillswitchSystemTrace =
-                    properties.getBoolean(
-                            DeviceConfigHelper.KILLSWITCH_SYSTEM_TRACE, sKillswitchSystemTrace);
+                    updateBoolean(
+                            properties,
+                            DeviceConfigHelper.KILLSWITCH_SYSTEM_TRACE,
+                            sKillswitchSystemTrace,
+                            DeviceConfigHelper.DEFAULT_KILLSWITCH_SYSTEM_TRACE);
             sSystemTraceDurationMsDefault =
-                    properties.getInt(
+                    updateInt(
+                            properties,
                             DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_DEFAULT,
-                            sSystemTraceDurationMsDefault);
+                            sSystemTraceDurationMsDefault,
+                            DeviceConfigHelper.DEFAULT_SYSTEM_TRACE_DURATION_MS_DEFAULT);
             sSystemTraceDurationMsMin =
-                    properties.getInt(
+                    updateInt(
+                            properties,
                             DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_MIN,
-                            sSystemTraceDurationMsMin);
+                            sSystemTraceDurationMsMin,
+                            DeviceConfigHelper.DEFAULT_SYSTEM_TRACE_DURATION_MS_MIN);
             sSystemTraceDurationMsMax =
-                    properties.getInt(
+                    updateInt(
+                            properties,
                             DeviceConfigHelper.SYSTEM_TRACE_DURATION_MS_MAX,
-                            sSystemTraceDurationMsMax);
+                            sSystemTraceDurationMsMax,
+                            DeviceConfigHelper.DEFAULT_SYSTEM_TRACE_DURATION_MS_MAX);
             sSystemTraceSizeKbDefault =
-                    properties.getInt(
+                    updateInt(
+                            properties,
                             DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_DEFAULT,
-                            sSystemTraceSizeKbDefault);
+                            sSystemTraceSizeKbDefault,
+                            DeviceConfigHelper.DEFAULT_SYSTEM_TRACE_SIZE_KB_DEFAULT);
             sSystemTraceSizeKbMin =
-                    properties.getInt(
-                            DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_MIN, sSystemTraceSizeKbMin);
+                    updateInt(
+                            properties,
+                            DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_MIN,
+                            sSystemTraceSizeKbMin,
+                            DeviceConfigHelper.DEFAULT_SYSTEM_TRACE_SIZE_KB_MIN);
             sSystemTraceSizeKbMax =
-                    properties.getInt(
-                            DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_MAX, sSystemTraceSizeKbMax);
+                    updateInt(
+                            properties,
+                            DeviceConfigHelper.SYSTEM_TRACE_SIZE_KB_MAX,
+                            sSystemTraceSizeKbMax,
+                            DeviceConfigHelper.DEFAULT_SYSTEM_TRACE_SIZE_KB_MAX);
         }
 
         if (sHeapProfileConfigsInitialized) {
             sKillswitchHeapProfile =
-                    properties.getBoolean(
-                            DeviceConfigHelper.KILLSWITCH_HEAP_PROFILE, sKillswitchHeapProfile);
+                    updateBoolean(
+                            properties,
+                            DeviceConfigHelper.KILLSWITCH_HEAP_PROFILE,
+                            sKillswitchHeapProfile,
+                            DeviceConfigHelper.DEFAULT_KILLSWITCH_HEAP_PROFILE);
             sHeapProfileTrackJavaAllocationsDefault =
-                    properties.getBoolean(
+                    updateBoolean(
+                            properties,
                             DeviceConfigHelper.HEAP_PROFILE_TRACK_JAVA_ALLOCATIONS_DEFAULT,
-                            sHeapProfileTrackJavaAllocationsDefault);
+                            sHeapProfileTrackJavaAllocationsDefault,
+                            DeviceConfigHelper.DEFAULT_HEAP_PROFILE_TRACK_JAVA_ALLOCATIONS_DEFAULT);
             sHeapProfileFlushTimeoutMsDefault =
-                    properties.getInt(
+                    updateInt(
+                            properties,
                             DeviceConfigHelper.HEAP_PROFILE_FLUSH_TIMEOUT_MS_DEFAULT,
-                            sHeapProfileFlushTimeoutMsDefault);
+                            sHeapProfileFlushTimeoutMsDefault,
+                            DeviceConfigHelper.DEFAULT_HEAP_PROFILE_FLUSH_TIMEOUT_MS_DEFAULT);
             sHeapProfileDurationMsDefault =
-                    properties.getInt(
+                    updateInt(
+                            properties,
                             DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_DEFAULT,
-                            sHeapProfileDurationMsDefault);
+                            sHeapProfileDurationMsDefault,
+                            DeviceConfigHelper.DEFAULT_HEAP_PROFILE_DURATION_MS_DEFAULT);
             sHeapProfileDurationMsMin =
-                    properties.getInt(
+                    updateInt(
+                            properties,
                             DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_MIN,
-                            sHeapProfileDurationMsMin);
+                            sHeapProfileDurationMsMin,
+                            DeviceConfigHelper.DEFAULT_HEAP_PROFILE_DURATION_MS_MIN);
             sHeapProfileDurationMsMax =
-                    properties.getInt(
+                    updateInt(
+                            properties,
                             DeviceConfigHelper.HEAP_PROFILE_DURATION_MS_MAX,
-                            sHeapProfileDurationMsMax);
+                            sHeapProfileDurationMsMax,
+                            DeviceConfigHelper.DEFAULT_HEAP_PROFILE_DURATION_MS_MAX);
             sHeapProfileSizeKbDefault =
-                    properties.getInt(
+                    updateInt(
+                            properties,
                             DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_DEFAULT,
-                            sHeapProfileSizeKbDefault);
+                            sHeapProfileSizeKbDefault,
+                            DeviceConfigHelper.DEFAULT_HEAP_PROFILE_SIZE_KB_DEFAULT);
             sHeapProfileSizeKbMin =
-                    properties.getInt(
-                            DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MIN, sHeapProfileSizeKbMin);
+                    updateInt(
+                            properties,
+                            DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MIN,
+                            sHeapProfileSizeKbMin,
+                            DeviceConfigHelper.DEFAULT_HEAP_PROFILE_SIZE_KB_MIN);
             sHeapProfileSizeKbMax =
-                    properties.getInt(
-                            DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MAX, sHeapProfileSizeKbMax);
+                    updateInt(
+                            properties,
+                            DeviceConfigHelper.HEAP_PROFILE_SIZE_KB_MAX,
+                            sHeapProfileSizeKbMax,
+                            DeviceConfigHelper.DEFAULT_HEAP_PROFILE_SIZE_KB_MAX);
             sHeapProfileSamplingIntervalBytesDefault =
-                    properties.getLong(
+                    updateLong(
+                            properties,
                             DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_DEFAULT,
-                            sHeapProfileSamplingIntervalBytesDefault);
+                            sHeapProfileSamplingIntervalBytesDefault,
+                            DeviceConfigHelper
+                                    .DEFAULT_HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_DEFAULT);
             sHeapProfileSamplingIntervalBytesMin =
-                    properties.getLong(
+                    updateLong(
+                            properties,
                             DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MIN,
-                            sHeapProfileSamplingIntervalBytesMin);
+                            sHeapProfileSamplingIntervalBytesMin,
+                            DeviceConfigHelper.DEFAULT_HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MIN);
             sHeapProfileSamplingIntervalBytesMax =
-                    properties.getLong(
+                    updateLong(
+                            properties,
                             DeviceConfigHelper.HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MAX,
-                            sHeapProfileSamplingIntervalBytesMax);
+                            sHeapProfileSamplingIntervalBytesMax,
+                            DeviceConfigHelper.DEFAULT_HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MAX);
         }
 
         if (sJavaHeapDumpConfigsInitialized) {
             sKillswitchJavaHeapDump =
-                    properties.getBoolean(
-                            DeviceConfigHelper.KILLSWITCH_JAVA_HEAP_DUMP, sKillswitchJavaHeapDump);
+                    updateBoolean(
+                            properties,
+                            DeviceConfigHelper.KILLSWITCH_JAVA_HEAP_DUMP,
+                            sKillswitchJavaHeapDump,
+                            DeviceConfigHelper.DEFAULT_KILLSWITCH_JAVA_HEAP_DUMP);
             sJavaHeapDumpDurationMsDefault =
-                    properties.getInt(
+                    updateInt(
+                            properties,
                             DeviceConfigHelper.JAVA_HEAP_DUMP_DURATION_MS_DEFAULT,
-                            sJavaHeapDumpDurationMsDefault);
+                            sJavaHeapDumpDurationMsDefault,
+                            DeviceConfigHelper.DEFAULT_JAVA_HEAP_DUMP_DURATION_MS_DEFAULT);
             sJavaHeapDumpDataSourceStopTimeoutMsDefault =
-                    properties.getInt(
+                    updateInt(
+                            properties,
                             DeviceConfigHelper.JAVA_HEAP_DUMP_DATA_SOURCE_STOP_TIMEOUT_MS_DEFAULT,
-                            sJavaHeapDumpDataSourceStopTimeoutMsDefault);
+                            sJavaHeapDumpDataSourceStopTimeoutMsDefault,
+                            DeviceConfigHelper
+                                    .DEFAULT_JAVA_HEAP_DUMP_DATA_SOURCE_STOP_TIMEOUT_MS_DEFAULT);
             sJavaHeapDumpSizeKbDefault =
-                    properties.getInt(
+                    updateInt(
+                            properties,
                             DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_DEFAULT,
-                            sJavaHeapDumpSizeKbDefault);
+                            sJavaHeapDumpSizeKbDefault,
+                            DeviceConfigHelper.DEFAULT_JAVA_HEAP_DUMP_SIZE_KB_DEFAULT);
             sJavaHeapDumpSizeKbMin =
-                    properties.getInt(
-                            DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_MIN, sJavaHeapDumpSizeKbMin);
+                    updateInt(
+                            properties,
+                            DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_MIN,
+                            sJavaHeapDumpSizeKbMin,
+                            DeviceConfigHelper.DEFAULT_JAVA_HEAP_DUMP_SIZE_KB_MIN);
             sJavaHeapDumpSizeKbMax =
-                    properties.getInt(
-                            DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_MAX, sJavaHeapDumpSizeKbMax);
+                    updateInt(
+                            properties,
+                            DeviceConfigHelper.JAVA_HEAP_DUMP_SIZE_KB_MAX,
+                            sJavaHeapDumpSizeKbMax,
+                            DeviceConfigHelper.DEFAULT_JAVA_HEAP_DUMP_SIZE_KB_MAX);
         }
 
         if (sStackSamplingConfigsInitialized) {
             sKillswitchStackSampling =
-                    properties.getBoolean(
-                            DeviceConfigHelper.KILLSWITCH_STACK_SAMPLING, sKillswitchStackSampling);
+                    updateBoolean(
+                            properties,
+                            DeviceConfigHelper.KILLSWITCH_STACK_SAMPLING,
+                            sKillswitchStackSampling,
+                            DeviceConfigHelper.DEFAULT_KILLSWITCH_STACK_SAMPLING);
             sStackSamplingFlushTimeoutMsDefault =
-                    properties.getInt(
+                    updateInt(
+                            properties,
                             DeviceConfigHelper.STACK_SAMPLING_FLUSH_TIMEOUT_MS_DEFAULT,
-                            sStackSamplingFlushTimeoutMsDefault);
+                            sStackSamplingFlushTimeoutMsDefault,
+                            DeviceConfigHelper.DEFAULT_STACK_SAMPLING_FLUSH_TIMEOUT_MS_DEFAULT);
             sStackSamplingDurationMsDefault =
-                    properties.getInt(
+                    updateInt(
+                            properties,
                             DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_DEFAULT,
-                            sStackSamplingDurationMsDefault);
+                            sStackSamplingDurationMsDefault,
+                            DeviceConfigHelper.DEFAULT_STACK_SAMPLING_DURATION_MS_DEFAULT);
             sStackSamplingDurationMsMin =
-                    properties.getInt(
+                    updateInt(
+                            properties,
                             DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_MIN,
-                            sStackSamplingDurationMsMin);
+                            sStackSamplingDurationMsMin,
+                            DeviceConfigHelper.DEFAULT_STACK_SAMPLING_DURATION_MS_MIN);
             sStackSamplingDurationMsMax =
-                    properties.getInt(
+                    updateInt(
+                            properties,
                             DeviceConfigHelper.STACK_SAMPLING_DURATION_MS_MAX,
-                            sStackSamplingDurationMsMax);
+                            sStackSamplingDurationMsMax,
+                            DeviceConfigHelper.DEFAULT_STACK_SAMPLING_DURATION_MS_MAX);
             sStackSamplingSizeKbDefault =
-                    properties.getInt(
+                    updateInt(
+                            properties,
                             DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_DEFAULT,
-                            sStackSamplingSizeKbDefault);
+                            sStackSamplingSizeKbDefault,
+                            DeviceConfigHelper.DEFAULT_STACK_SAMPLING_SAMPLING_SIZE_KB_DEFAULT);
             sStackSamplingSizeKbMin =
-                    properties.getInt(
+                    updateInt(
+                            properties,
                             DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_MIN,
-                            sStackSamplingSizeKbMin);
+                            sStackSamplingSizeKbMin,
+                            DeviceConfigHelper.DEFAULT_STACK_SAMPLING_SAMPLING_SIZE_KB_MIN);
             sStackSamplingSizeKbMax =
-                    properties.getInt(
+                    updateInt(
+                            properties,
                             DeviceConfigHelper.STACK_SAMPLING_SAMPLING_SIZE_KB_MAX,
-                            sStackSamplingSizeKbMax);
+                            sStackSamplingSizeKbMax,
+                            DeviceConfigHelper.DEFAULT_STACK_SAMPLING_SAMPLING_SIZE_KB_MAX);
             sStackSamplingSamplingFrequencyDefault =
-                    properties.getInt(
+                    updateInt(
+                            properties,
                             DeviceConfigHelper.STACK_SAMPLING_FREQUENCY_DEFAULT,
-                            sStackSamplingSamplingFrequencyDefault);
+                            sStackSamplingSamplingFrequencyDefault,
+                            DeviceConfigHelper.DEFAULT_STACK_SAMPLING_FREQUENCY_DEFAULT);
             sStackSamplingSamplingFrequencyMin =
-                    properties.getInt(
+                    updateInt(
+                            properties,
                             DeviceConfigHelper.STACK_SAMPLING_FREQUENCY_MIN,
-                            sStackSamplingSamplingFrequencyMin);
+                            sStackSamplingSamplingFrequencyMin,
+                            DeviceConfigHelper.DEFAULT_STACK_SAMPLING_FREQUENCY_MIN);
             sStackSamplingSamplingFrequencyMax =
-                    properties.getInt(
+                    updateInt(
+                            properties,
                             DeviceConfigHelper.STACK_SAMPLING_FREQUENCY_MAX,
-                            sStackSamplingSamplingFrequencyMax);
+                            sStackSamplingSamplingFrequencyMax,
+                            DeviceConfigHelper.DEFAULT_STACK_SAMPLING_FREQUENCY_MAX);
         }
     }
 
