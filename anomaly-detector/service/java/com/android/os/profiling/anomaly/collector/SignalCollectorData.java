@@ -23,9 +23,8 @@ import android.annotation.SystemApi;
 import android.os.profiling.anomaly.flags.Flags;
 
 /**
- * Marker interface for collected data signals.
- * Implementations of this interface will contain the actual data
- * collected by the platform and delivered to the anomaly detector.
+ * Marker interface for collected data signals. Implementations of this interface will contain the
+ * actual data collected by the platform and delivered to the anomaly detector.
  *
  * @hide
  */

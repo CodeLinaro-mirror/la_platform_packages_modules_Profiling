@@ -27,27 +27,26 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.util.Objects;
 
-/**
- * Encapsulates results of a single profiling request operation.
- */
+/** Encapsulates results of a single profiling request operation. */
 @FlaggedApi(Flags.FLAG_TELEMETRY_APIS)
 public final class ProfilingResult implements Parcelable {
 
     // LINT.IfChange(params)
-    /** @see #getErrorCode */
+    /** {@link #getErrorCode} */
     final @ErrorCode int mErrorCode;
 
-    /** @see #getResultFilePath */
+    /** {@link #getResultFilePath} */
     @Nullable final String mResultFilePath;
 
-    /** @see #getTag */
+    /** {@link #getTag} */
     @Nullable final String mTag;
 
-    /** @see #getErrorMessage */
+    /** {@link #getErrorMessage} */
     @Nullable final String mErrorMessage;
 
-    /** @see #getTriggerType */
+    /** {@link #getTriggerType} */
     final int mTriggerType;
+
     // LINT.ThenChange(:from_parcel)
 
     /** The request was executed and succeeded. */
@@ -78,22 +77,27 @@ public final class ProfilingResult implements Parcelable {
     public static final int ERROR_UNKNOWN = 8;
 
     /** @hide */
-    @IntDef(value = {
-            ERROR_NONE,
-            ERROR_FAILED_RATE_LIMIT_SYSTEM,
-            ERROR_FAILED_RATE_LIMIT_PROCESS,
-            ERROR_FAILED_PROFILING_IN_PROGRESS,
-            ERROR_FAILED_EXECUTING,
-            ERROR_FAILED_POST_PROCESSING,
-            ERROR_FAILED_NO_DISK_SPACE,
-            ERROR_UNKNOWN,
-    })
+    @IntDef(
+            value = {
+                ERROR_NONE,
+                ERROR_FAILED_RATE_LIMIT_SYSTEM,
+                ERROR_FAILED_RATE_LIMIT_PROCESS,
+                ERROR_FAILED_PROFILING_IN_PROGRESS,
+                ERROR_FAILED_EXECUTING,
+                ERROR_FAILED_POST_PROCESSING,
+                ERROR_FAILED_NO_DISK_SPACE,
+                ERROR_UNKNOWN,
+            })
     @Retention(RetentionPolicy.SOURCE)
     @interface ErrorCode {}
 
     /** @hide */
-    public ProfilingResult(@ErrorCode int errorCode, String resultFilePath, String tag,
-            String errorMessage, int triggerType) {
+    public ProfilingResult(
+            @ErrorCode int errorCode,
+            String resultFilePath,
+            String tag,
+            String errorMessage,
+            int triggerType) {
         mErrorCode = errorCode;
         mResultFilePath = resultFilePath;
         mTag = tag;
@@ -110,6 +114,7 @@ public final class ProfilingResult implements Parcelable {
         mErrorMessage = in.readString();
         mTriggerType = in.readInt();
     }
+
     // LINT.ThenChange(:to_parcel)
 
     // LINT.IfChange(to_parcel)
@@ -121,6 +126,7 @@ public final class ProfilingResult implements Parcelable {
         dest.writeString(mErrorMessage);
         dest.writeInt(mTriggerType);
     }
+
     // LINT.ThenChange(:equals)
 
     @Override
@@ -151,22 +157,18 @@ public final class ProfilingResult implements Parcelable {
     /**
      * The file path of the profiling result data.
      *
-     * Will be null if {@see #getErrorCode} returns code other than {@see #ERROR_NONE}.
+     * <p>Will be null if {@link #getErrorCode} returns code other than {@link #ERROR_NONE}.
      */
     public @Nullable String getResultFilePath() {
         return mResultFilePath;
     }
 
-    /**
-     * The tag defined by the caller at request time.
-     */
+    /** The tag defined by the caller at request time. */
     public @Nullable String getTag() {
         return mTag;
     }
 
-    /**
-     * Additional details about failures that occurred, if applicable.
-     */
+    /** Additional details about failures that occurred, if applicable. */
     public @Nullable String getErrorMessage() {
         return mErrorMessage;
     }

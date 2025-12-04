@@ -34,17 +34,15 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 /**
- *
  * Tests defined in this class are expected to test the implementation of the
  * ProfilingServiceManager APIs.
- *
  */
 @RunWith(AndroidJUnit4.class)
 public class ProfilingServiceManagerTest {
 
     /**
-     * Tests that the ProfilingServiceManager.getProfilingServiceRegisterer()
-     * and the ServiceRegisterer's .get and .getOrThrow methods return results.
+     * Tests that the ProfilingServiceManager.getProfilingServiceRegisterer() and the
+     * ServiceRegisterer's .get and .getOrThrow methods return results.
      */
     @Test
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS_FRAMEWORK_INITIALIZATION)
@@ -52,8 +50,7 @@ public class ProfilingServiceManagerTest {
         ProfilingServiceManager serviceManager =
                 ProfilingFrameworkInitializer.getProfilingServiceManager();
 
-        ServiceRegisterer serviceRegisterer =
-                serviceManager.getProfilingServiceRegisterer();
+        ServiceRegisterer serviceRegisterer = serviceManager.getProfilingServiceRegisterer();
         assertNotNull(serviceRegisterer);
 
         IBinder serviceBinder = serviceRegisterer.get();
@@ -64,8 +61,9 @@ public class ProfilingServiceManagerTest {
             serviceBinder = serviceRegisterer.getOrThrow();
             assertNotNull(serviceBinder);
         } catch (ServiceNotFoundException exception) {
-            fail("ServiceNotFoundException should not be thrown "
-                    + "since the service should exist in this test");
+            fail(
+                    "ServiceNotFoundException should not be thrown "
+                            + "since the service should exist in this test");
         }
     }
 
@@ -74,14 +72,12 @@ public class ProfilingServiceManagerTest {
     @RequiresFlagsEnabled(Flags.FLAG_TELEMETRY_APIS_FRAMEWORK_INITIALIZATION)
     public void testProfilingServiceNotFoundException() {
         String name = "test-profiling-service";
-        ServiceNotFoundException testException =
-                new ServiceNotFoundException(name);
+        ServiceNotFoundException testException = new ServiceNotFoundException(name);
 
         try {
             throw testException;
         } catch (ServiceNotFoundException exception) {
-            assertEquals("No service published for: " + name,
-                    exception.getMessage());
+            assertEquals("No service published for: " + name, exception.getMessage());
         }
     }
 }

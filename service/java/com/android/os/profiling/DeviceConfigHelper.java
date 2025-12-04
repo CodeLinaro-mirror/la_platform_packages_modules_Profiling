@@ -18,11 +18,10 @@ package android.os.profiling;
 
 import android.provider.DeviceConfig;
 
-/**
- * Wrapper class for retrieving device configuration values.
- */
+/** Wrapper class for retrieving device configuration values. */
 public final class DeviceConfigHelper {
 
+    // LINT.IfChange(configs)
     // Begin section: Testing specific constants
     // Values here can only be accessed with {@link #getTestBoolean}.
 
@@ -153,18 +152,19 @@ public final class DeviceConfigHelper {
             "redaction_max_runtime_allotted_ms";
 
     // End section: Server registered constants
+    // LINT.ThenChange(/tests/cts/src/android/profiling/cts/ProfilingTestUtils.java:reset_configs)
 
     /**
-     * Get int param for provided device config name from server side device config namespace
-     * or return default if unavailable for any reason.
+     * Get int param for provided device config name from server side device config namespace or
+     * return default if unavailable for any reason.
      */
     public static int getInt(String name, int defaultValue) {
         return DeviceConfig.getInt(NAMESPACE, name, defaultValue);
     }
 
     /**
-     * Get boolean param for provided device config name from test only device config namespace
-     * or return default if unavailable for any reason.
+     * Get boolean param for provided device config name from test only device config namespace or
+     * return default if unavailable for any reason.
      */
     public static boolean getTestBoolean(String name, boolean defaultValue) {
         return DeviceConfig.getBoolean(NAMESPACE_TESTING, name, defaultValue);
@@ -172,7 +172,8 @@ public final class DeviceConfigHelper {
 
     /** Get all properties related to Java Heap Dump configuration. */
     public static DeviceConfig.Properties getAllJavaHeapDumpProperties() {
-        return DeviceConfig.getProperties(NAMESPACE,
+        return DeviceConfig.getProperties(
+                NAMESPACE,
                 KILLSWITCH_JAVA_HEAP_DUMP,
                 JAVA_HEAP_DUMP_DURATION_MS_DEFAULT,
                 JAVA_HEAP_DUMP_DATA_SOURCE_STOP_TIMEOUT_MS_DEFAULT,
@@ -183,7 +184,8 @@ public final class DeviceConfigHelper {
 
     /** Get all properties related to Heap Profile configuration. */
     public static DeviceConfig.Properties getAllHeapProfileProperties() {
-        return DeviceConfig.getProperties(NAMESPACE,
+        return DeviceConfig.getProperties(
+                NAMESPACE,
                 KILLSWITCH_HEAP_PROFILE,
                 HEAP_PROFILE_TRACK_JAVA_ALLOCATIONS_DEFAULT,
                 HEAP_PROFILE_FLUSH_TIMEOUT_MS_DEFAULT,
@@ -200,7 +202,8 @@ public final class DeviceConfigHelper {
 
     /** Get all properties related to Stack Sampling configuration. */
     public static DeviceConfig.Properties getAllStackSamplingProperties() {
-        return DeviceConfig.getProperties(NAMESPACE,
+        return DeviceConfig.getProperties(
+                NAMESPACE,
                 KILLSWITCH_STACK_SAMPLING,
                 STACK_SAMPLING_FLUSH_TIMEOUT_MS_DEFAULT,
                 STACK_SAMPLING_DURATION_MS_DEFAULT,
@@ -216,7 +219,8 @@ public final class DeviceConfigHelper {
 
     /** Get all properties related to System Trace configuration. */
     public static DeviceConfig.Properties getAllSystemTraceProperties() {
-        return DeviceConfig.getProperties(NAMESPACE,
+        return DeviceConfig.getProperties(
+                NAMESPACE,
                 KILLSWITCH_SYSTEM_TRACE,
                 SYSTEM_TRACE_DURATION_MS_DEFAULT,
                 SYSTEM_TRACE_DURATION_MS_MIN,
@@ -228,7 +232,8 @@ public final class DeviceConfigHelper {
 
     /** Get all properties related to System Triggered System Trace configuration. */
     public static DeviceConfig.Properties getAllSystemTriggeredSystemTraceProperties() {
-        return DeviceConfig.getProperties(NAMESPACE,
+        return DeviceConfig.getProperties(
+                NAMESPACE,
                 SYSTEM_TRIGGERED_SYSTEM_TRACE_DURATION_MS,
                 SYSTEM_TRIGGERED_SYSTEM_TRACE_DISCARD_BUFFER_SIZE_KB,
                 SYSTEM_TRIGGERED_SYSTEM_TRACE_RING_BUFFER_SIZE_KB);
@@ -236,7 +241,8 @@ public final class DeviceConfigHelper {
 
     /** Get all properties related to rate limiter. */
     public static DeviceConfig.Properties getAllRateLimiterProperties() {
-        return DeviceConfig.getProperties(NAMESPACE,
+        return DeviceConfig.getProperties(
+                NAMESPACE,
                 MAX_COST_PROCESS_1_HOUR,
                 MAX_COST_SYSTEM_1_HOUR,
                 MAX_COST_PROCESS_24_HOUR,
@@ -250,5 +256,4 @@ public final class DeviceConfigHelper {
                 COST_SYSTEM_TRIGGERED_SYSTEM_TRACE,
                 PERSIST_TO_DISK_FREQUENCY_MS);
     }
-
 }

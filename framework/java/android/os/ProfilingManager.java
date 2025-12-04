@@ -41,87 +41,72 @@ import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 
 /**
- * <p>
  * This class allows the caller to:
+ *
  * <ul>
- * <li>Request profiling and listen for results. Profiling types supported are: system traces,
- *     java heap dumps, heap profiles, and stack traces.</li>
- * <li>Register triggers for the system to capture profiling on the apps behalf.</li>
+ *   <li>Request profiling and listen for results. Profiling types supported are: system traces,
+ *       java heap dumps, heap profiles, and stack traces.
+ *   <li>Register triggers for the system to capture profiling on the apps behalf.
  * </ul>
- * </p>
  *
- * <p>
- * The {@link #requestProfiling} API can be used to begin profiling. Profiling may be ended manually
- * using the CancellationSignal provided in the request, or as a result of a timeout. The timeout
- * may be either the system default or caller defined in the parameter bundle for select types.
- * </p>
+ * <p>The {@link #requestProfiling} API can be used to begin profiling. Profiling may be ended
+ * manually using the CancellationSignal provided in the request, or as a result of a timeout. The
+ * timeout may be either the system default or caller defined in the parameter bundle for select
+ * types.
  *
- * <p>
- * The profiling results are delivered to the requesting app's data directory and a pointer to the
- * file will be received using the app provided listeners.
- * </p>
+ * <p>The profiling results are delivered to the requesting app's data directory and a pointer to
+ * the file will be received using the app provided listeners.
  *
- * <p>
- * Apps can provide listeners in one or both of two ways:
+ * <p>Apps can provide listeners in one or both of two ways:
+ *
  * <ul>
- * <li>A request-specific listener included with the request. This will trigger only with a result
- *     from the request it was provided with.</li>
- * <li>A global listener provided by {@link #registerForAllProfilingResults}. This will be triggered
- *     for all results belonging to your app. This listener is the only way to receive results from
- *     system triggered profiling instances set up with {@link #addProfilingTriggers}.</li>
+ *   <li>A request-specific listener included with the request. This will trigger only with a result
+ *       from the request it was provided with.
+ *   <li>A global listener provided by {@link #registerForAllProfilingResults}. This will be
+ *       triggered for all results belonging to your app. This listener is the only way to receive
+ *       results from system triggered profiling instances set up with {@link
+ *       #addProfilingTriggers}.
  * </ul>
- * </p>
  *
- * <p>
- * Requests are rate limited and not guaranteed to be filled. Rate limiting can be disabled for
- * local testing of {@link #requestProfiling} using the shell command
- * {@code device_config put profiling_testing rate_limiter.disabled true}
- * </p>
+ * <p>Requests are rate limited and not guaranteed to be filled. Rate limiting can be disabled for
+ * local testing of {@link #requestProfiling} using the shell command {@code device_config put
+ * profiling_testing rate_limiter.disabled true}
  *
- * <p>
- * For local testing, profiling results can be accessed more easily by enabling debug mode. This
+ * <p>For local testing, profiling results can be accessed more easily by enabling debug mode. This
  * will retain output files in a temporary system directory. The locations of the retained files
  * will be available in logcat. The behavior and command varies by version:
- * <ul>
- * <li>For Android versions 16 and above, debug mode will retain both unredacted (where applicable)
- * and redacted results in the temporary directory. It can be enabled with the shell command
- * {@code device_config put profiling_testing delete_temporary_results.disabled true} and disabled
- * by setting that same value back to false. Retained results are accessible on all build types.
- * </li>
- * <li>For Android version 15, debug mode will retain only the unredacted result (where applicable)
- * in the temporary directory. It can be enabled with the shell command
- * {@code device_config put profiling_testing delete_unredacted_trace.disabled true} and disabled
- * by setting that same value back to false. The retained unredacted file can only be accessed on
- * builds with root access. To access the redacted output file on an unrooted device, apps can copy
- * the file from {@code /pkg/files/profiling/file.type} to {@code /pkg/cache/file.type}.
- * </li>
- * </ul>
- * </p>
  *
- * <p>
- * In order to test profiling triggers, enable testing mode for your app with the shell command
+ * <ul>
+ *   <li>For Android versions 16 and above, debug mode will retain both unredacted (where
+ *       applicable) and redacted results in the temporary directory. It can be enabled with the
+ *       shell command {@code device_config put profiling_testing delete_temporary_results.disabled
+ *       true} and disabled by setting that same value back to false. Retained results are
+ *       accessible on all build types.
+ *   <li>For Android version 15, debug mode will retain only the unredacted result (where
+ *       applicable) in the temporary directory. It can be enabled with the shell command {@code
+ *       device_config put profiling_testing delete_unredacted_trace.disabled true} and disabled by
+ *       setting that same value back to false. The retained unredacted file can only be accessed on
+ *       builds with root access. To access the redacted output file on an unrooted device, apps can
+ *       copy the file from {@code /pkg/files/profiling/file.type} to {@code /pkg/cache/file.type}.
+ * </ul>
+ *
+ * <p>In order to test profiling triggers, enable testing mode for your app with the shell command
  * {@code device_config put profiling_testing system_triggered_profiling.testing_package_name
  * com.your.app} which will:
+ *
  * <ul>
- * <li>Ensure that a background trace is running.</li>
- * <li>Allow all triggers for the provided package name to pass the system level rate limiter.
- *     This mode will continue until manually stopped with the shell command
- *     {@code device_config delete profiling_testing
- *     system_triggered_profiling.testing_package_name}.
- *     </li>
+ *   <li>Ensure that a background trace is running.
+ *   <li>Allow all triggers for the provided package name to pass the system level rate limiter.
+ *       This mode will continue until manually stopped with the shell command {@code device_config
+ *       delete profiling_testing system_triggered_profiling.testing_package_name}.
  * </ul>
- * </p>
  *
- * <p>
- * Results are redacted and contain specific information about the requesting process only.
- * </p>
+ * <p>Results are redacted and contain specific information about the requesting process only.
  *
- * <p class="note">
- *   Note: Check out <a href=
- *   "https://developer.android.com/topic/performance/tracing/profiling-manager/overview">Capture
- *   Real User Data Using ProfilingManager</a> for a detailed guide on using this API, covering
- *   capturing Profiling all they way through interpreting the results.
- * </p>
+ * <p class="note">Note: Check out <a href=
+ * "https://developer.android.com/topic/performance/tracing/profiling-manager/overview">Capture Real
+ * User Data Using ProfilingManager</a> for a detailed guide on using this API, covering capturing
+ * Profiling all they way through interpreting the results.
  */
 @FlaggedApi(Flags.FLAG_TELEMETRY_APIS)
 public final class ProfilingManager {
@@ -145,32 +130,37 @@ public final class ProfilingManager {
 
     /* Begin not-public API defined keys/values. */
     /**
-     * Can only be used with profiling type heap profile, stack sampling, or system trace.
-     * Value of type int.
+     * Can only be used with profiling type heap profile, stack sampling, or system trace. Value of
+     * type int.
+     *
      * @hide
      */
     public static final String KEY_DURATION_MS = "KEY_DURATION_MS";
 
     /**
      * Can only be used with profiling type heap profile. Value of type long.
+     *
      * @hide
      */
     public static final String KEY_SAMPLING_INTERVAL_BYTES = "KEY_SAMPLING_INTERVAL_BYTES";
 
     /**
      * Can only be used with profiling type heap profile. Value of type boolean.
+     *
      * @hide
      */
     public static final String KEY_TRACK_JAVA_ALLOCATIONS = "KEY_TRACK_JAVA_ALLOCATIONS";
 
     /**
      * Can only be used with profiling type stack sampling. Value of type int.
+     *
      * @hide
      */
     public static final String KEY_FREQUENCY_HZ = "KEY_FREQUENCY_HZ";
 
     /**
      * Can be used with all profiling types. Value of type int.
+     *
      * @hide
      */
     public static final String KEY_SIZE_KB = "KEY_SIZE_KB";
@@ -204,13 +194,13 @@ public final class ProfilingManager {
      * @hide *
      */
     @IntDef(
-        prefix = {"PROFILING_TYPE_"},
-        value = {
-            PROFILING_TYPE_JAVA_HEAP_DUMP,
-            PROFILING_TYPE_HEAP_PROFILE,
-            PROFILING_TYPE_STACK_SAMPLING,
-            PROFILING_TYPE_SYSTEM_TRACE,
-        })
+            prefix = {"PROFILING_TYPE_"},
+            value = {
+                PROFILING_TYPE_JAVA_HEAP_DUMP,
+                PROFILING_TYPE_HEAP_PROFILE,
+                PROFILING_TYPE_STACK_SAMPLING,
+                PROFILING_TYPE_SYSTEM_TRACE,
+            })
     @Retention(RetentionPolicy.SOURCE)
     public @interface ProfilingType {}
 
@@ -239,61 +229,47 @@ public final class ProfilingManager {
     /**
      * Request system profiling.
      *
-     * <p class="note">
-     *   Note: use of this API directly is not recommended for most use cases.
-     *   Consider using the
-     *   <a href="https://developer.android.com/reference/androidx/core/os/Profiling">higher level
-     *   wrappers provided by AndroidX</a> that will construct the request correctly, supporting
-     *   available options with simplified request parameters.
-     * </p>
+     * <p class="note">Note: use of this API directly is not recommended for most use cases.
+     * Consider using the <a
+     * href="https://developer.android.com/reference/androidx/core/os/Profiling">higher level
+     * wrappers provided by AndroidX</a> that will construct the request correctly, supporting
+     * available options with simplified request parameters.
      *
-     * <p>
-     *   Both a listener and an executor must be set at the time of the request for the request to
-     *   be considered for fulfillment. Listener/executor pairs can be set in this method, with
-     *   {@link #registerForAllProfilingResults}, or both. The listener and executor must be set
-     *   together, in the same call. If no listener and executor combination is set, the request
-     *   will be discarded and no callback will be received.
-     * </p>
+     * <p>Both a listener and an executor must be set at the time of the request for the request to
+     * be considered for fulfillment. Listener/executor pairs can be set in this method, with {@link
+     * #registerForAllProfilingResults}, or both. The listener and executor must be set together, in
+     * the same call. If no listener and executor combination is set, the request will be discarded
+     * and no callback will be received.
      *
-     * <p>
-     *   Requests will be rate limited and are not guaranteed to be filled.
-     * </p>
+     * <p>Requests will be rate limited and are not guaranteed to be filled.
      *
-     * <p>
-     *   There might be a delay before profiling begins.
-     *   For continuous profiling types (system tracing, stack sampling, and heap profiling),
-     *   we recommend starting the collection early and stopping it with {@code cancellationSignal}
-     *   immediately after the area of interest to ensure that the section you want profiled is
-     *   captured.
-     *   For heap dumps, we recommend testing locally to ensure that the heap dump is collected at
-     *   the proper time.
-     * </p>
+     * <p>There might be a delay before profiling begins. For continuous profiling types (system
+     * tracing, stack sampling, and heap profiling), we recommend starting the collection early and
+     * stopping it with {@code cancellationSignal} immediately after the area of interest to ensure
+     * that the section you want profiled is captured. For heap dumps, we recommend testing locally
+     * to ensure that the heap dump is collected at the proper time.
      *
      * @param profilingType Type of profiling to collect.
      * @param parameters Bundle of request related parameters. If the bundle contains any
-     *                  unrecognized parameters, the request will be fail with
-     *                  {@link android.os.ProfilingResult#ERROR_FAILED_INVALID_REQUEST}. If the
-     *                  values for the parameters are out of supported range, the closest possible
-     *                  in range value will be chosen.
-     *                  Use of <a href=
-     *                  "https://developer.android.com/reference/androidx/core/os/Profiling">
-     *                  androidx wrappers</a> is recommended over generating this directly.
-     * @param tag Caller defined data to help identify the output.
-     *                  The first 20 alphanumeric characters, plus dashes, will be lowercased
-     *                  and included in the output filename.
-     * @param cancellationSignal for caller requested cancellation.
-     *                  Results will be returned if available.
-     *                  If this is null, the requesting app will not be able to stop the collection.
-     *                  The collection will stop after timing out with either the provided
-     *                  configurations or with system defaults
-     * @param executor  The executor to call back with.
-     *                  Will only be used for the listener provided in this method.
-     *                  If this is null, and no global executor and listener combinations are
-     *                  registered at the time of the request, the request will be dropped.
-     * @param listener  Listener to be triggered with result. Any global listeners registered via
-     *                  {@link #registerForAllProfilingResults} will also be triggered. If this is
-     *                  null, and no global listener and executor combinations are registered at
-     *                  the time of the request, the request will be dropped.
+     *     unrecognized parameters, the request will be fail with {@link
+     *     android.os.ProfilingResult#ERROR_FAILED_INVALID_REQUEST}. If the values for the
+     *     parameters are out of supported range, the closest possible in range value will be
+     *     chosen. Use of <a href=
+     *     "https://developer.android.com/reference/androidx/core/os/Profiling"> androidx
+     *     wrappers</a> is recommended over generating this directly.
+     * @param tag Caller defined data to help identify the output. The first 20 alphanumeric
+     *     characters, plus dashes, will be lowercased and included in the output filename.
+     * @param cancellationSignal for caller requested cancellation. Results will be returned if
+     *     available. If this is null, the requesting app will not be able to stop the collection.
+     *     The collection will stop after timing out with either the provided configurations or with
+     *     system defaults
+     * @param executor The executor to call back with. Will only be used for the listener provided
+     *     in this method. If this is null, and no global executor and listener combinations are
+     *     registered at the time of the request, the request will be dropped.
+     * @param listener Listener to be triggered with result. Any global listeners registered via
+     *     {@link #registerForAllProfilingResults} will also be triggered. If this is null, and no
+     *     global listener and executor combinations are registered at the time of the request, the
+     *     request will be dropped.
      */
     public void requestProfiling(
             @ProfilingType int profilingType,
@@ -318,52 +294,74 @@ public final class ProfilingManager {
 
                 final IProfilingService service = getOrCreateIProfilingServiceLocked(false);
                 if (service == null) {
-                    executor.execute(() -> listener.accept(
-                            new ProfilingResult(ProfilingResult.ERROR_UNKNOWN, null, tag,
-                                "ProfilingService is not available",
-                                Flags.systemTriggeredProfilingNew()
-                                        ? ProfilingTrigger.TRIGGER_TYPE_NONE : 0)));
+                    executor.execute(
+                            () ->
+                                    listener.accept(
+                                            new ProfilingResult(
+                                                    ProfilingResult.ERROR_UNKNOWN,
+                                                    null,
+                                                    tag,
+                                                    "ProfilingService is not available",
+                                                    Flags.systemTriggeredProfilingNew()
+                                                            ? ProfilingTrigger.TRIGGER_TYPE_NONE
+                                                            : 0)));
                     if (DEBUG) Log.d(TAG, "ProfilingService is not available");
                     return;
                 }
 
                 String packageName = mContext.getPackageName();
                 if (packageName == null) {
-                    executor.execute(() -> listener.accept(
-                            new ProfilingResult(ProfilingResult.ERROR_UNKNOWN, null, tag,
-                                    "Failed to resolve package name",
-                                    Flags.systemTriggeredProfilingNew()
-                                            ? ProfilingTrigger.TRIGGER_TYPE_NONE : 0)));
+                    executor.execute(
+                            () ->
+                                    listener.accept(
+                                            new ProfilingResult(
+                                                    ProfilingResult.ERROR_UNKNOWN,
+                                                    null,
+                                                    tag,
+                                                    "Failed to resolve package name",
+                                                    Flags.systemTriggeredProfilingNew()
+                                                            ? ProfilingTrigger.TRIGGER_TYPE_NONE
+                                                            : 0)));
                     if (DEBUG) Log.d(TAG, "Failed to resolve package name.");
                     return;
                 }
 
                 // For key, use most and least significant bits so we can create an identical UUID
                 // after passing over binder.
-                service.requestProfiling(profilingType, parameters, tag,
-                        key.getMostSignificantBits(), key.getLeastSignificantBits(),
+                service.requestProfiling(
+                        profilingType,
+                        parameters,
+                        tag,
+                        key.getMostSignificantBits(),
+                        key.getLeastSignificantBits(),
                         packageName);
                 if (cancellationSignal != null) {
                     cancellationSignal.setOnCancelListener(
                             () -> {
                                 synchronized (mLock) {
                                     try {
-                                        service.requestCancel(key.getMostSignificantBits(),
+                                        service.requestCancel(
+                                                key.getMostSignificantBits(),
                                                 key.getLeastSignificantBits());
                                     } catch (RemoteException e) {
                                         // Ignore, request in flight already and we can't stop it.
                                     }
                                 }
-                            }
-                    );
+                            });
                 }
             } catch (RemoteException e) {
                 if (DEBUG) Log.d(TAG, "Binder exception processing request", e);
-                executor.execute(() -> listener.accept(
-                        new ProfilingResult(ProfilingResult.ERROR_UNKNOWN, null, tag,
-                                "Binder exception processing request",
-                                Flags.systemTriggeredProfilingNew()
-                                        ? ProfilingTrigger.TRIGGER_TYPE_NONE : 0)));
+                executor.execute(
+                        () ->
+                                listener.accept(
+                                        new ProfilingResult(
+                                                ProfilingResult.ERROR_UNKNOWN,
+                                                null,
+                                                tag,
+                                                "Binder exception processing request",
+                                                Flags.systemTriggeredProfilingNew()
+                                                        ? ProfilingTrigger.TRIGGER_TYPE_NONE
+                                                        : 0)));
                 throw new RuntimeException("Unable to request profiling.");
             }
         }
@@ -373,16 +371,15 @@ public final class ProfilingManager {
      * Register a listener to be called for all profiling results for this uid. Listeners set here
      * will be called in addition to any provided with the request.
      *
-     * <p class="note"> Note: If a callback attempt fails (for example, because your app is killed
+     * <p class="note">Note: If a callback attempt fails (for example, because your app is killed
      * while a trace is in progress) re-delivery may be attempted using a listener added via this
-     * method. </p>
+     * method.
      *
      * @param executor The executor to call back with.
      * @param listener Listener to be triggered with result.
      */
     public void registerForAllProfilingResults(
-            @NonNull Executor executor,
-            @NonNull Consumer<ProfilingResult> listener) {
+            @NonNull Executor executor, @NonNull Consumer<ProfilingResult> listener) {
         synchronized (mLock) {
             // Only notify {@link mProfilingService} of a general listener being added if it already
             // exists as registering it also handles the notifying.
@@ -391,11 +388,17 @@ public final class ProfilingManager {
             if (getOrCreateIProfilingServiceLocked(true) == null) {
                 // If the binder object was not successfully registered then this listener will
                 // not ever be triggered.
-                executor.execute(() -> listener.accept(new ProfilingResult(
-                        ProfilingResult.ERROR_UNKNOWN, null, null,
-                        "Binder exception processing request",
-                        Flags.systemTriggeredProfilingNew()
-                                ? ProfilingTrigger.TRIGGER_TYPE_NONE : 0)));
+                executor.execute(
+                        () ->
+                                listener.accept(
+                                        new ProfilingResult(
+                                                ProfilingResult.ERROR_UNKNOWN,
+                                                null,
+                                                null,
+                                                "Binder exception processing request",
+                                                Flags.systemTriggeredProfilingNew()
+                                                        ? ProfilingTrigger.TRIGGER_TYPE_NONE
+                                                        : 0)));
                 return;
             }
             mCallbacks.add(new ProfilingRequestCallbackWrapper(executor, listener, null));
@@ -408,8 +411,11 @@ public final class ProfilingManager {
                 } catch (RemoteException e) {
                     // Do nothing. Binder callback is already registered, but service won't know
                     // there is a general listener so queued callbacks won't occur.
-                    Log.d(TAG, "Exception notifying service of general callback,"
-                            + " queued callbacks will not occur.", e);
+                    Log.d(
+                            TAG,
+                            "Exception notifying service of general callback,"
+                                    + " queued callbacks will not occur.",
+                            e);
                 }
             }
         }
@@ -420,11 +426,10 @@ public final class ProfilingManager {
      * provided, all listeners for this process that were not submitted with a profiling request
      * will be removed.
      *
-     * @param listener Listener to unregister and no longer be triggered with the results.
-     *                 Null to remove all global listeners for this uid.
+     * @param listener Listener to unregister and no longer be triggered with the results. Null to
+     *     remove all global listeners for this uid.
      */
-    public void unregisterForAllProfilingResults(
-            @Nullable Consumer<ProfilingResult> listener) {
+    public void unregisterForAllProfilingResults(@Nullable Consumer<ProfilingResult> listener) {
         synchronized (mLock) {
             if (mCallbacks.isEmpty()) {
                 // No callbacks, nothing to remove.
@@ -457,40 +462,30 @@ public final class ProfilingManager {
     }
 
     /**
-     * <p>
      * Register the provided list of triggers for this process.
-     * </p>
      *
-     * <p>
-     * Profiling triggers are system events that an app can register interest in, and then receive
-     * profiling data when any of the registered triggers occur. There is no guarantee that these
-     * triggers will be filled. Results, if available, will be delivered only to a global listener
-     * added using {@link #registerForAllProfilingResults}.
-     *</p>
+     * <p>Profiling triggers are system events that an app can register interest in, and then
+     * receive profiling data when any of the registered triggers occur. There is no guarantee that
+     * these triggers will be filled. Results, if available, will be delivered only to a global
+     * listener added using {@link #registerForAllProfilingResults}.
      *
-     * <p>
-     * Only one of each trigger type can be added at a time.
+     * <p>Only one of each trigger type can be added at a time.
+     *
      * <ul>
-     * <li>If the provided list contains a trigger type that is already registered then the new one
-     *     will replace the existing one.</li>
-     * <li>If the provided list contains more than one trigger object for a trigger type then only
-     *     one will be kept.</li>
+     *   <li>If the provided list contains a trigger type that is already registered then the new
+     *       one will replace the existing one.
+     *   <li>If the provided list contains more than one trigger object for a trigger type then only
+     *       one will be kept.
      * </ul>
-     * </p>
      *
-     * <p>
-     * The filename of the file placed in app storage will contain the trigger type for which it was
-     * collected in the form: "trigger-type-x", where x is equal to the API value of the trigger
-     * type, found in {@link ProfilingTrigger}.
-     * Example filename for {@link ProfilingTrigger#TRIGGER_TYPE_ANR}:
-     *     profile_trigger-type-2_2025-01-23-04-56-12.perfetto-trace
-     * </p>
+     * <p>The filename of the file placed in app storage will contain the trigger type for which it
+     * was collected in the form: "trigger-type-x", where x is equal to the API value of the trigger
+     * type, found in {@link ProfilingTrigger}. Example filename for {@link
+     * ProfilingTrigger#TRIGGER_TYPE_ANR}: profile_trigger-type-2_2025-01-23-04-56-12.perfetto-trace
      *
-     * <p>
-     * Apps can define their own per-trigger rate limiting to help ensure they receive results
-     * aligned with their needs. More details can be found at
-     * {@link ProfilingTrigger.Builder#setRateLimitingPeriodHours}.
-     * </p>
+     * <p>Apps can define their own per-trigger rate limiting to help ensure they receive results
+     * aligned with their needs. More details can be found at {@link
+     * ProfilingTrigger.Builder#setRateLimitingPeriodHours}.
      */
     @FlaggedApi(Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void addProfilingTriggers(@NonNull List<ProfilingTrigger> triggers) {
@@ -525,20 +520,14 @@ public final class ProfilingManager {
     }
 
     /**
-     * <p>
      * Register this process for all triggers.
-     * </p>
      *
-     * <p>
-     * Registering for all triggers is in addition to any specific triggers registered. Any triggers
-     * already registered when this is called, along with their parameters, will not be impacted.
-     * Any triggers specifically registered after calling this, along with any parameters set on
-     * them, will take precedence over what is set here.
-     * </p>
+     * <p>Registering for all triggers is in addition to any specific triggers registered. Any
+     * triggers already registered when this is called, along with their parameters, will not be
+     * impacted. Any triggers specifically registered after calling this, along with any parameters
+     * set on them, will take precedence over what is set here.
      *
-     * <p>
-     * See {@link #addProfilingTriggers} for more on triggers.
-     * </p>
+     * <p>See {@link #addProfilingTriggers} for more on triggers.
      */
     @FlaggedApi(Flags.FLAG_PROFILING_25Q4)
     public void addAllProfilingTriggers() {
@@ -642,15 +631,11 @@ public final class ProfilingManager {
     }
 
     /**
-     * <p>
      * Request a snapshot of a background trace, if one is running.
-     * </p>
      *
-     * <p>
-     * This request sends a {@link ProfilingTrigger#TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE} trigger.
-     * Apps must register interest in this trigger in order to receive the result using either
-     * {@link #addProfilingTriggers} or {@link #addAllProfilingTriggers()}.
-     * </p>
+     * <p>This request sends a {@link ProfilingTrigger#TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE}
+     * trigger. Apps must register interest in this trigger in order to receive the result using
+     * either {@link #addProfilingTriggers} or {@link #addAllProfilingTriggers()}.
      */
     @FlaggedApi(Flags.FLAG_PROFILING_25Q4)
     public void requestRunningSystemTrace(@Nullable String tag) {
@@ -659,8 +644,10 @@ public final class ProfilingManager {
             if (service == null) {
                 // If we can't access service then we can't do anything. Return.
                 if (DEBUG) {
-                    Log.d(TAG, "ProfilingService is not available, requestRunningSystemTrace "
-                            + "ignored.");
+                    Log.d(
+                            TAG,
+                            "ProfilingService is not available, requestRunningSystemTrace "
+                                    + "ignored.");
                 }
                 return;
             }
@@ -672,8 +659,12 @@ public final class ProfilingManager {
             }
 
             try {
-                service.processTrigger(Binder.getCallingUid(), packageName,
-                        ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE, tag);
+                service.processTrigger(
+                        Binder.getCallingUid(),
+                        packageName,
+                        ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE,
+                        tag,
+                        null);
             } catch (RemoteException e) {
                 if (DEBUG) Log.d(TAG, "Binder exception processing request", e);
                 e.rethrowAsRuntimeException();
@@ -693,25 +684,33 @@ public final class ProfilingManager {
             return mProfilingService;
         }
 
-        mProfilingService = IProfilingService.Stub.asInterface(
-                ProfilingFrameworkInitializer.getProfilingServiceManager()
-                    .getProfilingServiceRegisterer().get());
+        mProfilingService =
+                IProfilingService.Stub.asInterface(
+                        ProfilingFrameworkInitializer.getProfilingServiceManager()
+                                .getProfilingServiceRegisterer()
+                                .get());
         if (mProfilingService == null) {
             // Service is not accessible, all requests will fail.
             return mProfilingService;
         }
         try {
-            mProfilingService.registerResultsCallback(isGeneralListener,
+            mProfilingService.registerResultsCallback(
+                    isGeneralListener,
                     new IProfilingResultCallback.Stub() {
 
                         /**
-                         * Called by {@link ProfilingService} when a result is ready,
-                         * both for success and failure.
+                         * Called by {@link ProfilingService} when a result is ready, both for
+                         * success and failure.
                          */
                         @Override
-                        public void sendResult(@Nullable String resultFile, long keyMostSigBits,
-                                long keyLeastSigBits, int status, @Nullable String tag,
-                                @Nullable String error, int triggerType) {
+                        public void sendResult(
+                                @Nullable String resultFile,
+                                long keyMostSigBits,
+                                long keyLeastSigBits,
+                                int status,
+                                @Nullable String tag,
+                                @Nullable String error,
+                                int triggerType) {
                             synchronized (mLock) {
                                 if (mCallbacks.isEmpty()) {
                                     // This shouldn't happen - no callbacks, nowhere to report this
@@ -723,8 +722,8 @@ public final class ProfilingManager {
 
                                 // This shouldn't be true, but if the file is null ensure the status
                                 // represents a failure.
-                                final boolean overrideStatusToError = resultFile == null
-                                        && status == ProfilingResult.ERROR_NONE;
+                                final boolean overrideStatusToError =
+                                        resultFile == null && status == ProfilingResult.ERROR_NONE;
 
                                 UUID key = new UUID(keyMostSigBits, keyLeastSigBits);
                                 int removeListenerPos = -1;
@@ -739,7 +738,8 @@ public final class ProfilingManager {
                                         } else {
                                             // This should never happen.
                                             if (DEBUG) {
-                                                Log.d(TAG,
+                                                Log.d(
+                                                        TAG,
                                                         "More than 1 listener with the same key");
                                             }
                                         }
@@ -753,11 +753,18 @@ public final class ProfilingManager {
                                     // TODO: b/337017299 - check resultFile is valid before
                                     // returning Now trigger the callback for any listener that
                                     // doesn't belong to another request.
-                                    wrapper.mExecutor.execute(() -> wrapper.mListener.accept(
-                                            new ProfilingResult(overrideStatusToError
-                                                    ? ProfilingResult.ERROR_UNKNOWN : status,
-                                                    getAppFileDir() + resultFile, tag, error,
-                                                    triggerType)));
+                                    wrapper.mExecutor.execute(
+                                            () ->
+                                                    wrapper.mListener.accept(
+                                                            new ProfilingResult(
+                                                                    overrideStatusToError
+                                                                            ? ProfilingResult
+                                                                                    .ERROR_UNKNOWN
+                                                                            : status,
+                                                                    getAppFileDir() + resultFile,
+                                                                    tag,
+                                                                    error,
+                                                                    triggerType)));
                                 }
 
                                 // Remove the single listener that was tied to the request, if
@@ -772,16 +779,19 @@ public final class ProfilingManager {
                          * Called by {@link ProfilingService} when a trace is ready and needs to be
                          * copied to callers internal storage.
                          *
-                         * This method will open a new file and pass back the FileDescriptor for
+                         * <p>This method will open a new file and pass back the FileDescriptor for
                          * ProfilingService to write to via a new binder call.
                          *
-                         * Takes in key most/least significant bits which represent the key that
+                         * <p>Takes in key most/least significant bits which represent the key that
                          * will be used to associate this back to a profiling session which will
                          * write to the generated file.
                          */
                         @Override
-                        public void generateFile(String filePathRelative, String fileName,
-                                long keyMostSigBits, long keyLeastSigBits) {
+                        public void generateFile(
+                                String filePathRelative,
+                                String fileName,
+                                long keyMostSigBits,
+                                long keyLeastSigBits) {
                             synchronized (mLock) {
                                 String filePathAbsolute = getAppFileDir() + filePathRelative;
                                 try {
@@ -793,8 +803,8 @@ public final class ProfilingManager {
                                     }
 
                                     // Create the profiling file for the output to be written to.
-                                    final File profilingFile = new File(
-                                            filePathAbsolute + fileName);
+                                    final File profilingFile =
+                                            new File(filePathAbsolute + fileName);
                                     profilingFile.createNewFile();
                                     if (!profilingFile.exists()) {
                                         // Failed to create output file. Result may be lost.
@@ -804,9 +814,10 @@ public final class ProfilingManager {
 
                                     // Wrap the new output file in a {@link ParcelFileDescriptor} to
                                     // send back to {@link ProfilingService} to write to.
-                                    ParcelFileDescriptor pfd = ParcelFileDescriptor.open(
-                                            profilingFile,
-                                            ParcelFileDescriptor.MODE_READ_WRITE);
+                                    ParcelFileDescriptor pfd =
+                                            ParcelFileDescriptor.open(
+                                                    profilingFile,
+                                                    ParcelFileDescriptor.MODE_READ_WRITE);
                                     IProfilingService service =
                                             getOrCreateIProfilingServiceLocked(false);
 
@@ -821,13 +832,15 @@ public final class ProfilingManager {
 
                                     try {
                                         // Send the file descriptor to service to write to.
-                                        service.receiveFileDescriptor(pfd, keyMostSigBits,
-                                                keyLeastSigBits);
+                                        service.receiveFileDescriptor(
+                                                pfd, keyMostSigBits, keyLeastSigBits);
                                     } catch (RemoteException e) {
                                         // If we failed to send it, try to clean it up as it won't
                                         // be used.
                                         if (DEBUG) {
-                                            Log.d(TAG, "Failed sending file descriptor to service",
+                                            Log.d(
+                                                    TAG,
+                                                    "Failed sending file descriptor to service",
                                                     e);
                                         }
                                         tryToCleanupGeneratedFile(pfd, profilingFile);
@@ -846,8 +859,8 @@ public final class ProfilingManager {
                          * the descriptor could not be sent. If it was successfully sent, service
                          * will handle closing it and requesting a delete if necessary.
                          */
-                        private void tryToCleanupGeneratedFile(ParcelFileDescriptor fileDescriptor,
-                                File file) {
+                        private void tryToCleanupGeneratedFile(
+                                ParcelFileDescriptor fileDescriptor, File file) {
                             if (fileDescriptor != null) {
                                 try {
                                     fileDescriptor.close();
@@ -885,8 +898,9 @@ public final class ProfilingManager {
                     });
         } catch (RemoteException e) {
             if (DEBUG) Log.d(TAG, "Exception registering service callback", e);
-            throw new RuntimeException("Unable to register profiling result callback."
-                    + " All Profiling requests will fail.");
+            throw new RuntimeException(
+                    "Unable to register profiling result callback."
+                            + " All Profiling requests will fail.");
         }
         return mProfilingService;
     }
@@ -902,12 +916,13 @@ public final class ProfilingManager {
          * Unique key generated with each profiling request {@link #requestProfiling}, but not with
          * requests to register a listener only {@link #registerForAllProfilingResults}.
          *
-         * Key is used to match the result with the listener added with the request so that it can
-         * removed after being triggered while the general registered callbacks remain active.
+         * <p>Key is used to match the result with the listener added with the request so that it
+         * can removed after being triggered while the general registered callbacks remain active.
          */
         final @Nullable UUID mKey;
 
-        ProfilingRequestCallbackWrapper(@NonNull Executor executor,
+        ProfilingRequestCallbackWrapper(
+                @NonNull Executor executor,
                 @NonNull Consumer<ProfilingResult> listener,
                 @Nullable UUID key) {
             mExecutor = executor;

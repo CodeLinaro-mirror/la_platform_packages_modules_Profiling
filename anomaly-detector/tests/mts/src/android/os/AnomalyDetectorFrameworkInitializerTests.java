@@ -29,9 +29,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-/**
- * Tests the implementation of the {@link AnomalyDetectorFrameworkInitializer} APIs.
- */
+/** Tests the implementation of the {@link AnomalyDetectorFrameworkInitializer} APIs. */
 @RunWith(AndroidJUnit4.class)
 @RequiresFlagsEnabled(Flags.FLAG_ANOMALY_DETECTOR_CORE)
 public final class AnomalyDetectorFrameworkInitializerTests {

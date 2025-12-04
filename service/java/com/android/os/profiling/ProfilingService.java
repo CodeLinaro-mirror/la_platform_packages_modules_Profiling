@@ -33,6 +33,7 @@ import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.IProfilingResultCallback;
 import android.os.IProfilingService;
+import android.os.IProfilingTriggerCallback;
 import android.os.ParcelFileDescriptor;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
@@ -82,11 +83,15 @@ public class ProfilingService extends IProfilingService.Stub {
     private static final String OUTPUT_FILE_SECTION_SEPARATOR = "_";
     private static final String OUTPUT_FILE_FIELD_SEPARATOR = "-";
     private static final String OUTPUT_FILE_PREFIX = "profile";
-    // Keep in sync with {@link ProfilingFrameworkTests}.
+
+    // LINT.IfChange(output_file_suffix)
     private static final String OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX = ".perfetto-java-heap-dump";
     private static final String OUTPUT_FILE_HEAP_PROFILE_SUFFIX = ".perfetto-heap-profile";
     private static final String OUTPUT_FILE_STACK_SAMPLING_SUFFIX = ".perfetto-stack-sample";
     private static final String OUTPUT_FILE_TRACE_SUFFIX = ".perfetto-trace";
+    // LINT.ThenChange(
+    // /tests/cts/src/android/profiling/cts/ProfilingTestUtils.java:output_file_suffix)
+
     private static final String OUTPUT_FILE_UNREDACTED_TRACE_SUFFIX = ".perfetto-trace-unredacted";
     private static final String OUTPUT_FILE_TRIGGER = "trigger-type";
     private static final String OUTPUT_FILE_IN_PROGRESS = "in-progress";
@@ -108,7 +113,7 @@ public class ProfilingService extends IProfilingService.Stub {
 
     private static final int DEFAULT_MAX_RESULT_REDELIVERY_COUNT = 3;
 
-    private static final int REDACTION_DEFAULT_MAX_RUNTIME_ALLOTTED_MS = 20  * 1000;
+    private static final int REDACTION_DEFAULT_MAX_RUNTIME_ALLOTTED_MS = 20 * 1000;
 
     private static final int REDACTION_DEFAULT_CHECK_FREQUENCY_MS = 2 * 1000;
 
@@ -144,6 +149,7 @@ public class ProfilingService extends IProfilingService.Stub {
 
     @GuardedBy("mLock")
     private long mLastClearTemporaryDirectoryTimeMs = 0;
+
     private int mClearTemporaryDirectoryFrequencyMs;
     private final int mClearTemporaryDirectoryBootDelayMs;
 
@@ -170,20 +176,20 @@ public class ProfilingService extends IProfilingService.Stub {
     @VisibleForTesting
     @GuardedBy("mLock")
     public Process mSystemTriggeredTraceProcess = null;
-    @VisibleForTesting
-    public String mSystemTriggeredTraceUniqueSessionName = null;
+
+    @VisibleForTesting public String mSystemTriggeredTraceUniqueSessionName = null;
     private long mLastStartedSystemTriggeredTraceMs = 0;
 
     /**
      * Map of uid + package name to a sparse array of trigger objects.
      *
-     * Adding items to this data structure must only be done using
-     * {@link #addTrigger(ProfilingTriggerData, boolean)} which validates the added triggers.
+     * <p>Adding items to this data structure must only be done using {@link
+     * #addTrigger(ProfilingTriggerData, boolean)} which validates the added triggers.
      */
     @VisibleForTesting
     public ProcessMap<SparseArray<ProfilingTriggerData>> mAppTriggers = new ProcessMap<>();
-    @VisibleForTesting
-    public boolean mAppTriggersLoaded = false;
+
+    @VisibleForTesting public boolean mAppTriggersLoaded = false;
 
     // uid indexed storage of completed tracing sessions that have not yet successfully handled the
     // result.
@@ -191,24 +197,24 @@ public class ProfilingService extends IProfilingService.Stub {
     public SparseArray<List<TracingSession>> mQueuedTracingResults = new SparseArray<>();
 
     private boolean mPersistScheduled = false;
+
     // Frequency of 0 would result in immediate persist.
     @GuardedBy("mLock")
     private AtomicInteger mPersistFrequencyMs;
+
     @GuardedBy("mLock")
     private long mLastPersistedTimestampMs = 0L;
+
     private Runnable mPersistRunnable = null;
 
     /** The path to the directory which includes all persisted results from this class. */
-    @VisibleForTesting
-    public File mPersistStoreDir = null;
+    @VisibleForTesting public File mPersistStoreDir = null;
 
     /** The queued results data file, persisted in the storage. */
-    @VisibleForTesting
-    public File mPersistQueueFile = null;
+    @VisibleForTesting public File mPersistQueueFile = null;
 
     /** The app triggers results data file, persisted in the storage. */
-    @VisibleForTesting
-    public File mPersistAppTriggersFile = null;
+    @VisibleForTesting public File mPersistAppTriggersFile = null;
 
     /** To be disabled for testing only. */
     @GuardedBy("mLock")
@@ -218,11 +224,11 @@ public class ProfilingService extends IProfilingService.Stub {
     private ScheduledExecutorService mScheduledExecutorService = null;
 
     /** Future for the start system triggered trace. */
-    @VisibleForTesting
-    public ScheduledFuture<?> mStartSystemTriggeredTraceScheduledFuture = null;
+    @VisibleForTesting public ScheduledFuture<?> mStartSystemTriggeredTraceScheduledFuture = null;
 
     @GuardedBy("mLock")
     private AtomicInteger mSystemTriggeredTraceMinPeriodSeconds;
+
     @GuardedBy("mLock")
     private AtomicInteger mSystemTriggeredTraceMaxPeriodSeconds;
 
@@ -230,38 +236,40 @@ public class ProfilingService extends IProfilingService.Stub {
      * Package name of app being debugged, or null if no app is being debugged. To be used both for
      * automated testing and developer manual debugging.
      *
-     * Setting this package name will:
-     * - Ensure a system triggered trace is always running.
-     * - Allow all triggers for the specified package name to be executed.
+     * <p>Setting this package name will: - Ensure a system triggered trace is always running. -
+     * Allow all triggers for the specified package name to be executed.
      *
-     * This is not intended to be set directly. Instead, set this package name by using
+     * <p>This is not intended to be set directly. Instead, set this package name by using
      * device_config commands described at {@link ProfilingManager}.
      *
-     * There is no time limit on how long this can be left enabled for.
+     * <p>There is no time limit on how long this can be left enabled for.
      */
     private String mDebugPackageName = null;
 
     /**
      * State the {@link TracingSession} is in.
      *
-     * State represents the most recently confirmed completed step in the process. Steps represent
-     * save points which the process would have to go back to if it did not successfully reach the
-     * next step.
+     * <p>State represents the most recently confirmed completed step in the process. Steps
+     * represent save points which the process would have to go back to if it did not successfully
+     * reach the next step.
      *
-     * States are sequential. It can be expected that state value will only increase throughout a
+     * <p>States are sequential. It can be expected that state value will only increase throughout a
      * sessions life.
      *
-     * At different states, the containing object can be assumed to exist in different data
+     * <p>At different states, the containing object can be assumed to exist in different data
      * structures as follows:
-     * REQUESTED - Local only, not in any data structure.
-     * APPROVED - Local only, not in any data structure.
-     * PROFILING_STARTED - Stored in {@link mActiveTracingSessions}.
-     * PROFILING_FINISHED - Stored in {@link mQueuedTracingResults}.
-     * REDACTED - Stored in {@link mQueuedTracingResults}.
-     * COPIED_FILE - Stored in {@link mQueuedTracingResults}.
-     * ERROR_OCCURRED - Stored in {@link mQueuedTracingResults}.
-     * NOTIFIED_REQUESTER - Stored in {@link mQueuedTracingResults}.
-     * CLEANED_UP - Local only, not in any data structure.
+     *
+     * <ul>
+     *   <li>REQUESTED - Local only, not in any data structure.
+     *   <li>APPROVED - Local only, not in any data structure.
+     *   <li>PROFILING_STARTED - Stored in {@link mActiveTracingSessions}.
+     *   <li>PROFILING_FINISHED - Stored in {@link mQueuedTracingResults}.
+     *   <li>REDACTED - Stored in {@link mQueuedTracingResults}.
+     *   <li>COPIED_FILE - Stored in {@link mQueuedTracingResults}.
+     *   <li>ERROR_OCCURRED - Stored in {@link mQueuedTracingResults}.
+     *   <li>NOTIFIED_REQUESTER - Stored in {@link mQueuedTracingResults}.
+     *   <li>CLEANED_UP - Local only, not in any data structure.
+     * </ul>
      */
     public enum TracingState {
         // Intentionally skipping 0 since proto, which will be used for persist, treats it as unset.
@@ -283,6 +291,7 @@ public class ProfilingService extends IProfilingService.Stub {
         }
 
         private final int mValue;
+
         TracingState(int value) {
             mValue = value;
         }
@@ -305,53 +314,67 @@ public class ProfilingService extends IProfilingService.Stub {
     public ProfilingService(Context context) {
         mContext = context;
 
-        mPerfettoDestroyTimeoutMs = DeviceConfigHelper.getInt(
-                DeviceConfigHelper.PERFETTO_DESTROY_TIMEOUT_MS,
-                PERFETTO_DESTROY_DEFAULT_TIMEOUT_MS);
+        mPerfettoDestroyTimeoutMs =
+                DeviceConfigHelper.getInt(
+                        DeviceConfigHelper.PERFETTO_DESTROY_TIMEOUT_MS,
+                        PERFETTO_DESTROY_DEFAULT_TIMEOUT_MS);
 
-        mMaxResultRedeliveryCount = DeviceConfigHelper.getInt(
-                DeviceConfigHelper.MAX_RESULT_REDELIVERY_COUNT,
-                DEFAULT_MAX_RESULT_REDELIVERY_COUNT);
+        mMaxResultRedeliveryCount =
+                DeviceConfigHelper.getInt(
+                        DeviceConfigHelper.MAX_RESULT_REDELIVERY_COUNT,
+                        DEFAULT_MAX_RESULT_REDELIVERY_COUNT);
 
-        mProfilingRecheckDelayMs = DeviceConfigHelper.getInt(
-                DeviceConfigHelper.PROFILING_RECHECK_DELAY_MS,
-                PROFILING_DEFAULT_RECHECK_DELAY_MS);
+        mProfilingRecheckDelayMs =
+                DeviceConfigHelper.getInt(
+                        DeviceConfigHelper.PROFILING_RECHECK_DELAY_MS,
+                        PROFILING_DEFAULT_RECHECK_DELAY_MS);
 
-        mClearTemporaryDirectoryFrequencyMs = DeviceConfigHelper.getInt(
-                DeviceConfigHelper.CLEAR_TEMPORARY_DIRECTORY_FREQUENCY_MS,
-                CLEAR_TEMPORARY_DIRECTORY_FREQUENCY_DEFAULT_MS);
+        mClearTemporaryDirectoryFrequencyMs =
+                DeviceConfigHelper.getInt(
+                        DeviceConfigHelper.CLEAR_TEMPORARY_DIRECTORY_FREQUENCY_MS,
+                        CLEAR_TEMPORARY_DIRECTORY_FREQUENCY_DEFAULT_MS);
 
-        mClearTemporaryDirectoryBootDelayMs = DeviceConfigHelper.getInt(
-                DeviceConfigHelper.CLEAR_TEMPORARY_DIRECTORY_BOOT_DELAY_MS,
-            CLEAR_TEMPORARY_DIRECTORY_BOOT_DELAY_DEFAULT_MS);
+        mClearTemporaryDirectoryBootDelayMs =
+                DeviceConfigHelper.getInt(
+                        DeviceConfigHelper.CLEAR_TEMPORARY_DIRECTORY_BOOT_DELAY_MS,
+                        CLEAR_TEMPORARY_DIRECTORY_BOOT_DELAY_DEFAULT_MS);
 
-        mRedactionCheckFrequencyMs = DeviceConfigHelper.getInt(
-                DeviceConfigHelper.REDACTION_CHECK_FREQUENCY_MS,
-                REDACTION_DEFAULT_CHECK_FREQUENCY_MS);
+        mRedactionCheckFrequencyMs =
+                DeviceConfigHelper.getInt(
+                        DeviceConfigHelper.REDACTION_CHECK_FREQUENCY_MS,
+                        REDACTION_DEFAULT_CHECK_FREQUENCY_MS);
 
-        mRedactionMaxRuntimeAllottedMs = DeviceConfigHelper.getInt(
-                DeviceConfigHelper.REDACTION_MAX_RUNTIME_ALLOTTED_MS,
-                REDACTION_DEFAULT_MAX_RUNTIME_ALLOTTED_MS);
+        mRedactionMaxRuntimeAllottedMs =
+                DeviceConfigHelper.getInt(
+                        DeviceConfigHelper.REDACTION_MAX_RUNTIME_ALLOTTED_MS,
+                        REDACTION_DEFAULT_MAX_RUNTIME_ALLOTTED_MS);
 
         mHandlerThread.start();
 
         // Get initial value for whether unredacted trace should be retained.
         // This is used for (automated and manual) testing only.
         synchronized (mLock) {
-            mKeepResultInTempDir = DeviceConfigHelper.getTestBoolean(
-                    DeviceConfigHelper.DISABLE_DELETE_TEMPORARY_RESULTS, false);
+            mKeepResultInTempDir =
+                    DeviceConfigHelper.getTestBoolean(
+                            DeviceConfigHelper.DISABLE_DELETE_TEMPORARY_RESULTS, false);
 
-            mPersistFrequencyMs = new AtomicInteger(DeviceConfigHelper.getInt(
-                    DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS,
-                    PERSIST_TO_DISK_DEFAULT_FREQUENCY_MS));
+            mPersistFrequencyMs =
+                    new AtomicInteger(
+                            DeviceConfigHelper.getInt(
+                                    DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS,
+                                    PERSIST_TO_DISK_DEFAULT_FREQUENCY_MS));
 
-            mSystemTriggeredTraceMinPeriodSeconds = new AtomicInteger(DeviceConfigHelper.getInt(
-                    DeviceConfigHelper.SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS,
-                    DEFAULT_SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS));
+            mSystemTriggeredTraceMinPeriodSeconds =
+                    new AtomicInteger(
+                            DeviceConfigHelper.getInt(
+                                    DeviceConfigHelper.SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS,
+                                    DEFAULT_SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS));
 
-            mSystemTriggeredTraceMaxPeriodSeconds = new AtomicInteger(DeviceConfigHelper.getInt(
-                    DeviceConfigHelper.SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS,
-                    DEFAULT_SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS));
+            mSystemTriggeredTraceMaxPeriodSeconds =
+                    new AtomicInteger(
+                            DeviceConfigHelper.getInt(
+                                    DeviceConfigHelper.SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS,
+                                    DEFAULT_SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS));
         }
         // Now subscribe to updates on test config.
         DeviceConfig.addOnPropertiesChangedListener(
@@ -371,79 +394,104 @@ public class ProfilingService extends IProfilingService.Stub {
 
                             getRateLimiter().maybeUpdateRateLimiterDisabled(properties);
 
-                            // Use null as default since we're assigning to a new variable and
-                            // handleDebugPackageChangeLocked will handle null as unchanged.
-                            String newDebugPackageName =
-                                    properties.getString(
-                                            DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
-                                            null);
-                            handleDebugPackageChangeLocked(newDebugPackageName);
+                            // Only process the new value for debug package name if it is present in
+                            // properties, as we need to be able to differentiate between the value
+                            // being set to null and the value not being present.
+                            if (properties.getKeyset().contains(
+                                        DeviceConfigHelper.SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME)) {
+                                // Assign property update value to new variable so that
+                                // handleDebugPackageChangeLocked can access both new and old
+                                // values.
+                                String newDebugPackageName =
+                                        properties.getString(
+                                                DeviceConfigHelper
+                                                        .SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME,
+                                                null);
+                                handleDebugPackageChangeLocked(newDebugPackageName);
+                            }
                         }
                     }
                 });
 
         // Subscribe to updates on the main config.
-        DeviceConfig.addOnPropertiesChangedListener(DeviceConfigHelper.NAMESPACE,
-                mContext.getMainExecutor(), new DeviceConfig.OnPropertiesChangedListener() {
+        DeviceConfig.addOnPropertiesChangedListener(
+                DeviceConfigHelper.NAMESPACE,
+                mContext.getMainExecutor(),
+                new DeviceConfig.OnPropertiesChangedListener() {
                     @Override
                     public void onPropertiesChanged(@NonNull DeviceConfig.Properties properties) {
                         synchronized (mLock) {
                             getRateLimiter().maybeUpdateConfigs(properties);
                             Configs.maybeUpdateConfigs(properties);
 
-                            mPerfettoDestroyTimeoutMs = properties.getInt(
-                                    DeviceConfigHelper.PERFETTO_DESTROY_TIMEOUT_MS,
-                                    mPerfettoDestroyTimeoutMs);
+                            mPerfettoDestroyTimeoutMs =
+                                    properties.getInt(
+                                            DeviceConfigHelper.PERFETTO_DESTROY_TIMEOUT_MS,
+                                            mPerfettoDestroyTimeoutMs);
 
-                            mMaxResultRedeliveryCount = properties.getInt(
-                                    DeviceConfigHelper.MAX_RESULT_REDELIVERY_COUNT,
-                                    mMaxResultRedeliveryCount);
+                            mMaxResultRedeliveryCount =
+                                    properties.getInt(
+                                            DeviceConfigHelper.MAX_RESULT_REDELIVERY_COUNT,
+                                            mMaxResultRedeliveryCount);
 
-                            mProfilingRecheckDelayMs = properties.getInt(
-                                    DeviceConfigHelper.PROFILING_RECHECK_DELAY_MS,
-                                    mProfilingRecheckDelayMs);
+                            mProfilingRecheckDelayMs =
+                                    properties.getInt(
+                                            DeviceConfigHelper.PROFILING_RECHECK_DELAY_MS,
+                                            mProfilingRecheckDelayMs);
 
-                            mClearTemporaryDirectoryFrequencyMs = properties.getInt(
-                                    DeviceConfigHelper.CLEAR_TEMPORARY_DIRECTORY_FREQUENCY_MS,
-                                    mClearTemporaryDirectoryFrequencyMs);
+                            mClearTemporaryDirectoryFrequencyMs =
+                                    properties.getInt(
+                                            DeviceConfigHelper
+                                                    .CLEAR_TEMPORARY_DIRECTORY_FREQUENCY_MS,
+                                            mClearTemporaryDirectoryFrequencyMs);
 
                             // No need to handle updates for
                             // {@link mClearTemporaryDirectoryBootDelayMs} as it's only used on
                             // initialization of this class so by the time this occurs it will never
                             // be used again.
 
-                            mRedactionCheckFrequencyMs = properties.getInt(
-                                    DeviceConfigHelper.REDACTION_CHECK_FREQUENCY_MS,
-                                    mRedactionCheckFrequencyMs);
+                            mRedactionCheckFrequencyMs =
+                                    properties.getInt(
+                                            DeviceConfigHelper.REDACTION_CHECK_FREQUENCY_MS,
+                                            mRedactionCheckFrequencyMs);
 
-                            mRedactionMaxRuntimeAllottedMs = properties.getInt(
-                                    DeviceConfigHelper.REDACTION_MAX_RUNTIME_ALLOTTED_MS,
-                                    mRedactionMaxRuntimeAllottedMs);
+                            mRedactionMaxRuntimeAllottedMs =
+                                    properties.getInt(
+                                            DeviceConfigHelper.REDACTION_MAX_RUNTIME_ALLOTTED_MS,
+                                            mRedactionMaxRuntimeAllottedMs);
 
-                            mPersistFrequencyMs.set(properties.getInt(
-                                    DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS,
-                                    mPersistFrequencyMs.get()));
+                            mPersistFrequencyMs.set(
+                                    properties.getInt(
+                                            DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS,
+                                            mPersistFrequencyMs.get()));
 
-                            mSystemTriggeredTraceMinPeriodSeconds.set(DeviceConfigHelper.getInt(
-                                    DeviceConfigHelper.SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS,
-                                    mSystemTriggeredTraceMinPeriodSeconds.get()));
+                            mSystemTriggeredTraceMinPeriodSeconds.set(
+                                    DeviceConfigHelper.getInt(
+                                            DeviceConfigHelper
+                                                    .SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS,
+                                            mSystemTriggeredTraceMinPeriodSeconds.get()));
 
-                            mSystemTriggeredTraceMaxPeriodSeconds.set(DeviceConfigHelper.getInt(
-                                    DeviceConfigHelper.SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS,
-                                    mSystemTriggeredTraceMaxPeriodSeconds.get()));
+                            mSystemTriggeredTraceMaxPeriodSeconds.set(
+                                    DeviceConfigHelper.getInt(
+                                            DeviceConfigHelper
+                                                    .SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS,
+                                            mSystemTriggeredTraceMaxPeriodSeconds.get()));
                         }
                     }
                 });
 
         // Schedule initial storage cleanup and system triggered trace start after a delay so as not
         // to increase non-critical or work during boot.
-        getHandler().postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                scheduleNextSystemTriggeredTraceStart();
-                maybeCleanupTemporaryDirectory();
-            }
-        }, mClearTemporaryDirectoryBootDelayMs);
+        getHandler()
+                .postDelayed(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                scheduleNextSystemTriggeredTraceStart();
+                                maybeCleanupTemporaryDirectory();
+                            }
+                        },
+                        mClearTemporaryDirectoryBootDelayMs);
 
         // Load the queue and triggers right away.
         loadQueueFromPersistedData();
@@ -538,8 +586,8 @@ public class ProfilingService extends IProfilingService.Stub {
     /**
      * Load persisted app triggers from disk.
      *
-     * If any issue is encountered during loading, mark as completed and delete the file. Persisted
-     * app triggers will be lost.
+     * <p>If any issue is encountered during loading, mark as completed and delete the file.
+     * Persisted app triggers will be lost.
      */
     @VisibleForTesting
     public void loadAppTriggersFromPersistedData() {
@@ -563,8 +611,10 @@ public class ProfilingService extends IProfilingService.Stub {
                 // No file, nothing to load. This is an expected state for before the feature has
                 // ever been used or if the triggers were empty.
                 if (DEBUG) {
-                    Log.d(TAG, "App trigger persistence file does not exist, skipping load from "
-                            + "disk.");
+                    Log.d(
+                            TAG,
+                            "App trigger persistence file does not exist, skipping load from "
+                                    + "disk.");
                 }
                 mAppTriggersLoaded = true;
                 return;
@@ -709,8 +759,10 @@ public class ProfilingService extends IProfilingService.Stub {
         if (mStartSystemTriggeredTraceScheduledFuture != null) {
             // If an existing start is already scheduled, don't schedule another.
             // This should not happen.
-            Log.e(TAG, "Attempted to schedule a system triggered trace start with one already "
-                    + "scheduled.");
+            Log.e(
+                    TAG,
+                    "Attempted to schedule a system triggered trace start with one already "
+                            + "scheduled.");
             return;
         }
 
@@ -723,51 +775,64 @@ public class ProfilingService extends IProfilingService.Stub {
         synchronized (mLock) {
             // It's important that trace doesn't always run at the same time as this will bias the
             // results, so grab a random number between min and max.
-            scheduledDelaySeconds = mSystemTriggeredTraceMinPeriodSeconds.get()
-                    + (new Random()).nextInt(mSystemTriggeredTraceMaxPeriodSeconds.get()
-                    - mSystemTriggeredTraceMinPeriodSeconds.get());
+            scheduledDelaySeconds =
+                    mSystemTriggeredTraceMinPeriodSeconds.get()
+                            + (new Random())
+                                    .nextInt(
+                                            mSystemTriggeredTraceMaxPeriodSeconds.get()
+                                                    - mSystemTriggeredTraceMinPeriodSeconds.get());
 
             if (DEBUG) {
-                Log.d(TAG, String.format("System triggered trace scheduled in %d seconds for params"
-                        + " min %d and max %d seconds.",
-                        scheduledDelaySeconds,
-                        mSystemTriggeredTraceMinPeriodSeconds.get(),
-                        mSystemTriggeredTraceMaxPeriodSeconds.get()));
+                Log.d(
+                        TAG,
+                        String.format(
+                                "System triggered trace scheduled in %d seconds for params"
+                                        + " min %d and max %d seconds.",
+                                scheduledDelaySeconds,
+                                mSystemTriggeredTraceMinPeriodSeconds.get(),
+                                mSystemTriggeredTraceMaxPeriodSeconds.get()));
             }
         }
 
         // Scheduling of system triggered trace setup is done out of the lock to avoid a potential
         // deadlock in the case of really frequent triggering due to low min/max values for period.
-        mStartSystemTriggeredTraceScheduledFuture = mScheduledExecutorService.schedule(() -> {
-            // Start the system triggered trace.
-            startSystemTriggeredTrace();
+        mStartSystemTriggeredTraceScheduledFuture =
+                mScheduledExecutorService.schedule(
+                        () -> {
+                            // Start the system triggered trace.
+                            startSystemTriggeredTrace();
 
-            mStartSystemTriggeredTraceScheduledFuture = null;
+                            mStartSystemTriggeredTraceScheduledFuture = null;
 
-            // In all cases, schedule again. Feature flagged off is handled earlier in this
-            // method, and all return cases in {@link #startSystemTriggeredTrace} should result
-            // in trying again at the next regularly scheduled time.
-            scheduleNextSystemTriggeredTraceStart();
-        }, scheduledDelaySeconds, TimeUnit.SECONDS);
+                            // In all cases, schedule again. Feature flagged off is handled earlier
+                            // in this method, and all return cases in
+                            // {@link #startSystemTriggeredTrace} should result in trying again at
+                            // the next regularly scheduled time.
+                            scheduleNextSystemTriggeredTraceStart();
+                        },
+                        scheduledDelaySeconds,
+                        TimeUnit.SECONDS);
     }
 
     /**
      * This is the core method that keeps the profiling flow moving.
      *
-     * This is the only way that state should be set. Do not use {@link TracingSession#setState}
+     * <p>This is the only way that state should be set. Do not use {@link TracingSession#setState}
      * directly.
      *
-     * The passed newState represents the state that was just completed. Passing null for new state
-     * will continue using the current state as the last completed state, this is intended only for
-     * resuming the queue.
+     * <p>The passed newState represents the state that was just completed. Passing null for new
+     * state will continue using the current state as the last completed state, this is intended
+     * only for resuming the queue.
      *
-     * Generally, this should be the last call in a method before returning.
+     * <p>Generally, this should be the last call in a method before returning.
      */
     @VisibleForTesting
     public void advanceTracingSession(TracingSession session, @Nullable TracingState newState) {
         if (DEBUG) {
-            Log.d(TAG, "Advance Tracing State to "
-                    + (newState != null ? newState.getValue() : "null"));
+            Log.d(
+                    TAG,
+                    "Advance Tracing State to "
+                            + (newState != null ? newState.getValue() : "null"));
         }
         if (newState == null) {
             if (session.getRetryCount() == 0) {
@@ -820,7 +885,8 @@ public class ProfilingService extends IProfilingService.Stub {
             case PROFILING_STARTED:
                 // Profiling has been successfully started. Next step depends on whether or not the
                 // profiling is alive.
-                if (session.getActiveTrace() == null || !session.getActiveTrace().isAlive()
+                if (session.getActiveTrace() == null
+                        || !session.getActiveTrace().isAlive()
                         || session.getProcessResultRunnable() == null) {
                     // This really should not happen, but if profiling is not in correct started
                     // state then try to stop and continue processing it.
@@ -831,19 +897,23 @@ public class ProfilingService extends IProfilingService.Stub {
             case PROFILING_FINISHED:
                 if (!tempProfileExists(session)) {
                     session.setError(ProfilingResult.ERROR_FAILED_EXECUTING);
-                    long profilingTime = System.currentTimeMillis()
-                                            - session.getProfilingStartTimeMs();
+                    long profilingTime =
+                            System.currentTimeMillis() - session.getProfilingStartTimeMs();
                     if (DEBUG) {
-                        Log.d(TAG, "No profile data was produced by perfetto during "
-                                            + profilingTime + " ms profiling session");
+                        Log.d(
+                                TAG,
+                                "No profile data was produced by perfetto during "
+                                        + profilingTime
+                                        + " ms profiling session");
                     }
                     if (profilingTime > 500) {
                         session.setErrorMessage("No profile data was produced by perfetto.");
                     } else {
-                        session.setErrorMessage("No profile data was produced by perfetto."
-                                                    + " Profiling session duration (ms): "
-                                                    + profilingTime
-                                                    + ". Profiling may have stopped too soon.");
+                        session.setErrorMessage(
+                                "No profile data was produced by perfetto."
+                                        + " Profiling session duration (ms): "
+                                        + profilingTime
+                                        + ". Profiling may have stopped too soon.");
                     }
                     advanceTracingSession(session, TracingState.ERROR_OCCURRED);
                     return;
@@ -921,7 +991,6 @@ public class ProfilingService extends IProfilingService.Stub {
         }
     }
 
-
     /** Cleanup untracked data stored in provided directory. */
     @GuardedBy("mLock")
     @VisibleForTesting
@@ -935,13 +1004,17 @@ public class ProfilingService extends IProfilingService.Stub {
         // Obtain a list of all currently tracked files and create a filter with it. Filter is set
         // to null if the list is empty as that will efficiently accept all files.
         final List<String> trackedFilenames = getTrackedFilenames();
-        FilenameFilter filenameFilter = trackedFilenames.isEmpty() ? null : new FilenameFilter() {
-            @Override
-            public boolean accept(File dir, String name) {
-                // We only want to accept files which are not in the tracked files list.
-                return !trackedFilenames.contains(name);
-            }
-        };
+        FilenameFilter filenameFilter =
+                trackedFilenames.isEmpty()
+                        ? null
+                        : new FilenameFilter() {
+                            @Override
+                            public boolean accept(File dir, String name) {
+                                // We only want to accept files which are not in the tracked files
+                                // list.
+                                return !trackedFilenames.contains(name);
+                            }
+                        };
 
         // Now obtain a list of files in the provided directory that are not tracked.
         File directory = new File(temporaryDirectoryPath);
@@ -959,8 +1032,10 @@ public class ProfilingService extends IProfilingService.Stub {
         if (files == null) {
             // The path doesn't exist or an I/O error occurred.
             if (DEBUG) {
-                Log.d(TAG, "Temporary directory doesn't exist or i/o error occurred. "
-                        + "Cleanup aborted.");
+                Log.d(
+                        TAG,
+                        "Temporary directory doesn't exist or i/o error occurred. "
+                                + "Cleanup aborted.");
             }
             return;
         }
@@ -1059,8 +1134,12 @@ public class ProfilingService extends IProfilingService.Stub {
 
         if (!packageNameInUidList) {
             // Package name is not associated with calling uid, reject request.
-            throw new SecurityException("Package name " + packageName + " not associated with "
-                    + "calling uid: " + callingUid);
+            throw new SecurityException(
+                    "Package name "
+                            + packageName
+                            + " not associated with "
+                            + "calling uid: "
+                            + callingUid);
         }
     }
 
@@ -1071,11 +1150,16 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     /**
-     * This method validates the request, arguments, whether the app is allowed to profile now,
-     * and if so, starts the profiling.
+     * This method validates the request, arguments, whether the app is allowed to profile now, and
+     * if so, starts the profiling.
      */
-    public void requestProfiling(int profilingType, Bundle params, String tag,
-            long keyMostSigBits, long keyLeastSigBits, String packageName) {
+    public void requestProfiling(
+            int profilingType,
+            Bundle params,
+            String tag,
+            long keyMostSigBits,
+            long keyLeastSigBits,
+            String packageName) {
         enforceCallerMatchesPackageName(packageName);
 
         int uid = Binder.getCallingUid();
@@ -1085,9 +1169,16 @@ public class ProfilingService extends IProfilingService.Stub {
                 && profilingType != ProfilingManager.PROFILING_TYPE_STACK_SAMPLING
                 && profilingType != ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE) {
             if (DEBUG) Log.d(TAG, "Invalid request profiling type: " + profilingType);
-            processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                    ProfilingResult.ERROR_FAILED_INVALID_REQUEST, null, tag,
-                    "Invalid request profiling type", getTriggerTypeNone(), profilingType);
+            processResultCallback(
+                    uid,
+                    keyMostSigBits,
+                    keyLeastSigBits,
+                    ProfilingResult.ERROR_FAILED_INVALID_REQUEST,
+                    null,
+                    tag,
+                    "Invalid request profiling type",
+                    getTriggerTypeNone(),
+                    profilingType);
             LoggingHelper.logProfilingRequest(
                     uid,
                     profilingType,
@@ -1102,9 +1193,16 @@ public class ProfilingService extends IProfilingService.Stub {
         // Check if we're running another trace so we don't run multiple at once.
         try {
             if (areAnyTracesRunning()) {
-                processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                        ProfilingResult.ERROR_FAILED_PROFILING_IN_PROGRESS, null, tag, null,
-                        getTriggerTypeNone(), profilingType);
+                processResultCallback(
+                        uid,
+                        keyMostSigBits,
+                        keyLeastSigBits,
+                        ProfilingResult.ERROR_FAILED_PROFILING_IN_PROGRESS,
+                        null,
+                        tag,
+                        null,
+                        getTriggerTypeNone(),
+                        profilingType);
                 LoggingHelper.logProfilingRequest(
                         uid,
                         profilingType,
@@ -1115,9 +1213,16 @@ public class ProfilingService extends IProfilingService.Stub {
             }
         } catch (RuntimeException e) {
             if (DEBUG) Log.d(TAG, "Error communicating with perfetto", e);
-            processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                    ProfilingResult.ERROR_UNKNOWN, null, tag, "Error communicating with perfetto",
-                    getTriggerTypeNone(), profilingType);
+            processResultCallback(
+                    uid,
+                    keyMostSigBits,
+                    keyLeastSigBits,
+                    ProfilingResult.ERROR_UNKNOWN,
+                    null,
+                    tag,
+                    "Error communicating with perfetto",
+                    getTriggerTypeNone(),
+                    profilingType);
             LoggingHelper.logProfilingRequest(
                     uid,
                     profilingType,
@@ -1128,14 +1233,24 @@ public class ProfilingService extends IProfilingService.Stub {
         }
 
         // Check with rate limiter if this request is allowed.
-        final int status = getRateLimiter().isProfilingRequestAllowed(Binder.getCallingUid(),
-                profilingType, false, params);
+        final int status =
+                getRateLimiter()
+                        .isProfilingRequestAllowed(
+                                Binder.getCallingUid(), profilingType, false, params);
         if (DEBUG) Log.d(TAG, "Rate limiter status: " + status);
         if (status == RateLimiter.RATE_LIMIT_RESULT_ALLOWED) {
             // Rate limiter approved, try to start the request.
             try {
-                TracingSession session = new TracingSession(profilingType, params, uid,
-                        packageName, tag, keyMostSigBits, keyLeastSigBits, getTriggerTypeNone());
+                TracingSession session =
+                        new TracingSession(
+                                profilingType,
+                                params,
+                                uid,
+                                packageName,
+                                tag,
+                                keyMostSigBits,
+                                keyLeastSigBits,
+                                getTriggerTypeNone());
                 if (Flags.addRateLimiterDisabledToResult()
                         && getRateLimiter().isRateLimiterDisabled()) {
                     session.setErrorMessage(RATE_LIMITER_DISABLED_ERROR_MESSAGE);
@@ -1146,13 +1261,21 @@ public class ProfilingService extends IProfilingService.Stub {
                 // This should not happen, it should have been caught when checking rate limiter.
                 // Issue with the request. Apps fault.
                 if (DEBUG) {
-                    Log.d(TAG,
+                    Log.d(
+                            TAG,
                             "Invalid request at config generation. This should not have happened.",
                             e);
                 }
-                processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                        ProfilingResult.ERROR_FAILED_INVALID_REQUEST, null, tag, e.getMessage(),
-                        getTriggerTypeNone(), profilingType);
+                processResultCallback(
+                        uid,
+                        keyMostSigBits,
+                        keyLeastSigBits,
+                        ProfilingResult.ERROR_FAILED_INVALID_REQUEST,
+                        null,
+                        tag,
+                        e.getMessage(),
+                        getTriggerTypeNone(),
+                        profilingType);
                 LoggingHelper.logProfilingRequest(
                         uid,
                         profilingType,
@@ -1163,9 +1286,16 @@ public class ProfilingService extends IProfilingService.Stub {
             } catch (RuntimeException e) {
                 // Perfetto error. Systems fault.
                 if (DEBUG) Log.d(TAG, "Perfetto error", e);
-                processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                        ProfilingResult.ERROR_UNKNOWN, null, tag, "Perfetto error",
-                        getTriggerTypeNone(), profilingType);
+                processResultCallback(
+                        uid,
+                        keyMostSigBits,
+                        keyLeastSigBits,
+                        ProfilingResult.ERROR_UNKNOWN,
+                        null,
+                        tag,
+                        "Perfetto error",
+                        getTriggerTypeNone(),
+                        profilingType);
                 LoggingHelper.logProfilingRequest(
                         uid,
                         profilingType,
@@ -1177,12 +1307,20 @@ public class ProfilingService extends IProfilingService.Stub {
         } else {
             // Rate limiter denied, notify caller.
             if (DEBUG) Log.d(TAG, "Request denied with status: " + status);
-            processResultCallback(uid, keyMostSigBits, keyLeastSigBits,
-                    RateLimiter.statusToResult(status), null, tag, null, getTriggerTypeNone(),
+            processResultCallback(
+                    uid,
+                    keyMostSigBits,
+                    keyLeastSigBits,
+                    RateLimiter.statusToResult(status),
+                    null,
+                    tag,
+                    null,
+                    getTriggerTypeNone(),
                     profilingType);
-            int rateLimitType = status == RateLimiter.RATE_LIMIT_RESULT_BLOCKED_PROCESS
-                        ? LoggingHelper.REQUEST_RESULT_RATE_LIMIT_PROCESS
-                        : LoggingHelper.REQUEST_RESULT_RATE_LIMIT_SYSTEM;
+            int rateLimitType =
+                    status == RateLimiter.RATE_LIMIT_RESULT_BLOCKED_PROCESS
+                            ? LoggingHelper.REQUEST_RESULT_RATE_LIMIT_PROCESS
+                            : LoggingHelper.REQUEST_RESULT_RATE_LIMIT_SYSTEM;
             LoggingHelper.logProfilingRequest(
                     uid,
                     profilingType,
@@ -1204,8 +1342,8 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     /** Call from application to register a callback object. */
-    public void registerResultsCallback(boolean isGeneralCallback,
-            IProfilingResultCallback callback) {
+    public void registerResultsCallback(
+            boolean isGeneralCallback, IProfilingResultCallback callback) {
         maybeCleanupResultsCallbacks();
 
         int callingUid = Binder.getCallingUid();
@@ -1235,7 +1373,7 @@ public class ProfilingService extends IProfilingService.Stub {
     /**
      * Iterate through and delete any callbacks for which binder is not alive.
      *
-     * Each binder object has a registered linkToDeath which also handles removal. This mechanism
+     * <p>Each binder object has a registered linkToDeath which also handles removal. This mechanism
      * serves as a backup to guarantee that the list stays in check.
      */
     private void maybeCleanupResultsCallbacks() {
@@ -1286,8 +1424,11 @@ public class ProfilingService extends IProfilingService.Stub {
         if (!isTraceRunning(key)) {
             // No trace running, nothing to cancel.
             if (DEBUG) {
-                Log.d(TAG, "Exited requestCancel without stopping trace key:" + key
-                        + " due to no trace running.");
+                Log.d(
+                        TAG,
+                        "Exited requestCancel without stopping trace key:"
+                                + key
+                                + " due to no trace running.");
             }
             return;
         }
@@ -1298,8 +1439,8 @@ public class ProfilingService extends IProfilingService.Stub {
      * Add the provided list of validated triggers with the provided package name and the callers
      * uid being applied to all.
      */
-    public void addProfilingTriggers(List<ProfilingTriggerValueParcel> triggers,
-            String packageName) {
+    public void addProfilingTriggers(
+            List<ProfilingTriggerValueParcel> triggers, String packageName) {
         enforceCallerMatchesPackageName(packageName);
 
         int uid = Binder.getCallingUid();
@@ -1352,10 +1493,10 @@ public class ProfilingService extends IProfilingService.Stub {
      * Method called by manager, after creating a file from within application context, to send a
      * file descriptor for service to write the result of the profiling session to.
      *
-     * Note: only expected to be called in response to a generateFile request sent to manager.
+     * <p>Note: only expected to be called in response to a generateFile request sent to manager.
      */
-    public void receiveFileDescriptor(ParcelFileDescriptor fileDescriptor, long keyMostSigBits,
-            long keyLeastSigBits) {
+    public void receiveFileDescriptor(
+            ParcelFileDescriptor fileDescriptor, long keyMostSigBits, long keyLeastSigBits) {
         List<TracingSession> sessions = mQueuedTracingResults.get(Binder.getCallingUid());
         if (sessions == null) {
             // No sessions for this uid, so no profiling result to write to this file descriptor.
@@ -1398,9 +1539,13 @@ public class ProfilingService extends IProfilingService.Stub {
         // At this point we've identified the session that has sent us this file descriptor.
         // Now, we'll create a temporary file pointing to the profiling output for that session.
         // If that file looks good, we'll copy it to the app's local file descriptor.
-        File tempResultFile = new File(TEMP_TRACE_PATH
-                + (session.getProfilingType() == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE
-                ? session.getRedactedFileName() : session.getFileName()));
+        File tempResultFile =
+                new File(
+                        TEMP_TRACE_PATH
+                                + (session.getProfilingType()
+                                                == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE
+                                        ? session.getRedactedFileName()
+                                        : session.getFileName()));
         FileInputStream tempPerfettoFileInStream = null;
         FileOutputStream appFileOutStream = null;
 
@@ -1408,8 +1553,10 @@ public class ProfilingService extends IProfilingService.Stub {
             if (!tempResultFile.exists() || tempResultFile.length() == 0L) {
                 // The profiling process output file does not exist or is empty, nothing to copy.
                 if (DEBUG) {
-                    Log.d(TAG, "Temporary profiling output file is missing or empty, nothing to"
-                            + " copy.");
+                    Log.d(
+                            TAG,
+                            "Temporary profiling output file is missing or empty, nothing to"
+                                    + " copy.");
                 }
                 finishReceiveFileDescriptor(
                         session,
@@ -1543,20 +1690,26 @@ public class ProfilingService extends IProfilingService.Stub {
      * side which callbacks need to be triggered with this result, trigger all of them and let them
      * decide whether to finish delivering it.
      *
-     * Call this method if a {@link TracingSession} already exists. If no session exists yet, call
-     * {@link #processResultCallback} directly instead.
+     * <p>Call this method if a {@link TracingSession} already exists. If no session exists yet,
+     * call {@link #processResultCallback} directly instead.
      *
-     * @param session           The session for which to callback and potentially advance.
+     * @param session The session for which to callback and potentially advance.
      * @param continueAdvancing Whether to continue advancing or stop after attempting the callback.
      */
     @VisibleForTesting
-    public void processTracingSessionResultCallback(TracingSession session,
-            boolean continueAdvancing) {
-        boolean succeeded = processResultCallback(session.getUid(), session.getKeyMostSigBits(),
-                session.getKeyLeastSigBits(), session.getErrorStatus(),
-                session.getDestinationFileName(OUTPUT_FILE_RELATIVE_PATH),
-                session.getTag(), session.getErrorMessage(), session.getTriggerType(),
-                session.getProfilingType());
+    public void processTracingSessionResultCallback(
+            TracingSession session, boolean continueAdvancing) {
+        boolean succeeded =
+                processResultCallback(
+                        session.getUid(),
+                        session.getKeyMostSigBits(),
+                        session.getKeyLeastSigBits(),
+                        session.getErrorStatus(),
+                        session.getDestinationFileName(OUTPUT_FILE_RELATIVE_PATH),
+                        session.getTag(),
+                        session.getErrorMessage(),
+                        session.getTriggerType(),
+                        session.getProfilingType());
 
         if (continueAdvancing && succeeded) {
             advanceTracingSession(session, TracingState.NOTIFIED_REQUESTER);
@@ -1569,14 +1722,21 @@ public class ProfilingService extends IProfilingService.Stub {
      * side which callbacks need to be triggered with this result, trigger all of them and let them
      * decide whether to finish delivering it.
      *
-     * Call this directly only if no {@link TracingSession} exists yet. If a session already exists,
-     * call {@link #processTracingSessionResultCallback} instead.
+     * <p>Call this directly only if no {@link TracingSession} exists yet. If a session already
+     * exists, call {@link #processTracingSessionResultCallback} instead.
      *
      * @return whether at least one callback was successfully sent to the app.
      */
-    private boolean processResultCallback(int uid, long keyMostSigBits, long keyLeastSigBits,
-            int status, @Nullable String fileResultPathAndName, @Nullable String tag,
-            @Nullable String error, int triggerType, int profilingType) {
+    private boolean processResultCallback(
+            int uid,
+            long keyMostSigBits,
+            long keyLeastSigBits,
+            int status,
+            @Nullable String fileResultPathAndName,
+            @Nullable String tag,
+            @Nullable String error,
+            int triggerType,
+            int profilingType) {
         List<IProfilingResultCallback> perUidCallbacks = mResultCallbacks.get(uid);
         if (perUidCallbacks == null || perUidCallbacks.isEmpty()) {
             // No callbacks, nowhere to notify with result or failure.
@@ -1588,12 +1748,27 @@ public class ProfilingService extends IProfilingService.Stub {
         for (int i = 0; i < perUidCallbacks.size(); i++) {
             try {
                 if (status == ProfilingResult.ERROR_NONE) {
-                    perUidCallbacks.get(i).sendResult(
-                            fileResultPathAndName, keyMostSigBits, keyLeastSigBits, status, tag,
-                            error, triggerType);
+                    perUidCallbacks
+                            .get(i)
+                            .sendResult(
+                                    fileResultPathAndName,
+                                    keyMostSigBits,
+                                    keyLeastSigBits,
+                                    status,
+                                    tag,
+                                    error,
+                                    triggerType);
                 } else {
-                    perUidCallbacks.get(i).sendResult(
-                            null, keyMostSigBits, keyLeastSigBits, status, tag, error, triggerType);
+                    perUidCallbacks
+                            .get(i)
+                            .sendResult(
+                                    null,
+                                    keyMostSigBits,
+                                    keyLeastSigBits,
+                                    status,
+                                    tag,
+                                    error,
+                                    triggerType);
                 }
                 // One success is all we need to know that a callback was sent to the app.
                 // This is not perfect but sufficient given we cannot verify the success of
@@ -1611,8 +1786,7 @@ public class ProfilingService extends IProfilingService.Stub {
         return succeeded;
     }
 
-    private void startProfiling(final TracingSession session)
-            throws RuntimeException {
+    private void startProfiling(final TracingSession session) throws RuntimeException {
         // Parse config and post processing delay out of request first, if we can't get these
         // we can't start the trace.
         int postProcessingInitialDelayMs;
@@ -1626,14 +1800,16 @@ public class ProfilingService extends IProfilingService.Stub {
 
             // Create a version of tag that is non null, containing only valid filename chars,
             // and shortened to class defined max size.
-            tag = session.getTag() == null
-                    ? "" : removeInvalidFilenameChars(session.getTag());
+            tag = session.getTag() == null ? "" : removeInvalidFilenameChars(session.getTag());
             if (tag.length() > TAG_MAX_CHARS_FOR_FILENAME) {
                 tag = tag.substring(0, TAG_MAX_CHARS_FOR_FILENAME);
             }
         } catch (IllegalArgumentException e) {
             // Request couldn't be processed. This shouldn't happen.
             if (DEBUG) Log.d(TAG, "Request couldn't be processed", e);
+
+            performTriggerCallback(session);
+
             session.setError(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, e.getMessage());
 
             LoggingHelper.logProfilingRequest(
@@ -1647,12 +1823,13 @@ public class ProfilingService extends IProfilingService.Stub {
             // registered listener.
             advanceTracingSession(session, TracingState.ERROR_OCCURRED);
             return;
-
         }
 
-        String baseFileName = OUTPUT_FILE_PREFIX
-                + (tag.isEmpty() ? "" : OUTPUT_FILE_SECTION_SEPARATOR + tag)
-                + OUTPUT_FILE_SECTION_SEPARATOR + getFormattedDate();
+        String baseFileName =
+                OUTPUT_FILE_PREFIX
+                        + (tag.isEmpty() ? "" : OUTPUT_FILE_SECTION_SEPARATOR + tag)
+                        + OUTPUT_FILE_SECTION_SEPARATOR
+                        + getFormattedDate();
 
         // Only trace files will go through the redaction process, set the name here for the file
         // that will be created later when results are processed.
@@ -1662,8 +1839,8 @@ public class ProfilingService extends IProfilingService.Stub {
 
         session.setFileName(baseFileName + suffix);
 
-        Process activeProfiling = startProfilingProcess(config,
-                TEMP_TRACE_PATH + session.getFileName());
+        Process activeProfiling =
+                startProfilingProcess(config, TEMP_TRACE_PATH + session.getFileName());
 
         if (activeProfiling != null) {
             // Profiling is running, save the session.
@@ -1681,6 +1858,9 @@ public class ProfilingService extends IProfilingService.Stub {
             if (DEBUG) {
                 Log.d(TAG, "Failed to start profiling.");
             }
+
+            performTriggerCallback(session);
+
             session.setError(ProfilingResult.ERROR_FAILED_EXECUTING, "Trace couldn't be started");
 
             LoggingHelper.logProfilingRequest(
@@ -1698,13 +1878,14 @@ public class ProfilingService extends IProfilingService.Stub {
         }
 
         // Create post process runnable, store it, and schedule it.
-        session.setProcessResultRunnable(new Runnable() {
-            @Override
-            public void run() {
-                // Check if the profiling process is complete or reschedule the check.
-                checkProfilingCompleteRescheduleIfNeeded(session);
-            }
-        });
+        session.setProcessResultRunnable(
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        // Check if the profiling process is complete or reschedule the check.
+                        checkProfilingCompleteRescheduleIfNeeded(session);
+                    }
+                });
         getHandler().postDelayed(session.getProcessResultRunnable(), postProcessingInitialDelayMs);
 
         advanceTracingSession(session, TracingState.PROFILING_STARTED);
@@ -1713,8 +1894,8 @@ public class ProfilingService extends IProfilingService.Stub {
     /**
      * Start a trace to be used for system triggered profiling.
      *
-     * This should not be called while a system triggered trace is already running. If it is called
-     * with a system triggered trace in progress, this request will be dropped.
+     * <p>This should not be called while a system triggered trace is already running. If it is
+     * called with a system triggered trace in progress, this request will be dropped.
      */
     @VisibleForTesting
     public void startSystemTriggeredTrace() {
@@ -1742,8 +1923,10 @@ public class ProfilingService extends IProfilingService.Stub {
                 // Only 1 system triggered trace should be running at a time. If one is already
                 // running then this should not be called, return.
                 if (DEBUG) {
-                    Log.d(TAG, "System triggered trace not started due to a system triggered trace "
-                            + "already in progress.");
+                    Log.d(
+                            TAG,
+                            "System triggered trace not started due to a system triggered trace "
+                                    + "already in progress.");
                 }
                 LoggingHelper.logProfilingBackgroundTraceState(
                         LoggingHelper.BACKGROUND_TRACE_STATE_NOT_STARTED_ALREADY_RUNNING);
@@ -1751,26 +1934,32 @@ public class ProfilingService extends IProfilingService.Stub {
             }
 
             String[] packageNames = getActiveTriggerPackageNames();
+
             if (packageNames.length == 0) {
-                // No apps have registered interest in system triggered profiling, so don't bother
-                // to start a trace for it.
+                // No apps have registered interest in system triggered profiling and no debug
+                // package is set, so don't bother to start a trace for it.
                 if (DEBUG) {
-                    Log.d(TAG, "System triggered trace not started due to no apps registering "
-                            + "interest");
+                    Log.d(
+                            TAG,
+                            "System triggered trace not started due to no apps registering "
+                                    + "interest");
                 }
                 LoggingHelper.logProfilingBackgroundTraceState(
                         LoggingHelper.BACKGROUND_TRACE_STATE_NOT_STARTED_NO_TRIGGERS_REGISTERED);
                 return;
             }
 
-            String uniqueSessionName = SYSTEM_TRIGGERED_SESSION_NAME_PREFIX
-                    + System.currentTimeMillis();
+            String uniqueSessionName =
+                    SYSTEM_TRIGGERED_SESSION_NAME_PREFIX + System.currentTimeMillis();
 
-            byte[] config = Configs.generateSystemTriggeredTraceConfig(uniqueSessionName,
-                    packageNames,
-                    mDebugPackageName != null);
-            String outputFile = TEMP_TRACE_PATH + SYSTEM_TRIGGERED_SESSION_NAME_PREFIX
-                    + OUTPUT_FILE_IN_PROGRESS + OUTPUT_FILE_UNREDACTED_TRACE_SUFFIX;
+            byte[] config =
+                    Configs.generateSystemTriggeredTraceConfig(
+                            uniqueSessionName, packageNames, mDebugPackageName != null);
+            String outputFile =
+                    TEMP_TRACE_PATH
+                            + SYSTEM_TRIGGERED_SESSION_NAME_PREFIX
+                            + OUTPUT_FILE_IN_PROGRESS
+                            + OUTPUT_FILE_UNREDACTED_TRACE_SUFFIX;
 
             Process activeTrace = startProfilingProcess(config, outputFile);
 
@@ -1790,13 +1979,14 @@ public class ProfilingService extends IProfilingService.Stub {
      * @return the started process if it started successfully, or null if it failed to start.
      */
     @Nullable
-    private Process startProfilingProcess(byte[] config, String outputFile) {
+    @VisibleForTesting
+    public Process startProfilingProcess(byte[] config, String outputFile) {
         try {
             if (DEBUG) {
                 Log.d(TAG, "Starting perfetto process profile output file=" + outputFile);
             }
-            ProcessBuilder processBuilder = new ProcessBuilder("/system/bin/perfetto", "-o",
-                    outputFile, "-c", "-");
+            ProcessBuilder processBuilder =
+                    new ProcessBuilder("/system/bin/perfetto", "-o", outputFile, "-c", "-");
             Process activeProfiling = processBuilder.start();
             activeProfiling.getOutputStream().write(config);
             activeProfiling.getOutputStream().close();
@@ -1809,154 +1999,301 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     /**
-     * Process a trigger for a uid + package name + trigger combination. This is done by verifying
-     * that a trace is active, the app has registered interest in this combo, and that both system
-     * and app provided rate limiting allow for it. If confirmed, it will proceed to clone the
-     * active profiling and continue processing the result.
+     * Process a trigger for a uid + package name + trigger combination. The bahavior diverges into
+     * one of two paths based on trigger type:
      *
-     * Cloning will fork the running trace, stop the new forked trace, and output the result to a
-     * separate file. This leaves the original trace running.
+     * <p>System Trace type trigger: Verifies that a trace is active, the app has registered
+     * interest in this combo, and that both system and app provided rate limiting allow for it. If
+     * confirmed, it will proceed to clone the active profiling and continue processing the result.
+     *
+     * <p>Non System Trace type trigger: Verifies that the app has registered interest in this
+     * combo, and that both system and app provided rate limiting allow for it. If confirmed, it
+     * will proceed to start a new profiling session and continue processing the result.
      */
-    public void processTrigger(int uid, @NonNull String packageName, int triggerType,
-            @Nullable String tag) {
+    public void processTrigger(
+            int uid,
+            @NonNull String packageName,
+            int triggerType,
+            @Nullable String tag,
+            @Nullable IProfilingTriggerCallback callback) {
         if (!Flags.systemTriggeredProfilingNew()) {
             // Flag disabled.
+            performTriggerCallback(callback);
             return;
         }
 
-        if (triggerType == ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE) {
-            // If this trigger is for an app requesting the running background trace then enforce
-            // that the caller and the package match.
+        if ((Flags.profiling25q4()
+                        && triggerType == ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE)
+                || (Flags.profilingTriggerOom()
+                        && triggerType == ProfilingTrigger.TRIGGER_TYPE_OOM)) {
+            // Triggers of these types are expected to come from the process that the trigger
+            // relates to, so enforce that caller matches package name.
             enforceCallerMatchesPackageName(packageName);
         } else if (mDebugPackageName == null || !packageName.equals(mDebugPackageName)) {
-            // If a debug package is set and equals to the package being supplied, then this is for
-            // test/debug and we do not need to validate the system caller. Otherwise, enfore that
-            // the caller is system.
+            // Any remaining triggers are expected to come from the system process. If a debug
+            // package is set and equals to the package being supplied, then this is for test/debug
+            // and we do not need to validate the system caller. Otherwise, enforce that the caller
+            // is system.
             enforceSystemCaller();
         }
 
         // Don't block the calling thread.
-        getHandler().post(new Runnable() {
-            @Override
-            public void run() {
-                processTriggerInternal(uid, packageName, triggerType, tag);
-            }
-        });
+        getHandler()
+                .post(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                processTriggerInternal(
+                                        uid, packageName, triggerType, tag, callback);
+                            }
+                        });
+    }
+
+    /** Returns the correct profiling type for each trigger. */
+    private int getProfilingTypeForTrigger(int triggerType) {
+        if (triggerType == ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN
+                || triggerType == ProfilingTrigger.TRIGGER_TYPE_ANR
+                || triggerType == ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE
+                || (Flags.profiling25q4()
+                        && triggerType == ProfilingTrigger.TRIGGER_TYPE_KILL_FORCE_STOP)
+                || (Flags.profilingTriggerKillRecents()
+                        && triggerType == ProfilingTrigger.TRIGGER_TYPE_KILL_RECENTS)
+                || (Flags.profiling25q4()
+                        && triggerType == ProfilingTrigger.TRIGGER_TYPE_KILL_TASK_MANAGER)) {
+            return ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE;
+        }
+
+        if (Flags.profilingTriggerOom() && triggerType == ProfilingTrigger.TRIGGER_TYPE_OOM) {
+            return ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP;
+        }
+
+        return -1;
     }
 
     /**
      * Internal call to process trigger, not to be called on the thread that passed the trigger in.
      */
     @VisibleForTesting
-    public void processTriggerInternal(int uid, @NonNull String packageName, int triggerType,
-            @Nullable String tag) {
-        synchronized (mLock) {
-            if (mSystemTriggeredTraceProcess == null || !mSystemTriggeredTraceProcess.isAlive()) {
-                // There is no active system triggered trace so there's nothing to clone, null out
-                // the session name just in case and return. This is an expected state as the
-                // background trace does not run all the time.
-                mSystemTriggeredTraceUniqueSessionName = null;
+    public void processTriggerInternal(
+            int uid,
+            @NonNull String packageName,
+            int triggerType,
+            @Nullable String tag,
+            @Nullable IProfilingTriggerCallback callback) {
+        int profilingType = getProfilingTypeForTrigger(triggerType);
 
-                if (DEBUG) {
-                    Log.d(TAG, "Requested clone system triggered trace but no trace active.");
-                }
+        if (profilingType == -1) {
+            // Something is wrong. Log an error and quit.
+            performTriggerCallback(callback);
 
-                LoggingHelper.logProfilingTriggerSent(uid, triggerType,
-                        LoggingHelper.TRIGGER_STATUS_NOT_RUNNING);
-                return;
+            Log.e(
+                    TAG,
+                    String.format(
+                            "Attempting to process an unsupported trigger type %d for package %s.",
+                            triggerType, packageName));
+
+            LoggingHelper.logProfilingTriggerSent(
+                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_ERROR);
+
+            return;
+        }
+
+        // If a future trigger requires starting a new trace rather than leveraging the existing
+        // one, then an additional condition will need to be added to this check.
+        if (profilingType == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE) {
+            processTriggerInternalRunningTrace(uid, packageName, triggerType, tag, callback);
+        } else {
+            processTriggerInternalNewProfiling(
+                    uid, packageName, triggerType, profilingType, tag, callback);
+        }
+    }
+
+    /**
+     * Process trigger for cases which require starting a new profiling session. Validates the
+     * request and then progresses with profiling when appropriate.
+     */
+    @GuardedBy
+    private void processTriggerInternalNewProfiling(
+            int uid,
+            @NonNull String packageName,
+            int triggerType,
+            int profilingType,
+            @Nullable String tag,
+            @Nullable IProfilingTriggerCallback callback) {
+        if (!performTriggerRegistrationCheckAndRateLimiting(
+                uid, packageName, triggerType, profilingType, callback)) {
+            return;
+        }
+
+        // Rate limiter approved, try to start the request.
+        try {
+            TracingSession session =
+                    new TracingSession(profilingType, uid, packageName, triggerType, tag);
+            session.setProfilingTriggerCallback(callback);
+
+            if (Flags.addRateLimiterDisabledToResult() && packageName.equals(mDebugPackageName)) {
+                session.setErrorMessage(RATE_LIMITER_DISABLED_ERROR_MESSAGE);
             }
+            advanceTracingSession(session, TracingState.APPROVED);
+            LoggingHelper.logProfilingTriggerSent(
+                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_FULFILLED);
+            return;
+        } catch (IllegalArgumentException e) {
+            // This should not happen, it should have been caught when checking rate limiter. No
+            // need to call back to app as this is a trigger and not an explicit request.
+            performTriggerCallback(callback);
+            if (DEBUG) {
+                Log.d(
+                        TAG,
+                        "Invalid request at config generation. This should not have happened.",
+                        e);
+            }
+            LoggingHelper.logProfilingTriggerSent(
+                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_ERROR);
+            return;
+        } catch (RuntimeException e) {
+            // Perfetto error. Systems fault. No need to call back to app as this is a trigger and
+            // not an explicit request.
+            performTriggerCallback(callback);
+            if (DEBUG) Log.d(TAG, "Perfetto error", e);
+            LoggingHelper.logProfilingTriggerSent(
+                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_ERROR);
+            return;
+        }
+    }
 
+    /** Process trigger for cases which leverage the background trace. */
+    private void processTriggerInternalRunningTrace(
+            int uid,
+            @NonNull String packageName,
+            int triggerType,
+            @Nullable String tag,
+            @Nullable IProfilingTriggerCallback callback) {
+        synchronized (mLock) {
             if (mSystemTriggeredTraceUniqueSessionName == null) {
+                performTriggerCallback(callback);
+
                 // If we don't have the session name then we don't know how to clone the trace so
                 // stop it if it's still running and then return.
                 stopSystemTriggeredTraceLocked();
 
+                // There is no active system triggered trace so there's nothing to clone. Return.
                 if (DEBUG) {
-                    Log.d(TAG, "Requested clone system triggered trace but we don't have the "
-                            + "session name.");
+                    Log.d(
+                            TAG,
+                            "Requested clone system triggered trace but we don't have the "
+                                    + "session name.");
                 }
 
-                LoggingHelper.logProfilingTriggerSent(uid, triggerType,
-                        LoggingHelper.TRIGGER_STATUS_MISSING_NAME);
+                LoggingHelper.logProfilingTriggerSent(
+                        uid, triggerType, LoggingHelper.TRIGGER_STATUS_MISSING_NAME);
+                return;
+            }
+
+            if (mSystemTriggeredTraceProcess == null || !mSystemTriggeredTraceProcess.isAlive()) {
+                performTriggerCallback(callback);
+
+                // If we make it to this path then session name wasn't set to null but can't be used
+                // anymore as its associated trace is not running, so set to null now.
+                mSystemTriggeredTraceUniqueSessionName = null;
+
+                // There is no active system triggered trace so there's nothing to clone. Return.
+                if (DEBUG) {
+                    Log.d(TAG, "Requested clone system triggered trace but no trace active.");
+                }
+                LoggingHelper.logProfilingTriggerSent(
+                        uid, triggerType, LoggingHelper.TRIGGER_STATUS_NOT_RUNNING);
                 return;
             }
         }
 
-        ProfilingTriggerData trigger = getTriggerDataObject(uid, packageName, triggerType);
-        if (trigger == null) {
-            // No trigger object, process isn't registered for this trigger.
-            LoggingHelper.logProfilingTriggerSent(uid, triggerType,
-                    LoggingHelper.TRIGGER_STATUS_NOT_REGISTERED);
+        if (!performTriggerRegistrationCheckAndRateLimiting(
+                uid,
+                packageName,
+                triggerType,
+                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                callback)) {
             return;
         }
-
-        // Then check rate limiting, both app and system.
-        if (!isTriggerRateLimitingAllowed(trigger, ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE)) {
-            // Logging for this return case is done within {@link isTriggerRateLimitingAllowed}.
-            return;
-        }
-
-        // Now that it's approved by both rate limiters, update the last run value.
-        trigger.setLastTriggeredTimeMs(System.currentTimeMillis());
 
         // If we made it this far, a trace is running, the app has registered interest in this
         // trigger, and rate limiting allows for capturing the result.
 
         // Create the file names
-        String baseFileName = OUTPUT_FILE_PREFIX
-                + OUTPUT_FILE_SECTION_SEPARATOR + OUTPUT_FILE_TRIGGER
-                + OUTPUT_FILE_FIELD_SEPARATOR + triggerType
-                + OUTPUT_FILE_SECTION_SEPARATOR + getFormattedDate();
+        String baseFileName =
+                OUTPUT_FILE_PREFIX
+                        + OUTPUT_FILE_SECTION_SEPARATOR
+                        + OUTPUT_FILE_TRIGGER
+                        + OUTPUT_FILE_FIELD_SEPARATOR
+                        + triggerType
+                        + OUTPUT_FILE_SECTION_SEPARATOR
+                        + getFormattedDate();
         String unredactedFullName = baseFileName + OUTPUT_FILE_UNREDACTED_TRACE_SUFFIX;
 
         try {
             // Try to clone the running trace.
-            Process clone = Runtime.getRuntime().exec(new String[] {
-                    "/system/bin/perfetto",
-                    "--clone-by-name",
-                    mSystemTriggeredTraceUniqueSessionName,
-                    "--out",
-                    TEMP_TRACE_PATH + unredactedFullName});
+            Process clone =
+                    Runtime.getRuntime()
+                            .exec(
+                                    new String[] {
+                                        "/system/bin/perfetto",
+                                        "--clone-by-name",
+                                        mSystemTriggeredTraceUniqueSessionName,
+                                        "--out",
+                                        TEMP_TRACE_PATH + unredactedFullName
+                                    });
 
             // Wait for cloned process to stop.
             if (!clone.waitFor(mPerfettoDestroyTimeoutMs, TimeUnit.MILLISECONDS)) {
                 // Cloned process did not stop, try to stop it forcibly.
                 if (DEBUG) {
-                    Log.d(TAG, "Cloned system triggered trace didn't stop on its own, trying to "
-                            + "stop it forcibly.");
+                    Log.d(
+                            TAG,
+                            "Cloned system triggered trace didn't stop on its own, trying to "
+                                    + "stop it forcibly.");
                 }
                 clone.destroyForcibly();
 
                 // Wait again to see if it stops now.
                 if (!clone.waitFor(mPerfettoDestroyTimeoutMs, TimeUnit.MILLISECONDS)) {
+                    performTriggerCallback(callback);
+
                     // Nothing more to do, result won't be ready so return.
                     if (DEBUG) Log.d(TAG, "Cloned system triggered trace timed out.");
-                    LoggingHelper.logProfilingTriggerSent(uid, triggerType,
-                            LoggingHelper.TRIGGER_STATUS_ERROR);
+                    LoggingHelper.logProfilingTriggerSent(
+                            uid, triggerType, LoggingHelper.TRIGGER_STATUS_ERROR);
                     return;
                 }
             }
         } catch (IOException | InterruptedException e) {
+            performTriggerCallback(callback);
+
             // Failed. There's nothing to clean up as we haven't created a session for this clone
             // yet so just fail quietly. The result for this trigger instance combo will be lost.
             if (DEBUG) Log.d(TAG, "Failed to clone running system triggered trace.", e);
-            LoggingHelper.logProfilingTriggerSent(uid, triggerType,
-                    LoggingHelper.TRIGGER_STATUS_ERROR);
+            LoggingHelper.logProfilingTriggerSent(
+                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_ERROR);
             return;
         }
 
-        LoggingHelper.logProfilingTriggerSent(uid, triggerType,
-                LoggingHelper.TRIGGER_STATUS_FULFILLED);
+        performTriggerCallback(callback);
+
+        LoggingHelper.logProfilingTriggerSent(
+                uid, triggerType, LoggingHelper.TRIGGER_STATUS_FULFILLED);
 
         // If we get here the clone was successful. Create a new TracingSession to track this and
         // continue moving it along the processing process.
-        TracingSession session = new TracingSession(
-                ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE, uid, packageName, triggerType, tag);
+        TracingSession session =
+                new TracingSession(
+                        ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                        uid,
+                        packageName,
+                        triggerType,
+                        tag);
         session.setRedactedFileName(baseFileName + OUTPUT_FILE_TRACE_SUFFIX);
         session.setFileName(unredactedFullName);
         session.setProfilingStartTimeMs(System.currentTimeMillis());
-        if (Flags.addRateLimiterDisabledToResult()
-                && packageName.equals(mDebugPackageName)) {
+        if (Flags.addRateLimiterDisabledToResult() && packageName.equals(mDebugPackageName)) {
             session.setErrorMessage(RATE_LIMITER_DISABLED_ERROR_MESSAGE);
         }
         moveSessionToQueue(session, true);
@@ -1968,24 +2305,30 @@ public class ProfilingService extends IProfilingService.Stub {
     /**
      * Get trigger data object for a specific process/trigger combo.
      *
-     * Return object:
-     * - With type matching provided triggerType if the provided process has explicitly registered
-     *      for that trigger.
-     * - With type of TRIGGER_ALL if the provided process has registered for all triggers and has
-     *      not explicitly registered for the provided trigger type.
-     * - Null if the provied process has not registered for the specific provided triggerType nor
-     *      for all trigger types.
+     * <p>Return object:
+     *
+     * <ul>
+     *   <li>With type matching provided triggerType if the provided process has explicitly
+     *       registered for that trigger.
+     *   <li>With type of TRIGGER_ALL if the provided process has registered for all triggers and
+     *       has not explicitly registered for the provided trigger type.
+     *   <li>Null if the provided process has not registered for the specific provided triggerType
+     *       nor for all trigger types.
+     * </ul>
      */
     @Nullable
     @VisibleForTesting
-    public ProfilingTriggerData getTriggerDataObject(int uid, @NonNull String packageName,
-            int triggerType) {
+    public ProfilingTriggerData getTriggerDataObject(
+            int uid, @NonNull String packageName, int triggerType) {
         SparseArray<ProfilingTriggerData> perProcessTriggers = mAppTriggers.get(packageName, uid);
         if (perProcessTriggers == null) {
             // This uid/package hasn't registered any triggers.
             if (DEBUG) {
-                Log.d(TAG, String.format("Profiling triggered for uid %d with no registered "
-                        + "triggers", uid));
+                Log.d(
+                        TAG,
+                        String.format(
+                                "Profiling triggered for uid %d with no registered " + "triggers",
+                                uid));
             }
             return null;
         }
@@ -2000,9 +2343,12 @@ public class ProfilingService extends IProfilingService.Stub {
             if (trigger == null) {
                 // This uid hasn't registered a trigger for this type or for all types.
                 if (DEBUG) {
-                    Log.d(TAG, String.format("Profiling triggered for uid %d and trigger %d, but "
-                            + "app has not registered for this trigger type or all triggers.",
-                            uid, triggerType));
+                    Log.d(
+                            TAG,
+                            String.format(
+                                    "Profiling triggered for uid %d and trigger %d, but app has not"
+                                            + " registered for this trigger type or all triggers.",
+                                    uid, triggerType));
                 }
                 return null;
             }
@@ -2011,18 +2357,52 @@ public class ProfilingService extends IProfilingService.Stub {
         return trigger;
     }
 
-    /** Check rate limiting for a potential system triggered profiling run. */
-    private boolean isTriggerRateLimitingAllowed(ProfilingTriggerData trigger, int profilingType) {
+    /**
+     * Check trigger registration and rate limiting for a potential system triggered profiling run,
+     * and update rate limiting values if approved.
+     */
+    private boolean performTriggerRegistrationCheckAndRateLimiting(
+            int uid,
+            @NonNull String packageName,
+            int triggerType,
+            int profilingType,
+            @Nullable IProfilingTriggerCallback callback) {
+        ProfilingTriggerData trigger = getTriggerDataObject(uid, packageName, triggerType);
+
+        if (trigger == null
+                && Flags.profilingTriggerOom()
+                && triggerType == ProfilingTrigger.TRIGGER_TYPE_OOM
+                && Flags.oomTriggerExperimentDoNotRelease()) {
+            // In order to evaluate perf impact of the oom trigger which delays app death, create a
+            // fake trigger object if the real one is non-existent, and proceed with that object.
+            // The object will not be saved in this flow so it will only apply to this session.
+            trigger = new ProfilingTriggerData(uid, packageName, triggerType, 0);
+        }
+
+        if (trigger == null) {
+            // No trigger object, process isn't registered for this trigger.
+            performTriggerCallback(callback);
+            LoggingHelper.logProfilingTriggerSent(
+                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_NOT_REGISTERED);
+            return false;
+        }
+
         // Check app provided rate limiting.
         if (System.currentTimeMillis() - trigger.getLastTriggeredTimeMs()
                 < trigger.getRateLimitingPeriodHours() * 60L * 60L * 1000L) {
             // App provided rate limiting doesn't allow for this run, return.
+            performTriggerCallback(callback);
             if (DEBUG) {
-                Log.d(TAG, String.format("Profiling triggered for uid %d and trigger %d but blocked"
-                        + " by app provided rate limiting ", trigger.getUid(),
-                        trigger.getTriggerType()));
+                Log.d(
+                        TAG,
+                        String.format(
+                                "Profiling triggered for uid %d and trigger %d but blocked"
+                                        + " by app provided rate limiting ",
+                                trigger.getUid(), trigger.getTriggerType()));
             }
-            LoggingHelper.logProfilingTriggerSent(trigger.getUid(), trigger.getTriggerType(),
+            LoggingHelper.logProfilingTriggerSent(
+                    trigger.getUid(),
+                    trigger.getTriggerType(),
                     LoggingHelper.TRIGGER_STATUS_RATE_LIMIT_APP);
             return false;
         }
@@ -2030,45 +2410,54 @@ public class ProfilingService extends IProfilingService.Stub {
         // Only perform system rate limiting if this is not the debug package.
         if (!trigger.getPackageName().equals(mDebugPackageName)) {
             // Lastly, check system rate limiting.
-            int systemRateLimiterResult = getRateLimiter().isProfilingRequestAllowed(
-                    trigger.getUid(), profilingType, true, null);
+            int systemRateLimiterResult =
+                    getRateLimiter()
+                            .isProfilingRequestAllowed(trigger.getUid(), profilingType, true, null);
             if (systemRateLimiterResult != RateLimiter.RATE_LIMIT_RESULT_ALLOWED) {
                 // Blocked by system rate limiter, return. Since this is system triggered there is
                 // no callback and therefore no need to distinguish between per app and system
                 // denials within the system rate limiter.
+                performTriggerCallback(callback);
                 if (DEBUG) {
-                    Log.d(TAG, String.format("Profiling triggered for uid %d and trigger %d but "
-                            + "blocked by system rate limiting ", trigger.getUid(),
-                            trigger.getTriggerType()));
+                    Log.d(
+                            TAG,
+                            String.format(
+                                    "Profiling triggered for uid %d and trigger %d but "
+                                            + "blocked by system rate limiting ",
+                                    trigger.getUid(), trigger.getTriggerType()));
                 }
 
                 int rateLimitType =
                         systemRateLimiterResult == RateLimiter.RATE_LIMIT_RESULT_BLOCKED_PROCESS
                                 ? LoggingHelper.TRIGGER_STATUS_RATE_LIMIT_PROCESS
                                 : LoggingHelper.TRIGGER_STATUS_RATE_LIMIT_SYSTEM;
-                LoggingHelper.logProfilingTriggerSent(trigger.getUid(), trigger.getTriggerType(),
-                        rateLimitType);
+                LoggingHelper.logProfilingTriggerSent(
+                        trigger.getUid(), trigger.getTriggerType(), rateLimitType);
                 return false;
             }
         }
+
+        // Now that it's approved by both rate limiters, update the last run value.
+        trigger.setLastTriggeredTimeMs(System.currentTimeMillis());
 
         return true;
     }
 
     /** Add a profiling trigger to the supporting data structure. */
     @VisibleForTesting
-    public void addTrigger(int uid, @NonNull String packageName, int triggerType,
-            int rateLimitingPeriodHours) {
-        addTrigger(new ProfilingTriggerData(uid, packageName, triggerType, rateLimitingPeriodHours),
+    public void addTrigger(
+            int uid, @NonNull String packageName, int triggerType, int rateLimitingPeriodHours) {
+        addTrigger(
+                new ProfilingTriggerData(uid, packageName, triggerType, rateLimitingPeriodHours),
                 true);
     }
 
     /**
      * Add a profiling trigger to the supporting data structure.
      *
-     * @param trigger       The trigger to add.
-     * @param maybePersist  Whether to persist to disk, if eligible based on frequency. This is
-     *                          intended to be set to false only when loading triggers from disk.
+     * @param trigger The trigger to add.
+     * @param maybePersist Whether to persist to disk, if eligible based on frequency. This is
+     *     intended to be set to false only when loading triggers from disk.
      */
     @VisibleForTesting
     public void addTrigger(ProfilingTriggerData trigger, boolean maybePersist) {
@@ -2083,8 +2472,8 @@ public class ProfilingService extends IProfilingService.Stub {
             throw new IllegalArgumentException("Trigger type is not supported");
         }
 
-        SparseArray<ProfilingTriggerData> perProcessTriggers = mAppTriggers.get(
-                trigger.getPackageName(), trigger.getUid());
+        SparseArray<ProfilingTriggerData> perProcessTriggers =
+                mAppTriggers.get(trigger.getPackageName(), trigger.getUid());
 
         if (perProcessTriggers == null) {
             perProcessTriggers = new SparseArray<ProfilingTriggerData>();
@@ -2109,38 +2498,54 @@ public class ProfilingService extends IProfilingService.Stub {
         // profiling types are supported, we'll need to filter these more intentionally to just the
         // ones that have an associated trace trigger.
         Set<String> packageNamesSet = mAppTriggers.getMap().keySet();
-        return packageNamesSet.toArray(new String[packageNamesSet.size()]);
+
+        if (mDebugPackageName == null || packageNamesSet.contains(mDebugPackageName)) {
+            return packageNamesSet.toArray(new String[0]);
+        }
+
+        // Add debug package name if mDebugPackageName is set and it's not already in the list.
+        List<String> resultList = new ArrayList<>(packageNamesSet);
+        resultList.add(mDebugPackageName);
+        return resultList.toArray(new String[0]);
     }
 
     /**
-        This method will check if the profiling subprocess is still alive. If it's still alive and
-        there is still time permitted to run, another check will be scheduled. If the process is
-        still alive but max allotted processing time has been exceeded, the profiling process will
-        be stopped and results processed and returned to client. If the profiling process is
-        complete results will be processed and returned to the client.
+     * This method will check if the profiling subprocess is still alive. If it's still alive and
+     * there is still time permitted to run, another check will be scheduled. If the process is
+     * still alive but max allotted processing time has been exceeded, the profiling process will be
+     * stopped and results processed and returned to client. If the profiling process is complete
+     * results will be processed and returned to the client.
      */
     private void checkProfilingCompleteRescheduleIfNeeded(TracingSession session) {
-        long processingTimeRemaining = session.getMaxProfilingTimeAllowedMs()
-                - (System.currentTimeMillis() - session.getProfilingStartTimeMs());
+        long processingTimeRemaining =
+                session.getMaxProfilingTimeAllowedMs()
+                        - (System.currentTimeMillis() - session.getProfilingStartTimeMs());
 
-        if (session.getActiveTrace().isAlive()
-                && processingTimeRemaining >= 0) {
+        if (session.getActiveTrace().isAlive() && processingTimeRemaining >= 0) {
             if (DEBUG) {
-                Log.d(TAG, "Profiling not yet finished. processingTimeRemaining="
-                        + processingTimeRemaining + " reschedule check in "
-                        + Math.min(mProfilingRecheckDelayMs, processingTimeRemaining));
+                Log.d(
+                        TAG,
+                        "Profiling not yet finished. processingTimeRemaining="
+                                + processingTimeRemaining
+                                + " reschedule check in "
+                                + Math.min(mProfilingRecheckDelayMs, processingTimeRemaining));
             }
             // still running and under max allotted processing time, reschedule the check.
-            getHandler().postDelayed(session.getProcessResultRunnable(),
-                    Math.min(mProfilingRecheckDelayMs, processingTimeRemaining));
-        } else if (session.getActiveTrace().isAlive()
-                && processingTimeRemaining < 0) {
+            getHandler()
+                    .postDelayed(
+                            session.getProcessResultRunnable(),
+                            Math.min(mProfilingRecheckDelayMs, processingTimeRemaining));
+        } else if (session.getActiveTrace().isAlive() && processingTimeRemaining < 0) {
             // still running but exceeded max allotted processing time, stop profiling and deliver
             // what results are available.
+            performTriggerCallback(session);
             stopProfiling(session.getKey(), LoggingHelper.PROFILING_STOPPED_REASON_TIMED_OUT);
         } else {
             // complete, process results and deliver.
-            LoggingHelper.logProfilingStopped(session.getUid(), session.getProfilingType(),
+            performTriggerCallback(session);
+            LoggingHelper.logProfilingStopped(
+                    session.getUid(),
+                    session.getProfilingType(),
                     session.getTriggerType(),
                     LoggingHelper.PROFILING_STOPPED_REASON_TIMED_OUT);
             session.setProcessResultRunnable(null);
@@ -2170,8 +2575,12 @@ public class ProfilingService extends IProfilingService.Stub {
     private void stopProfiling(String key, int loggingReason) {
         TracingSession session = mActiveTracingSessions.get(key);
         if (DEBUG) {
-            Log.d(TAG, "stopProfiling for session="
-                        + session.getFileName() + " loggingReason=" + loggingReason);
+            Log.d(
+                    TAG,
+                    "stopProfiling for session="
+                            + session.getFileName()
+                            + " loggingReason="
+                            + loggingReason);
         }
         stopProfiling(session, loggingReason);
     }
@@ -2185,7 +2594,8 @@ public class ProfilingService extends IProfilingService.Stub {
 
         if (session.getProcessResultRunnable() == null) {
             if (DEBUG) {
-                Log.d(TAG,
+                Log.d(
+                        TAG,
                         "No runnable, it either stopped already or is in the process of stopping.");
             }
             return;
@@ -2198,8 +2608,8 @@ public class ProfilingService extends IProfilingService.Stub {
         // End the tracing session.
         session.getActiveTrace().destroyForcibly();
         try {
-            if (!session.getActiveTrace().waitFor(mPerfettoDestroyTimeoutMs,
-                    TimeUnit.MILLISECONDS)) {
+            if (!session.getActiveTrace()
+                    .waitFor(mPerfettoDestroyTimeoutMs, TimeUnit.MILLISECONDS)) {
                 if (DEBUG) Log.d(TAG, "Stopping of running trace process timed out.");
                 return;
             }
@@ -2211,8 +2621,11 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
 
-        LoggingHelper.logProfilingStopped(session.getUid(), session.getProfilingType(),
-                session.getTriggerType(), loggingReason);
+        LoggingHelper.logProfilingStopped(
+                session.getUid(),
+                session.getProfilingType(),
+                session.getTriggerType(),
+                loggingReason);
 
         // If we made it here the result is ready, now run the post processing runnable.
         getHandler().post(session.getProcessResultRunnable());
@@ -2230,9 +2643,9 @@ public class ProfilingService extends IProfilingService.Stub {
 
     /**
      * Cleanup the data structure of active sessions. Non active sessions are never expected to be
-     * present in {@link mActiveTracingSessions} as they would be moved to
-     * {@link mQueuedTracingResults} when profiling completes. If a session is present but not
-     * running, remove it. If a session has a not alive process, try to stop it.
+     * present in {@link mActiveTracingSessions} as they would be moved to {@link
+     * mQueuedTracingResults} when profiling completes. If a session is present but not running,
+     * remove it. If a session has a not alive process, try to stop it.
      */
     public void cleanupActiveTracingSessions() throws RuntimeException {
         // Create a temporary list to store the keys of sessions to be stopped.
@@ -2259,8 +2672,7 @@ public class ProfilingService extends IProfilingService.Stub {
         // sessions should be moved to queue if they reach this state.
         if (!sessionsToStop.isEmpty()) {
             for (int i = 0; i < sessionsToStop.size(); i++) {
-                stopProfiling(sessionsToStop.get(i),
-                        LoggingHelper.PROFILING_STOPPED_REASON_ERROR);
+                stopProfiling(sessionsToStop.get(i), LoggingHelper.PROFILING_STOPPED_REASON_ERROR);
             }
         }
     }
@@ -2284,9 +2696,9 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     /**
-     * Begin moving result to storage by validating and then sending a request to
-     * {@link ProfilingManager} for a file to write to. File will be returned as a
-     * {@link ParcelFileDescriptor} via {@link sendFileDescriptor}.
+     * Begin moving result to storage by validating and then sending a request to {@link
+     * ProfilingManager} for a file to write to. File will be returned as a {@link
+     * ParcelFileDescriptor} via {@link sendFileDescriptor}.
      */
     @VisibleForTesting
     public void beginMoveFileToAppStorage(TracingSession session) {
@@ -2294,8 +2706,10 @@ public class ProfilingService extends IProfilingService.Stub {
             // This should not have happened, if the session has a state of error or later then why
             // are we trying to continue processing it? Remove from all data stores just in case.
             if (DEBUG) {
-                Log.d(TAG, "Attempted beginMoveFileToAppStorage on a session with status error"
-                        + " or an invalid status.");
+                Log.d(
+                        TAG,
+                        "Attempted beginMoveFileToAppStorage on a session with status error"
+                                + " or an invalid status.");
             }
             mActiveTracingSessions.remove(session.getKey());
             cleanupTracingSession(session);
@@ -2313,16 +2727,15 @@ public class ProfilingService extends IProfilingService.Stub {
         requestFileForResult(perUidCallbacks, session);
     }
 
-    /**
-     * Delete a file which failed to copy via ProfilingManager.
-     */
+    /** Delete a file which failed to copy via ProfilingManager. */
     private void deleteBadCopiedFile(TracingSession session) {
         List<IProfilingResultCallback> perUidCallbacks = mResultCallbacks.get(session.getUid());
         for (int i = 0; i < perUidCallbacks.size(); i++) {
             try {
                 String fileName =
                         session.getProfilingType() == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE
-                        ? session.getRedactedFileName() : session.getFileName();
+                                ? session.getRedactedFileName()
+                                : session.getFileName();
                 IProfilingResultCallback callback = perUidCallbacks.get(i);
                 if (callback.asBinder().isBinderAlive()) {
                     callback.deleteFile(OUTPUT_FILE_RELATIVE_PATH + fileName);
@@ -2340,24 +2753,30 @@ public class ProfilingService extends IProfilingService.Stub {
      * Request a {@link ParcelFileDescriptor} to a new file in app storage from the first live
      * callback for this uid.
      *
-     * The new file is created by {@link ProfilingManager} from within app context. We only need a
-     * single file, which can be created from any of the contexts belonging to the app that
+     * <p>The new file is created by {@link ProfilingManager} from within app context. We only need
+     * a single file, which can be created from any of the contexts belonging to the app that
      * requested this profiling, so it does not matter which of the requesting app's callbacks we
      * use.
      */
     @Nullable
     private void requestFileForResult(
             @NonNull List<IProfilingResultCallback> perUidCallbacks, TracingSession session) {
-        String fileName = session.getProfilingType() == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE
-                ? session.getRedactedFileName()
-                : session.getFileName();
+        String fileName =
+                session.getProfilingType() == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE
+                        ? session.getRedactedFileName()
+                        : session.getFileName();
         for (int i = 0; i < perUidCallbacks.size(); i++) {
             try {
                 IProfilingResultCallback callback = perUidCallbacks.get(i);
                 if (callback.asBinder().isBinderAlive()) {
                     // Great, this one works! Call it and exit if we don't hit an exception.
-                    perUidCallbacks.get(i).generateFile(OUTPUT_FILE_RELATIVE_PATH, fileName,
-                            session.getKeyMostSigBits(), session.getKeyLeastSigBits());
+                    perUidCallbacks
+                            .get(i)
+                            .generateFile(
+                                    OUTPUT_FILE_RELATIVE_PATH,
+                                    fileName,
+                                    session.getKeyMostSigBits(),
+                                    session.getKeyLeastSigBits());
                     return;
                 }
             } catch (RemoteException e) {
@@ -2386,12 +2805,13 @@ public class ProfilingService extends IProfilingService.Stub {
 
         try {
             if (DEBUG) {
-                Log.d(TAG, "Start redaction, create empty file for redactor output="
+                Log.d(
+                        TAG,
+                        "Start redaction, create empty file for redactor output="
                                 + session.getRedactedFileName());
             }
             // We need to create an empty file for the redaction process to write the output into.
-            File emptyRedactedTraceFile = new File(TEMP_TRACE_PATH
-                    + session.getRedactedFileName());
+            File emptyRedactedTraceFile = new File(TEMP_TRACE_PATH + session.getRedactedFileName());
             emptyRedactedTraceFile.createNewFile();
         } catch (Exception exception) {
             if (DEBUG) Log.e(TAG, "Creating empty redacted file failed.", exception);
@@ -2406,11 +2826,12 @@ public class ProfilingService extends IProfilingService.Stub {
             // Start the redaction process and log the time of start.  Redaction has
             // mRedactionMaxRuntimeAllottedMs to complete. Redaction status will be checked every
             // mRedactionCheckFrequencyMs.
-            ProcessBuilder redactionProcess = new ProcessBuilder(
-                    "/apex/com.android.profiling/bin/trace_redactor",
-                    TEMP_TRACE_PATH + session.getFileName(),
-                    TEMP_TRACE_PATH + session.getRedactedFileName(),
-                    session.getPackageName());
+            ProcessBuilder redactionProcess =
+                    new ProcessBuilder(
+                            "/apex/com.android.profiling/bin/trace_redactor",
+                            TEMP_TRACE_PATH + session.getFileName(),
+                            TEMP_TRACE_PATH + session.getRedactedFileName(),
+                            session.getPackageName());
             session.setActiveRedaction(redactionProcess.start());
             session.setRedactionStartTimeMs(System.currentTimeMillis());
         } catch (Exception exception) {
@@ -2421,15 +2842,15 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
 
-        session.setProcessResultRunnable(new Runnable() {
+        session.setProcessResultRunnable(
+                new Runnable() {
 
-            @Override
-            public void run() {
-                checkRedactionStatus(session);
-            }
-        });
-        getHandler().postDelayed(session.getProcessResultRunnable(),
-                mRedactionCheckFrequencyMs);
+                    @Override
+                    public void run() {
+                        checkRedactionStatus(session);
+                    }
+                });
+        getHandler().postDelayed(session.getProcessResultRunnable(), mRedactionCheckFrequencyMs);
     }
 
     private void checkRedactionStatus(TracingSession session) {
@@ -2453,10 +2874,14 @@ public class ProfilingService extends IProfilingService.Stub {
         }
 
         // Schedule the next check.
-        getHandler().postDelayed(session.getProcessResultRunnable(),
-                Math.min(mRedactionCheckFrequencyMs, mRedactionMaxRuntimeAllottedMs
-                        - (System.currentTimeMillis() - session.getRedactionStartTimeMs())));
-
+        getHandler()
+                .postDelayed(
+                        session.getProcessResultRunnable(),
+                        Math.min(
+                                mRedactionCheckFrequencyMs,
+                                mRedactionMaxRuntimeAllottedMs
+                                        - (System.currentTimeMillis()
+                                                - session.getRedactionStartTimeMs())));
     }
 
     private void handleRedactionComplete(TracingSession session) {
@@ -2464,8 +2889,11 @@ public class ProfilingService extends IProfilingService.Stub {
         if (redactionErrorCode != 0) {
             // Redaction process failed. This failure cannot be recovered.
             if (DEBUG) {
-                Log.d(TAG, String.format("Redaction processed failed with error code: %s",
-                        redactionErrorCode));
+                Log.d(
+                        TAG,
+                        String.format(
+                                "Redaction processed failed with error code: %s",
+                                redactionErrorCode));
             }
             session.setError(
                     ProfilingResult.ERROR_FAILED_POST_PROCESSING,
@@ -2478,8 +2906,8 @@ public class ProfilingService extends IProfilingService.Stub {
         // unredacted trace file unless {@link mKeepResultInTempDir} has been enabled.
         synchronized (mLock) {
             if (!mKeepResultInTempDir) {
-                deleteProfilingFiles(session,
-                        false, /* Don't delete the newly redacted file */
+                deleteProfilingFiles(
+                        session, false, /* Don't delete the newly redacted file */
                         true); /* Do delete the no longer needed unredacted file.*/
             }
         }
@@ -2518,8 +2946,13 @@ public class ProfilingService extends IProfilingService.Stub {
         if (readable) {
             Log.i(TAG, "Profiling file retained at: " + TEMP_TRACE_PATH + fileName);
         } else {
-            Log.i(TAG, "Profiling file retained at: " + TEMP_TRACE_PATH + fileName
-                    + " | File is not publicly accessible, root access is required to read.");
+            Log.i(
+                    TAG,
+                    "Profiling file retained at: "
+                            + TEMP_TRACE_PATH
+                            + fileName
+                            + " | File is not publicly accessible, root access is required to"
+                            + " read.");
         }
     }
 
@@ -2542,8 +2975,8 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     /**
-     * Called whenever a new global listener has been added to the specified uid.
-     * Attempts to process queued results if present.
+     * Called whenever a new global listener has been added to the specified uid. Attempts to
+     * process queued results if present.
      */
     @VisibleForTesting
     public void handleQueuedResults(int uid) {
@@ -2606,7 +3039,7 @@ public class ProfilingService extends IProfilingService.Stub {
      * Cleanup is intended for when we're done with a queued trace session, whether successful or
      * not.
      *
-     * Cleanup will attempt to delete the temporary file(s) and then remove it from the queue.
+     * <p>Cleanup will attempt to delete the temporary file(s) and then remove it from the queue.
      */
     @VisibleForTesting
     public void cleanupTracingSession(TracingSession session) {
@@ -2618,10 +3051,10 @@ public class ProfilingService extends IProfilingService.Stub {
      * Cleanup is intended for when we're done with a queued trace session, whether successful or
      * not.
      *
-     * Cleanup will attempt to delete the temporary file(s) and then remove it from the queue.
+     * <p>Cleanup will attempt to delete the temporary file(s) and then remove it from the queue.
      */
-    private void cleanupTracingSession(TracingSession session,
-            @Nullable List<TracingSession> queuedSessions) {
+    private void cleanupTracingSession(
+            TracingSession session, @Nullable List<TracingSession> queuedSessions) {
         if (DEBUG) {
             Log.d(TAG, "cleanupTracingSession for fileName=" + session.getFileName());
         }
@@ -2650,13 +3083,13 @@ public class ProfilingService extends IProfilingService.Stub {
     /**
      * Attempt to delete profiling output.
      *
-     * If both boolean params are false, this method expectedly does nothing.
+     * <p>If both boolean params are false, this method expectedly does nothing.
      *
      * @param deleteRedacted Whether to delete the redacted file.
      * @param deleteUnredacted Whether to delete the unredacted file.
      */
-    private void deleteProfilingFiles(TracingSession session, boolean deleteRedacted,
-            boolean deleteUnredacted) {
+    private void deleteProfilingFiles(
+            TracingSession session, boolean deleteRedacted, boolean deleteUnredacted) {
         if (deleteRedacted) {
             try {
                 if (DEBUG) {
@@ -2684,20 +3117,22 @@ public class ProfilingService extends IProfilingService.Stub {
      * Move session to list of queued sessions. Removes the session from the list of active
      * sessions, if it is present.
      *
-     * Sessions are expected to be in the queue when their states are between PROFILING_FINISHED and
-     * NOTIFIED_REQUESTER, inclusive.
+     * <p>Sessions are expected to be in the queue when their states are between PROFILING_FINISHED
+     * and NOTIFIED_REQUESTER, inclusive.
      *
-     * Sessions should only be added to the queue with a valid profiling start time. Sessions added
-     * without a valid start time may be cleaned up in middle of their execution and fail to deliver
-     * any result.
+     * <p>Sessions should only be added to the queue with a valid profiling start time. Sessions
+     * added without a valid start time may be cleaned up in middle of their execution and fail to
+     * deliver any result.
      *
-     * @param session      the session to move to the queue
+     * @param session the session to move to the queue
      * @param maybePersist whether to persist the queue to disk if the queue is eligible to be
-     *          persisted
+     *     persisted
      */
     private void moveSessionToQueue(TracingSession session, boolean maybePersist) {
         if (DEBUG && session.getProfilingStartTimeMs() == 0) {
-            Log.e(TAG, "Attempting to move session to queue without a start time set.",
+            Log.e(
+                    TAG,
+                    "Attempting to move session to queue without a start time set.",
                     new Throwable());
         }
 
@@ -2745,12 +3180,14 @@ public class ProfilingService extends IProfilingService.Stub {
 
     private RateLimiter getRateLimiter() {
         if (mRateLimiter == null) {
-            mRateLimiter = new RateLimiter(new RateLimiter.HandlerCallback() {
-                @Override
-                public Handler obtainHandler() {
-                    return getHandler();
-                }
-            });
+            mRateLimiter =
+                    new RateLimiter(
+                            new RateLimiter.HandlerCallback() {
+                                @Override
+                                public Handler obtainHandler() {
+                                    return getHandler();
+                                }
+                            });
         }
         return mRateLimiter;
     }
@@ -2810,11 +3247,14 @@ public class ProfilingService extends IProfilingService.Stub {
 
     /**
      * Persist service data to disk following the following rules:
-     * - If a persist is already scheduled, do nothing.
-     * - If a persist happened within the last {@link #mPersistFrequencyMs} then schedule a
-     *      persist for {@link #mPersistFrequencyMs} after the last persist.
-     * - If no persist has occurred yet or the most recent persist was more than
-     *      {@link #mPersistFrequencyMs} ago, persist immediately.
+     *
+     * <ul>
+     *   <li>If a persist is already scheduled, do nothing.
+     *   <li>If a persist happened within the last {@link #mPersistFrequencyMs} then schedule a
+     *       persist for {@link #mPersistFrequencyMs} after the last persist.
+     *   <li>If no persist has occurred yet or the most recent persist was more than {@link
+     *       #mPersistFrequencyMs} ago, persist immediately.
+     * </ul>
      */
     @VisibleForTesting
     public void maybePersistToDisk() {
@@ -2831,25 +3271,28 @@ public class ProfilingService extends IProfilingService.Stub {
 
             if (mPersistFrequencyMs.get() != 0
                     && (System.currentTimeMillis() - mLastPersistedTimestampMs
-                    < mPersistFrequencyMs.get())) {
+                            < mPersistFrequencyMs.get())) {
                 // Schedule the persist job.
                 if (mPersistRunnable == null) {
-                    mPersistRunnable = new Runnable() {
-                        @Override
-                        public void run() {
-                            if (Flags.persistQueue()) {
-                                persistQueueToDisk();
-                            }
-                            if (Flags.systemTriggeredProfilingNew()) {
-                                persistAppTriggersToDisk();
-                            }
-                            mPersistScheduled = false;
-                        }
-                    };
+                    mPersistRunnable =
+                            new Runnable() {
+                                @Override
+                                public void run() {
+                                    if (Flags.persistQueue()) {
+                                        persistQueueToDisk();
+                                    }
+                                    if (Flags.systemTriggeredProfilingNew()) {
+                                        persistAppTriggersToDisk();
+                                    }
+                                    mPersistScheduled = false;
+                                }
+                            };
                 }
                 mPersistScheduled = true;
-                long persistDelay = mLastPersistedTimestampMs + mPersistFrequencyMs.get()
-                        - System.currentTimeMillis();
+                long persistDelay =
+                        mLastPersistedTimestampMs
+                                + mPersistFrequencyMs.get()
+                                - System.currentTimeMillis();
                 getHandler().postDelayed(mPersistRunnable, persistDelay);
                 return;
             }
@@ -2951,8 +3394,10 @@ public class ProfilingService extends IProfilingService.Stub {
                 if (!setupPersistAppTriggerFiles()) {
                     // No file, nowhere to save.
                     if (DEBUG) {
-                        Log.d(TAG, "Failed setting up app triggers persist files so nowhere to save"
-                                + " to.");
+                        Log.d(
+                                TAG,
+                                "Failed setting up app triggers persist files so nowhere to save"
+                                        + " to.");
                     }
                     return;
                 }
@@ -3020,7 +3465,8 @@ public class ProfilingService extends IProfilingService.Stub {
 
     /** Handle updates to debug package config value. */
     @GuardedBy("mLock")
-    private void handleDebugPackageChangeLocked(String newDebugPackageName) {
+    @VisibleForTesting
+    public void handleDebugPackageChangeLocked(String newDebugPackageName) {
         if (newDebugPackageName == null) {
 
             // Debug package has been set to null, check whether it was null previously.
@@ -3050,7 +3496,7 @@ public class ProfilingService extends IProfilingService.Stub {
     /**
      * Stop the system triggered trace.
      *
-     * Locked because {link mSystemTriggeredTraceProcess} is guarded and all callers are already
+     * <p>Locked because {link mSystemTriggeredTraceProcess} is guarded and all callers are already
      * locked.
      */
     @GuardedBy("mLock")
@@ -3067,6 +3513,21 @@ public class ProfilingService extends IProfilingService.Stub {
 
         // Set session name to null.
         mSystemTriggeredTraceUniqueSessionName = null;
+    }
+
+    private void performTriggerCallback(@NonNull TracingSession session) {
+        performTriggerCallback(session.getProfilingTriggerCallback());
+        session.setProfilingTriggerCallback(null);
+    }
+
+    private void performTriggerCallback(@Nullable IProfilingTriggerCallback callback) {
+        if (callback != null) {
+            try {
+                callback.onComplete();
+            } catch (RemoteException e) {
+                Log.w(TAG, "Exception notifying caller of process trigger complete.", e);
+            }
+        }
     }
 
     private class ProfilingDeathRecipient implements IBinder.DeathRecipient {
