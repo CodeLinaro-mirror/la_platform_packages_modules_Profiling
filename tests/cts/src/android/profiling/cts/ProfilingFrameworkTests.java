@@ -130,6 +130,7 @@ public final class ProfilingFrameworkTests {
 
     private static final String REQUEST_TAG_TEXT = "some_tag";
 
+    private static final int ONE_HUNDRED_MS = 100;
     private static final int ONE_SECOND_MS = 1 * 1000;
     private static final int FIVE_SECONDS_MS = 5 * 1000;
     private static final int TEN_SECONDS_MS = 10 * 1000;
@@ -1850,6 +1851,9 @@ public final class ProfilingFrameworkTests {
         ProfilingTrigger appCompatTrigger =
                 new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_APP_COMPAT).build();
         mProfilingManager.addProfilingTriggers(List.of(anomalyTrigger, appCompatTrigger));
+
+        // Wait for the triggers to be registered to avoid a race condition.
+        sleep(ONE_HUNDRED_MS);
 
         AnomalyProfilingManager anomalyProfilingManager = new AnomalyProfilingManager();
         assertThat(anomalyProfilingManager).isNotNull();
