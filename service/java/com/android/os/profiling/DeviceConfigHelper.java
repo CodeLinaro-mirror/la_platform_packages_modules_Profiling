@@ -150,6 +150,8 @@ public final class DeviceConfigHelper {
     public static final int DEFAULT_STACK_SAMPLING_FREQUENCY_MIN = 1;
     public static final String STACK_SAMPLING_FREQUENCY_MAX = "stack_sampling_frequency_max";
     public static final int DEFAULT_STACK_SAMPLING_FREQUENCY_MAX = 200;
+    public static final String STACK_SAMPLING_DISCARD_BUFFER_SIZE_KB =
+            "stack_sampling_discard_buffer_size_kb";
 
     // System Triggered System Trace
     public static final String COST_SYSTEM_TRIGGERED_SYSTEM_TRACE =
@@ -261,7 +263,8 @@ public final class DeviceConfigHelper {
                 STACK_SAMPLING_SAMPLING_SIZE_KB_MAX,
                 STACK_SAMPLING_FREQUENCY_DEFAULT,
                 STACK_SAMPLING_FREQUENCY_MIN,
-                STACK_SAMPLING_FREQUENCY_MAX);
+                STACK_SAMPLING_FREQUENCY_MAX,
+                STACK_SAMPLING_DISCARD_BUFFER_SIZE_KB);
     }
 
     /** Get all properties related to System Trace configuration. */
