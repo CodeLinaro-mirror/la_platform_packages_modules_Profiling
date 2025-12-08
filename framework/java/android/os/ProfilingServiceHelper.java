@@ -110,6 +110,25 @@ public class ProfilingServiceHelper {
     }
 
     /**
+     * Stops all active profiling sessions for the given uid, package name and trigger type in
+     * {@link ProfilingService}.
+     *
+     * @param uid The UID of the process that is being profiled.
+     * @param packageName The package name of the process that is being profiled.
+     * @param triggerType The trigger type of the profiling session to stop.
+     */
+    @FlaggedApi(Flags.FLAG_PROFILING_TRIGGER_COLD_START)
+    public void stopActiveProfiling(int uid, @NonNull String packageName, int triggerType) {
+        synchronized (mLock) {
+            try {
+                mProfilingService.stopActiveProfiling(uid, packageName, triggerType);
+            } catch (RemoteException e) {
+                if (DEBUG) Log.e(TAG, "Exception sending stop profiling request", e);
+            }
+        }
+    }
+
+    /**
      * Handle profiling for an application crash. This is done by determining whether this is a
      * crash type which profiling is collected for, mapping it to the appropriate trigger, and then
      * notifying {@link ProfilingService} of the trigger. Profiling will occur asynchronously.

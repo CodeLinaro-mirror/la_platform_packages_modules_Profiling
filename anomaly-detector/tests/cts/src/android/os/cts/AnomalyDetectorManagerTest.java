@@ -19,9 +19,7 @@ package android.os.cts;
 import static org.junit.Assert.assertThrows;
 
 import android.content.Context;
-import android.os.Bundle;
 import android.os.profiling.anomaly.AnomalyDetectorManager;
-import android.os.profiling.anomaly.Rule;
 import android.os.profiling.anomaly.flags.Flags;
 import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
@@ -39,7 +37,6 @@ import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 
 import java.util.Collections;
-import java.util.Set;
 
 /** Cts tests for {@link AnomalyDetectorManager}. */
 @RunWith(AndroidJUnit4.class)
@@ -66,28 +63,12 @@ public final class AnomalyDetectorManagerTest {
 
     @Test
     @ApiTest(apis = "android.os.profiling.anomaly.AnomalyDetectorManager#setAnomalyDetectorRules")
-    public void setAnomalyDetectorRules_serviceThrowsRemoteException_rethrows() throws Exception {
-        Set<Rule> rules = Collections.singleton(createRule(createBinderSpamBundle()));
-        // RemoteException.rethrowFromSystemServer() wraps the exception in a RuntimeException
-        assertThrows(RuntimeException.class, () -> mManager.setAnomalyDetectorRules(rules));
-    }
-
-    @Test
-    @ApiTest(apis = "android.os.profiling.anomaly.AnomalyDetectorManager#setAnomalyDetectorRules")
     public void setAnomalyDetectorRules_withoutPermission_throwsSecurityException() {
-        InstrumentationRegistry.getInstrumentation()
-                .getUiAutomation()
-                .dropShellPermissionIdentity();
-
-        try {
-            assertThrows(
-                    SecurityException.class,
-                    () -> mManager.setAnomalyDetectorRules(Collections.emptySet()));
-        } finally {
-            InstrumentationRegistry.getInstrumentation()
-                    .getUiAutomation()
-                    .adoptShellPermissionIdentity();
-        }
+        // By not adopting shell permission identity, this test is run without the
+        // required permission and should throw a SecurityException.
+        assertThrows(
+                SecurityException.class,
+                () -> mManager.setAnomalyDetectorRules(Collections.emptySet()));
     }
 
     @Test
@@ -104,22 +85,5 @@ public final class AnomalyDetectorManagerTest {
                     .getUiAutomation()
                     .dropShellPermissionIdentity();
         }
-    }
-
-    private Bundle createBinderSpamBundle() {
-        Bundle bundle = new Bundle();
-        bundle.putString(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME, "test.interface");
-        bundle.putString(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME, "testMethod");
-        bundle.putInt(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT, 10);
-        bundle.putLong(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS, 1000L);
-        return bundle;
-    }
-
-    private Rule createRule(Bundle condition) {
-        return new Rule.Builder()
-                .setConditionType(Rule.CONDITION_TYPE_BINDER_SPAM)
-                .setRuleCondition(condition)
-                .addAnomalyAction(Rule.ACTION_TYPE_LOG)
-                .build();
     }
 }

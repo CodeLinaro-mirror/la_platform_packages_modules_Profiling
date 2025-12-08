@@ -30,9 +30,11 @@ public final class DeviceConfigHelper {
 
     // Configs for testing only.
     public static final String RATE_LIMITER_DISABLE_PROPERTY = "rate_limiter.disabled";
+    public static final boolean DEFAULT_RATE_LIMITER_DISABLE_PROPERTY = false;
 
     public static final String DISABLE_DELETE_TEMPORARY_RESULTS =
             "delete_temporary_results.disabled";
+    public static final boolean DEFAULT_DISABLE_DELETE_TEMPORARY_RESULTS = false;
 
     // Name of variable doesn't match the config string as the variable name was updated for code
     // clarity, but the config string is already released and changing it would result in developers
@@ -43,6 +45,7 @@ public final class DeviceConfigHelper {
     // Use to disable enforcement of system caller requirement in service for testing purposes.
     public static final String DISABLE_SYSTEM_CALLER_ENFORCEMENT =
             "system_caller_enforcement.disabled";
+    public static final boolean DEFAULT_DISABLE_SYSTEM_CALLER_ENFORCEMENT = false;
 
     // End section: Testing specific constants
 
@@ -53,64 +56,102 @@ public final class DeviceConfigHelper {
     public static final String NAMESPACE = "profiling";
     // System trace
     public static final String KILLSWITCH_SYSTEM_TRACE = "killswitch_system_trace";
+    public static final boolean DEFAULT_KILLSWITCH_SYSTEM_TRACE = false;
     public static final String COST_SYSTEM_TRACE = "cost_system_trace";
     public static final String SYSTEM_TRACE_DURATION_MS_DEFAULT =
             "system_trace_duration_ms_default";
+    public static final int DEFAULT_SYSTEM_TRACE_DURATION_MS_DEFAULT = 300000;
     public static final String SYSTEM_TRACE_DURATION_MS_MIN = "system_trace_duration_ms_min";
+    public static final int DEFAULT_SYSTEM_TRACE_DURATION_MS_MIN = 1000;
     public static final String SYSTEM_TRACE_DURATION_MS_MAX = "system_trace_duration_ms_max";
+    public static final int DEFAULT_SYSTEM_TRACE_DURATION_MS_MAX = 600000;
     public static final String SYSTEM_TRACE_SIZE_KB_DEFAULT = "system_trace_size_kb_default";
+    public static final int DEFAULT_SYSTEM_TRACE_SIZE_KB_DEFAULT = 32768;
     public static final String SYSTEM_TRACE_SIZE_KB_MIN = "system_trace_size_kb_min";
+    public static final int DEFAULT_SYSTEM_TRACE_SIZE_KB_MIN = 64;
     public static final String SYSTEM_TRACE_SIZE_KB_MAX = "system_trace_size_kb_max";
+    public static final int DEFAULT_SYSTEM_TRACE_SIZE_KB_MAX = 32768;
 
     // Heap Profile
     public static final String KILLSWITCH_HEAP_PROFILE = "killswitch_heap_profile";
+    public static final boolean DEFAULT_KILLSWITCH_HEAP_PROFILE = false;
     public static final String COST_HEAP_PROFILE = "cost_heap_profile";
     public static final String HEAP_PROFILE_TRACK_JAVA_ALLOCATIONS_DEFAULT =
             "heap_profile_track_java_allocations_default";
+    public static final boolean DEFAULT_HEAP_PROFILE_TRACK_JAVA_ALLOCATIONS_DEFAULT = false;
     public static final String HEAP_PROFILE_FLUSH_TIMEOUT_MS_DEFAULT =
             "heap_profile_flush_timeout_ms_default";
+    public static final int DEFAULT_HEAP_PROFILE_FLUSH_TIMEOUT_MS_DEFAULT = 30000;
     public static final String HEAP_PROFILE_DURATION_MS_DEFAULT =
             "heap_profile_duration_ms_default";
+    public static final int DEFAULT_HEAP_PROFILE_DURATION_MS_DEFAULT = 120000;
     public static final String HEAP_PROFILE_DURATION_MS_MIN = "heap_profile_duration_ms_min";
+    public static final int DEFAULT_HEAP_PROFILE_DURATION_MS_MIN = 1000;
     public static final String HEAP_PROFILE_DURATION_MS_MAX = "heap_profile_duration_ms_max";
+    public static final int DEFAULT_HEAP_PROFILE_DURATION_MS_MAX = 300000;
     public static final String HEAP_PROFILE_SIZE_KB_DEFAULT = "heap_profile_size_kb_default";
+    public static final int DEFAULT_HEAP_PROFILE_SIZE_KB_DEFAULT = 65536;
     public static final String HEAP_PROFILE_SIZE_KB_MIN = "heap_profile_size_kb_min";
+    public static final int DEFAULT_HEAP_PROFILE_SIZE_KB_MIN = 256;
     public static final String HEAP_PROFILE_SIZE_KB_MAX = "heap_profile_size_kb_max";
+    public static final int DEFAULT_HEAP_PROFILE_SIZE_KB_MAX = 65536;
     public static final String HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_DEFAULT =
             "heap_profile_sampling_interval_bytes_default";
+    public static final long DEFAULT_HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_DEFAULT = 4096L;
     public static final String HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MIN =
             "heap_profile_sampling_interval_bytes_min";
+    public static final long DEFAULT_HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MIN = 1L;
     public static final String HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MAX =
             "heap_profile_sampling_interval_bytes_max";
+    public static final long DEFAULT_HEAP_PROFILE_SAMPLING_INTERVAL_BYTES_MAX = 65536L;
 
     // Java Heap Dump
     public static final String KILLSWITCH_JAVA_HEAP_DUMP = "killswitch_java_heap_dump";
+    public static final boolean DEFAULT_KILLSWITCH_JAVA_HEAP_DUMP = false;
     public static final String COST_JAVA_HEAP_DUMP = "cost_java_heap_dump";
     public static final String JAVA_HEAP_DUMP_DURATION_MS_DEFAULT =
             "java_heap_dump_duration_ms_default";
+    public static final int DEFAULT_JAVA_HEAP_DUMP_DURATION_MS_DEFAULT = 1000;
     public static final String JAVA_HEAP_DUMP_DATA_SOURCE_STOP_TIMEOUT_MS_DEFAULT =
             "java_heap_dump_data_source_stop_timeout_ms_default";
+    public static final int DEFAULT_JAVA_HEAP_DUMP_DATA_SOURCE_STOP_TIMEOUT_MS_DEFAULT = 100000;
     public static final String JAVA_HEAP_DUMP_SIZE_KB_DEFAULT = "java_heap_dump_size_kb_default";
+    public static final int DEFAULT_JAVA_HEAP_DUMP_SIZE_KB_DEFAULT = 256000;
     public static final String JAVA_HEAP_DUMP_SIZE_KB_MIN = "java_heap_dump_size_kb_min";
+    public static final int DEFAULT_JAVA_HEAP_DUMP_SIZE_KB_MIN = 8192;
     public static final String JAVA_HEAP_DUMP_SIZE_KB_MAX = "java_heap_dump_size_kb_max";
+    public static final int DEFAULT_JAVA_HEAP_DUMP_SIZE_KB_MAX = 256000;
 
     // Stack Sampling
     public static final String KILLSWITCH_STACK_SAMPLING = "killswitch_stack_sampling";
+    public static final boolean DEFAULT_KILLSWITCH_STACK_SAMPLING = false;
     public static final String COST_STACK_SAMPLING = "cost_stack_sampling";
     public static final String STACK_SAMPLING_FLUSH_TIMEOUT_MS_DEFAULT =
             "stack_sampling_flush_timeout_ms_default";
+    public static final int DEFAULT_STACK_SAMPLING_FLUSH_TIMEOUT_MS_DEFAULT = 30000;
     public static final String STACK_SAMPLING_DURATION_MS_DEFAULT =
             "stack_sampling_duration_ms_default";
+    public static final int DEFAULT_STACK_SAMPLING_DURATION_MS_DEFAULT = 60000;
     public static final String STACK_SAMPLING_DURATION_MS_MIN = "stack_sampling_duration_ms_min";
+    public static final int DEFAULT_STACK_SAMPLING_DURATION_MS_MIN = 1000;
     public static final String STACK_SAMPLING_DURATION_MS_MAX = "stack_sampling_duration_ms_max";
+    public static final int DEFAULT_STACK_SAMPLING_DURATION_MS_MAX = 300000;
     public static final String STACK_SAMPLING_SAMPLING_SIZE_KB_DEFAULT =
             "stack_sampling_size_kb_default";
+    public static final int DEFAULT_STACK_SAMPLING_SAMPLING_SIZE_KB_DEFAULT = 65536;
     public static final String STACK_SAMPLING_SAMPLING_SIZE_KB_MIN = "stack_sampling_size_kb_min";
+    public static final int DEFAULT_STACK_SAMPLING_SAMPLING_SIZE_KB_MIN = 64;
     public static final String STACK_SAMPLING_SAMPLING_SIZE_KB_MAX = "stack_sampling_size_kb_max";
+    public static final int DEFAULT_STACK_SAMPLING_SAMPLING_SIZE_KB_MAX = 65536;
     public static final String STACK_SAMPLING_FREQUENCY_DEFAULT =
             "stack_sampling_frequency_default";
+    public static final int DEFAULT_STACK_SAMPLING_FREQUENCY_DEFAULT = 100;
     public static final String STACK_SAMPLING_FREQUENCY_MIN = "stack_sampling_frequency_min";
+    public static final int DEFAULT_STACK_SAMPLING_FREQUENCY_MIN = 1;
     public static final String STACK_SAMPLING_FREQUENCY_MAX = "stack_sampling_frequency_max";
+    public static final int DEFAULT_STACK_SAMPLING_FREQUENCY_MAX = 200;
+    public static final String STACK_SAMPLING_DISCARD_BUFFER_SIZE_KB =
+            "stack_sampling_discard_buffer_size_kb";
 
     // System Triggered System Trace
     public static final String COST_SYSTEM_TRIGGERED_SYSTEM_TRACE =
@@ -222,7 +263,8 @@ public final class DeviceConfigHelper {
                 STACK_SAMPLING_SAMPLING_SIZE_KB_MAX,
                 STACK_SAMPLING_FREQUENCY_DEFAULT,
                 STACK_SAMPLING_FREQUENCY_MIN,
-                STACK_SAMPLING_FREQUENCY_MAX);
+                STACK_SAMPLING_FREQUENCY_MAX,
+                STACK_SAMPLING_DISCARD_BUFFER_SIZE_KB);
     }
 
     /** Get all properties related to System Trace configuration. */
@@ -263,5 +305,89 @@ public final class DeviceConfigHelper {
                 COST_SYSTEM_TRACE,
                 COST_SYSTEM_TRIGGERED_SYSTEM_TRACE,
                 PERSIST_TO_DISK_FREQUENCY_MS);
+    }
+
+    /**
+     * Updates a boolean configuration value based on the provided DeviceConfig properties.
+     *
+     * @param properties The DeviceConfig.Properties object containing potential updates.
+     * @param key The key of the boolean configuration to update.
+     * @param currentValue The current value of the boolean configuration.
+     * @param defaultValue The default value for the boolean configuration if not explicitly set or
+     *     if set to null.
+     * @return The updated boolean value.
+     */
+    public static boolean updateBoolean(
+            DeviceConfig.Properties properties,
+            String key,
+            boolean currentValue,
+            boolean defaultValue) {
+        if (properties.getKeyset().contains(key)) {
+            // If the key is present in the properties, use its value.
+            // If the value is 'null' (e.g., from 'device_config delete' which maps to null),
+            // properties.getBoolean(key, defaultValue) will correctly return defaultValue.
+            String value = properties.getString(key, null);
+            if (value == null) {
+                return defaultValue;
+            }
+            return properties.getBoolean(key, defaultValue);
+        }
+        // If the key is NOT present in the properties, it means it was not part of this update.
+        // We return the current value.
+        return currentValue;
+    }
+
+    /**
+     * Updates an integer configuration value based on the provided DeviceConfig properties.
+     *
+     * @param properties The DeviceConfig.Properties object containing potential updates.
+     * @param key The key of the integer configuration to update.
+     * @param currentValue The current value of the integer configuration.
+     * @param defaultValue The default value for the integer configuration if not explicitly set or
+     *     if set to null.
+     * @return The updated integer value.
+     */
+    public static int updateInt(
+            DeviceConfig.Properties properties, String key, int currentValue, int defaultValue) {
+        if (properties.getKeyset().contains(key)) {
+            // If the key is present in the properties, use its value.
+            // If the value is 'null' (e.g., from 'device_config delete' which maps to null),
+            // properties.getInt(key, defaultValue) will correctly return defaultValue.
+            String value = properties.getString(key, null);
+            if (value == null) {
+                return defaultValue;
+            }
+            return properties.getInt(key, defaultValue);
+        }
+        // If the key is NOT present in the properties, it means it was not part of this update.
+        // We return the current value.
+        return currentValue;
+    }
+
+    /**
+     * Updates a long configuration value based on the provided DeviceConfig properties.
+     *
+     * @param properties The DeviceConfig.Properties object containing potential updates.
+     * @param key The key of the long configuration to update.
+     * @param currentValue The current value of the long configuration.
+     * @param defaultValue The default value for the long configuration if not explicitly set or if
+     *     set to null.
+     * @return The updated long value.
+     */
+    public static long updateLong(
+            DeviceConfig.Properties properties, String key, long currentValue, long defaultValue) {
+        if (properties.getKeyset().contains(key)) {
+            // If the key is present in the properties, use its value.
+            // If the value is 'null' (e.g., from 'device_config delete' which maps to null),
+            // properties.getLong(key, defaultValue) will correctly return defaultValue.
+            String value = properties.getString(key, null);
+            if (value == null) {
+                return defaultValue;
+            }
+            return properties.getLong(key, defaultValue);
+        }
+        // If the key is NOT present in the properties, it means it was not part of this update.
+        // We return the current value.
+        return currentValue;
     }
 }

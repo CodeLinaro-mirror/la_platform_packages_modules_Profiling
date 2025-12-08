@@ -33,6 +33,9 @@
     </test>
 
     <object type="module_controller"
+        class="com.android.tradefed.testtype.suite.module.Sdk36ModuleController" />
+
+    <object type="module_controller"
             class="com.android.tradefed.testtype.suite.module.MainlineTestModuleController">
         <option name="mainline-module-package-name"
                 value="com.google.android.profiling" />
