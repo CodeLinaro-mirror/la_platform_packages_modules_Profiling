@@ -96,6 +96,7 @@ public final class Configs {
     private static int sStackSamplingSamplingFrequencyDefault;
     private static int sStackSamplingSamplingFrequencyMin;
     private static int sStackSamplingSamplingFrequencyMax;
+    private static int sStackSamplingDiscardBufferSizeKb;
 
     /**
      * Initialize System Triggered System Trace related DeviceConfig values if they have not been
@@ -314,6 +315,9 @@ public final class Configs {
                 properties.getInt(
                         DeviceConfigHelper.STACK_SAMPLING_FREQUENCY_MAX,
                         DeviceConfigHelper.DEFAULT_STACK_SAMPLING_FREQUENCY_MAX);
+        sStackSamplingDiscardBufferSizeKb =
+                properties.getInt(
+                        DeviceConfigHelper.STACK_SAMPLING_DISCARD_BUFFER_SIZE_KB, FOUR_MB);
 
         sStackSamplingConfigsInitialized = true;
     }
@@ -925,17 +929,52 @@ public final class Configs {
 
         TraceConfig.Builder builder = TraceConfig.newBuilder();
 
-        // Add a buffer
-        TraceConfig.BufferConfig buffer =
-                TraceConfig.BufferConfig.newBuilder()
-                        .setSizeKb(bufferSizeKb)
-                        .setFillPolicy(bufferFillPolicy)
-                        .build();
-        builder.addBuffers(buffer);
+        if (Flags.redactStackSampling()) {
+            // Add 2 buffers, one for the package list and one for the stack sampling data.
+            TraceConfig.BufferConfig buffer0 =
+                    TraceConfig.BufferConfig.newBuilder()
+                            .setSizeKb(sStackSamplingDiscardBufferSizeKb)
+                            .setFillPolicy(TraceConfig.BufferConfig.FillPolicy.DISCARD)
+                            .build();
+            builder.addBuffers(buffer0);
+            TraceConfig.BufferConfig buffer1 =
+                    TraceConfig.BufferConfig.newBuilder()
+                            .setSizeKb(bufferSizeKb)
+                            .setFillPolicy(bufferFillPolicy)
+                            .build();
+            builder.addBuffers(buffer1);
 
-        // Use target buffer 0 as we just created the singular buffer above.
-        addStackSamplingGeneralConfigs(
-                builder, 0 /* targetBuffer */, packageName, stackSamplingParams);
+            // Add package list data source
+            PackagesListConfig.Builder packagesListConfigBuilder = PackagesListConfig.newBuilder();
+            packagesListConfigBuilder.addPackageNameFilter(packageName);
+            DataSourceConfig dataSourceConfigPackagesList =
+                    DataSourceConfig.newBuilder()
+                            .setName("android.packages_list")
+                            .setTargetBuffer(0)
+                            .setPackagesListConfig(packagesListConfigBuilder.build())
+                            .build();
+            TraceConfig.DataSource dataSourcePackagesList =
+                    TraceConfig.DataSource.newBuilder()
+                            .setConfig(dataSourceConfigPackagesList)
+                            .build();
+            builder.addDataSources(dataSourcePackagesList);
+
+            // Use target buffer 1 as we created a buffer 0 for the package list.
+            addStackSamplingGeneralConfigs(
+                    builder, 1 /* targetBuffer */, packageName, stackSamplingParams);
+        } else {
+            // Add a buffer
+            TraceConfig.BufferConfig buffer =
+                    TraceConfig.BufferConfig.newBuilder()
+                            .setSizeKb(bufferSizeKb)
+                            .setFillPolicy(bufferFillPolicy)
+                            .build();
+            builder.addBuffers(buffer);
+
+            // Use target buffer 0 as we just created the singular buffer above.
+            addStackSamplingGeneralConfigs(
+                    builder, 0 /* targetBuffer */, packageName, stackSamplingParams);
+        }
 
         // Add duration
         builder.setDurationMs(durationMs);

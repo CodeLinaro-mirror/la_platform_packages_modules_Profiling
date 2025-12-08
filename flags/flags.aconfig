@@ -132,3 +132,14 @@ flag {
     description: "Enable profiling manager cold start trigger."
     bug: "458051536"
 }
+
+flag {
+    name: "redact_stack_sampling"
+    namespace: "system_performance"
+    is_exported: false
+    description: "Enables stack sampling to be ran through redaction process"
+    bug: "457496388"
+    metadata {
+       purpose: PURPOSE_BUGFIX
+    }
+}

@@ -10,6 +10,7 @@ package android.os {
     method @NonNull public static android.os.ProfilingServiceHelper getInstance();
     method public void onProfilingTriggerOccurred(int, @NonNull String, int);
     method @FlaggedApi("android.os.profiling.profiling_trigger_oom") @NonNull public java.time.Duration profileApplicationCrash(int, @NonNull String, @NonNull android.app.ApplicationErrorReport.CrashInfo, @NonNull java.util.concurrent.Executor, @NonNull Runnable);
+    method @FlaggedApi("android.os.profiling.profiling_trigger_cold_start") public void stopActiveProfiling(int, @NonNull String, int);
   }
 
 }

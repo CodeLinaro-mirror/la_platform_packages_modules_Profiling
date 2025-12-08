@@ -19,6 +19,8 @@
           package="com.android.os.profiling.anomaly.tests"
           android:targetSandboxVersion="2">
 
+    <uses-sdk android:minSdkVersion="36" android:targetSdkVersion="36" />
+
     <application>
       <uses-library android:name="android.test.runner"/>
     </application>
