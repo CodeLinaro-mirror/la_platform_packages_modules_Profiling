@@ -50,21 +50,23 @@ import android.os.Binder;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IProfilingResultCallback;
+import android.os.Looper;
+import android.os.Message;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
 import android.os.ProfilingTrigger;
 import android.os.ProfilingTriggerValueParcel;
+import android.os.TestLooperManager;
 import android.os.profiling.DeviceConfigHelper;
+import android.os.profiling.LoggingHelper;
 import android.os.profiling.ProfilingService;
 import android.os.profiling.ProfilingService.TracingState;
 import android.os.profiling.ProfilingTriggerData;
 import android.os.profiling.RateLimiter;
 import android.os.profiling.TracingSession;
-import android.platform.test.annotations.EnableFlags;
 import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
-import android.platform.test.flag.junit.SetFlagsRule;
 import android.util.SparseArray;
 
 import androidx.test.core.app.ApplicationProvider;
@@ -136,7 +138,6 @@ public final class ProfilingServiceTests {
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
 
-    @Rule public final SetFlagsRule mSetFlagsRule = new SetFlagsRule();
     @Rule public final Expect expect = Expect.create();
 
     @Mock private Process mActiveTrace;
@@ -145,6 +146,7 @@ public final class ProfilingServiceTests {
     private Instrumentation mInstrumentation;
     private ProfilingService mProfilingService;
     private RateLimiter mRateLimiter;
+    private TestLooperManager mLooperManager;
 
     @Before
     public void setUp() throws Exception {
@@ -204,7 +206,10 @@ public final class ProfilingServiceTests {
             // on disk, but just in case that changes try the delete here too.
             mProfilingService.mPersistQueueFile.delete();
         }
-
+        if (mLooperManager != null) {
+            mLooperManager.release();
+            mLooperManager = null;
+        }
         resetAllConfigs();
     }
 
@@ -525,7 +530,7 @@ public final class ProfilingServiceTests {
      * associated with the calling uid fails.
      */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_PROFILING_25Q4)
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_PROFILING_25Q4)
     public void testProcessAppRequestTrigger_PackageNameNotAssociatedWithCaller_Fails() {
         Throwable throwable =
                 assertThrows(
@@ -663,6 +668,119 @@ public final class ProfilingServiceTests {
 
         // Confirm callback was not triggerd with a result because there was no trace to stop.
         assertFalse(callback.mResultSent);
+    }
+
+    /**
+     * Test that cancelling an active profiling session works correctly when an active session
+     * matching the criteria is found.
+     */
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_PROFILING_TRIGGER_COLD_START)
+    public void testStopActiveProfiling_Success() {
+        doNothing().when(mProfilingService).enforceSystemCaller();
+        mProfilingService.mActiveTracingSessions.clear();
+
+        // Set up a TestLooperManager to control the handler thread.
+        mLooperManager = setupTestLooper(mProfilingService);
+
+        // Create a running tracing session that matches the criteria
+        TracingSession session =
+                new TracingSession(
+                        ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                        new Bundle(),
+                        FAKE_UID,
+                        APP_PACKAGE_NAME,
+                        REQUEST_TAG,
+                        KEY_MOST_SIG_BITS,
+                        KEY_LEAST_SIG_BITS,
+                        ProfilingTrigger.TRIGGER_TYPE_COLD_START);
+
+        mProfilingService.mActiveTracingSessions.put(session.getKey(), session);
+
+        // Call cancelActiveProfiling with matching parameters
+        mProfilingService.stopActiveProfiling(
+                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_COLD_START);
+
+        // Run the handler callbacks immediately.
+        executePendingMessages();
+
+        // Verify stopProfiling was actually called
+        verify(mProfilingService)
+                .stopProfiling(
+                        eq(session), eq(LoggingHelper.PROFILING_STOPPED_REASON_SYSTEM_REQUESTED));
+    }
+
+    /**
+     * Test that cancelling an active profiling session does nothing if no matching session is
+     * found.
+     */
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_PROFILING_TRIGGER_COLD_START)
+    public void testStopActiveProfiling_NoMatchingSession() {
+        doNothing().when(mProfilingService).enforceSystemCaller();
+        mProfilingService.mActiveTracingSessions.clear();
+
+        // Set up a TestLooperManager to control the handler thread.
+        mLooperManager = setupTestLooper(mProfilingService);
+
+        // Add a non-matching session
+        TracingSession nonMatchingSession =
+                new TracingSession(
+                        ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                        new Bundle(),
+                        FAKE_UID_2,
+                        NOT_THIS_APP_PACKAGE_NAME,
+                        "other_tag",
+                        KEY_MOST_SIG_BITS + 1,
+                        KEY_LEAST_SIG_BITS + 1,
+                        ProfilingTrigger.TRIGGER_TYPE_COLD_START);
+
+        mProfilingService.mActiveTracingSessions.put(
+                nonMatchingSession.getKey(), nonMatchingSession);
+
+        // Call cancelActiveProfiling with parameters that won't match any active session
+        mProfilingService.stopActiveProfiling(
+                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_COLD_START);
+
+        // Run the handler callbacks immediately.
+        executePendingMessages();
+
+        // Verify that stopProfiling was never called
+        verify(mProfilingService, never()).stopProfiling(any(TracingSession.class), anyInt());
+    }
+
+    @Test
+    public void testStopActiveProfiling_TriggerTypeUnsupported() {
+        doNothing().when(mProfilingService).enforceSystemCaller();
+
+        // Calling cancelActiveProfiling with TRIGGER_TYPE_ANR will be ignored.
+        mProfilingService.stopActiveProfiling(
+                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_ANR);
+
+        // Code returns early, it never calls getHandler.
+        verify(mProfilingService, never()).getHandler();
+    }
+
+    /**
+     * Test that calling cancelActiveProfiling from a non-system caller throws SecurityException.
+     */
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_PROFILING_TRIGGER_COLD_START)
+    public void testStopActiveProfiling_CallerNotSystem_Fails() {
+        // Do NOT mock enforceSystemCaller to allow it to throw an exception
+
+        Throwable throwable =
+                assertThrows(
+                        SecurityException.class,
+                        () ->
+                                mProfilingService.stopActiveProfiling(
+                                        FAKE_UID,
+                                        APP_PACKAGE_NAME,
+                                        ProfilingTrigger.TRIGGER_TYPE_COLD_START));
+        assertEquals(NOT_SYSTEM_CALLER_SECURITY_EXCEPTION, throwable.getMessage());
+
+        // Verify that stopProfiling was never called
+        verify(mProfilingService, never()).stopProfiling(any(TracingSession.class), anyInt());
     }
 
     /** Test that rate limiter correctly persists and restores data. */
@@ -1152,7 +1270,7 @@ public final class ProfilingServiceTests {
      * previous queue and all persistable fields.
      */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
     public void testQueuePersist_PersistAndRestore() {
         // Clear the queue.
         mProfilingService.mQueuedTracingResults.clear();
@@ -1250,7 +1368,7 @@ public final class ProfilingServiceTests {
      * correct methods called.
      */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
     public void testQueuePersist_NoPersistFile() {
         // Clear the queue.
         mProfilingService.mQueuedTracingResults.clear();
@@ -1272,7 +1390,7 @@ public final class ProfilingServiceTests {
      * and correct methods called.
      */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
     public void testQueuePersist_EmptyPersistFile() throws Exception {
         // Clear the queue.
         mProfilingService.mQueuedTracingResults.clear();
@@ -1298,7 +1416,7 @@ public final class ProfilingServiceTests {
      * and correct methods called.
      */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
     public void testQueuePersist_BadPersistFile() throws Exception {
         // Clear the queue.
         mProfilingService.mQueuedTracingResults.clear();
@@ -1329,7 +1447,7 @@ public final class ProfilingServiceTests {
      * triggers so this test covers both.
      */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
     public void testQueuePersist_RespectFrequency() throws Exception {
         // Override persist frequency to something large.
         updateDeviceConfigAndWaitForChange(
@@ -1399,7 +1517,7 @@ public final class ProfilingServiceTests {
      * so this test covers both.
      */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
     public void testQueuePersist_Scheduling() throws Exception {
         // Override persist frequency to 5 seconds that way we can confirm both that the persist did
         // not happen immediately and that it did eventually happen. This is the time from the first
@@ -1459,7 +1577,7 @@ public final class ProfilingServiceTests {
      * all previous triggers.
      */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void testAppTriggersPersist_PersistAndRestore() {
         // First, clear the data structure.
         mProfilingService.mAppTriggers.getMap().clear();
@@ -1534,7 +1652,7 @@ public final class ProfilingServiceTests {
      * loaded set to true, and correct methods called.
      */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void testAppTriggersPersist_NoPersistFile() {
         // First, clear the data structure.
         mProfilingService.mAppTriggers.getMap().clear();
@@ -1558,7 +1676,7 @@ public final class ProfilingServiceTests {
      * added, loaded set to true, and correct methods called.
      */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
     public void testAppTriggersPersist_EmptyPersistFile() throws Exception {
         // First, clear the data structure.
         mProfilingService.mAppTriggers.getMap().clear();
@@ -1585,7 +1703,7 @@ public final class ProfilingServiceTests {
      * triggers added, loaded set to true, and correct methods called.
      */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_PERSIST_QUEUE)
     public void testAppTriggersPersist_BadPersistFile() throws Exception {
         // First, clear the data structure.
         mProfilingService.mAppTriggers.getMap().clear();
@@ -2223,7 +2341,7 @@ public final class ProfilingServiceTests {
      * the same trigger, uid, and process name are used.
      */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void testAddTriggers() throws Exception {
         // First, clear the data structure.
         mProfilingService.mAppTriggers.getMap().clear();
@@ -2291,7 +2409,7 @@ public final class ProfilingServiceTests {
 
     /** Test that app level rate limiting works correctly in the allow case. */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void testProcessTrigger_appLevelRateLimit_allow() throws Exception {
         // First, clear the data structure.
         mProfilingService.mAppTriggers.getMap().clear();
@@ -2342,7 +2460,7 @@ public final class ProfilingServiceTests {
 
     /** Test that app level rate limiting works correctly in the deny case. */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void testProcessTrigger_appLevelRateLimit_deny() throws Exception {
         // First, clear the data structure.
         mProfilingService.mAppTriggers.getMap().clear();
@@ -2394,7 +2512,7 @@ public final class ProfilingServiceTests {
 
     /** Test that system level rate limiting works correctly in the allow case. */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void testProcessTrigger_systemLevelRateLimit_allow() throws Exception {
         overrideRateLimiterDefaults();
 
@@ -2434,7 +2552,7 @@ public final class ProfilingServiceTests {
 
     /** Test that system level rate limiting works correctly in the deny case. */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void testProcessTrigger_systemLevelRateLimit_deny() throws Exception {
         overrideRateLimiterDefaults();
 
@@ -2483,7 +2601,7 @@ public final class ProfilingServiceTests {
      * run delay for correct amount of time.
      */
     @Test
-    @EnableFlags(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
+    @RequiresFlagsEnabled(android.os.profiling.Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void testSystemTriggeredProfiling_Scheduling() throws Exception {
         // Override system triggered trace start values so that the trace will be attempted to be
         // started within the test duration. If these values are changed, make sure to update the
@@ -2532,7 +2650,7 @@ public final class ProfilingServiceTests {
      * individual triggers.
      */
     @Test
-    @EnableFlags({
+    @RequiresFlagsEnabled({
         android.os.profiling.Flags.FLAG_PROFILING_25Q4,
         android.os.profiling.Flags.FLAG_PROFILING_TRIGGER_KILL_RECENTS
     })
@@ -2601,7 +2719,7 @@ public final class ProfilingServiceTests {
      * javadoc for more details.
      */
     @Test
-    @EnableFlags({
+    @RequiresFlagsEnabled({
         android.os.profiling.Flags.FLAG_PROFILING_25Q4,
         android.os.profiling.Flags.FLAG_PROFILING_TRIGGER_KILL_RECENTS
     })
@@ -2956,6 +3074,29 @@ public final class ProfilingServiceTests {
         return SystemUtil.runShellCommand(mInstrumentation, "getenforce")
                 .trim()
                 .equals("Enforcing");
+    }
+
+    /**
+     * Sets up the TestLooperManager and forces the service to use the Main Looper for its Handler.
+     * This allows the test to pause and execute Runnable deterministically.
+     *
+     * @param spyProfilingService The Mockito spy of the ProfilingService.
+     * @return The TestLooperManager controlling the execution.
+     */
+    private TestLooperManager setupTestLooper(ProfilingService spyProfilingService) {
+        Looper mainLooper = Looper.getMainLooper();
+        Handler testHandler = new Handler(mainLooper);
+        doReturn(testHandler).when(spyProfilingService).getHandler();
+
+        return mInstrumentation.acquireLooperManager(mainLooper);
+    }
+
+    /** Drains the TestLooperManager queue, executing all pending Runnables immediately. */
+    private void executePendingMessages() {
+        for (Message msg = mLooperManager.poll(); msg != null && msg.getTarget() != null; ) {
+            mLooperManager.execute(msg);
+            mLooperManager.recycle(msg);
+        }
     }
 
     public class ProfilingResultCallback extends IProfilingResultCallback.Stub {

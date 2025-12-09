@@ -41,6 +41,7 @@ public final class LoggingHelper {
     public static final int PROFILING_STOPPED_REASON_APP_DIED = 2;
     public static final int PROFILING_STOPPED_REASON_TIMED_OUT = 3;
     public static final int PROFILING_STOPPED_REASON_ERROR = 4;
+    public static final int PROFILING_STOPPED_REASON_SYSTEM_REQUESTED = 5;
 
     public static final int TRIGGER_STATUS_UNSPECIFIED = 0;
     public static final int TRIGGER_STATUS_ERROR = 1;

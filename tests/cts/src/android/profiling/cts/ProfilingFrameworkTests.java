@@ -130,6 +130,7 @@ public final class ProfilingFrameworkTests {
 
     private static final String REQUEST_TAG_TEXT = "some_tag";
 
+    private static final int ONE_HUNDRED_MS = 100;
     private static final int ONE_SECOND_MS = 1 * 1000;
     private static final int FIVE_SECONDS_MS = 5 * 1000;
     private static final int TEN_SECONDS_MS = 10 * 1000;
@@ -1209,6 +1210,52 @@ public final class ProfilingFrameworkTests {
                 ProfilingTrigger.TRIGGER_TYPE_COLD_START);
     }
 
+    /** Test that Stopping an active triggered profiling session works correctly. */
+    @Test
+    @RequiresFlagsEnabled({android.os.profiling.Flags.FLAG_PROFILING_TRIGGER_COLD_START})
+    public void testStopActiveProfiling() {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // Override SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME for testing as this covers rate limiting
+        // override and bypass enforceSystemCaller for triggers.
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME);
+
+        // First add a trigger
+        ProfilingTrigger trigger =
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_COLD_START).build();
+        mProfilingManager.addProfilingTriggers(List.of(trigger));
+
+        // Add a global listener.
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
+
+        // Fake a system trigger.
+        ProfilingServiceHelper.getInstance()
+                .onProfilingTriggerOccurred(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        ProfilingTrigger.TRIGGER_TYPE_COLD_START);
+
+        // Wait a bit for collection to get started.
+        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+
+        // Cancel the profiling session.
+        ProfilingServiceHelper.getInstance()
+                .stopActiveProfiling(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        ProfilingTrigger.TRIGGER_TYPE_COLD_START);
+
+        // Wait until callback#onAccept is triggered so we can confirm the result.
+        waitForCallback(callbackGeneral);
+
+        // Confirm that a result was received.
+        confirmCollectionSuccess(
+                callbackGeneral.mResult,
+                OUTPUT_FILE_TRACE_SUFFIX,
+                ProfilingTrigger.TRIGGER_TYPE_COLD_START);
+    }
+
     /**
      * Test add all profiling triggers and receiving a result works correctly.
      *
@@ -1804,6 +1851,9 @@ public final class ProfilingFrameworkTests {
         ProfilingTrigger appCompatTrigger =
                 new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_APP_COMPAT).build();
         mProfilingManager.addProfilingTriggers(List.of(anomalyTrigger, appCompatTrigger));
+
+        // Wait for the triggers to be registered to avoid a race condition.
+        sleep(ONE_HUNDRED_MS);
 
         AnomalyProfilingManager anomalyProfilingManager = new AnomalyProfilingManager();
         assertThat(anomalyProfilingManager).isNotNull();
