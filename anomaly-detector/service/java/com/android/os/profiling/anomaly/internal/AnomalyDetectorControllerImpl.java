@@ -35,6 +35,7 @@ import com.android.os.profiling.anomaly.core.AnomalyReport;
 import com.android.os.profiling.anomaly.core.RuleStorage;
 import com.android.os.profiling.anomaly.core.SignalCollectorRegistry;
 
+import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -98,6 +99,14 @@ public class AnomalyDetectorControllerImpl
         // Set the new rules without waiting for the save to complete. This makes sure
         // the new rules are applied even if for some reason saving fails.
         setRulesInternal(rules);
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public Set<RuleInternal> getRules() {
+        synchronized (mLock) {
+            return Collections.unmodifiableSet(mRules);
+        }
     }
 
     private void setRulesInternal(Set<RuleInternal> rules) {
