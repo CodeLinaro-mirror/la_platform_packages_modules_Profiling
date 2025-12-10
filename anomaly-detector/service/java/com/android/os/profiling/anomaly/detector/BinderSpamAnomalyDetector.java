@@ -18,7 +18,7 @@ package com.android.os.profiling.anomaly.detector;
 
 import android.os.Bundle;
 import android.os.OutcomeReceiver;
-import android.os.profiling.anomaly.Rule;
+import android.os.profiling.anomaly.RuleInternal;
 import android.util.Slog;
 
 import com.android.internal.annotations.GuardedBy;
@@ -50,7 +50,7 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
     private final Object mLock = new Object();
 
     @GuardedBy("mLock")
-    private Rule mRule;
+    private RuleInternal mRule;
 
     @GuardedBy("mLock")
     private SubscriptionId mSubscriptionId;
@@ -81,13 +81,13 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
 
                 @Override
                 public String getConditionType() {
-                    return Rule.CONDITION_TYPE_BINDER_SPAM;
+                    return RuleInternal.CONDITION_TYPE_BINDER_SPAM;
                 }
             };
 
     /** {@inheritDoc} */
     @Override
-    public void setRule(Rule rule) {
+    public void setRule(RuleInternal rule) {
         synchronized (mLock) {
             if (mSubscriptionId != null && mCollector != null) {
                 mCollector.unsubscribe(mSubscriptionId);
@@ -107,9 +107,11 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
 
             if (mCollector != null) {
                 String interfaceName =
-                        condition.getString(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME);
+                        condition.getString(
+                                RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME);
                 String methodName =
-                        condition.getString(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME);
+                        condition.getString(
+                                RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME);
                 BinderSpamConfig config =
                         new BinderSpamConfig.Builder()
                                 .setInterfaceName(interfaceName)
@@ -150,10 +152,12 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
             Bundle condition = mRule.getRuleCondition();
             long callCount = binderData.getCallCount();
             long timespanMillis = binderData.getTimespanMillis();
-            long threshold = condition.getInt(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT);
+            long threshold =
+                    condition.getInt(RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT);
             long intervalMillis =
                     condition.getLong(
-                            Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS);
+                            RuleInternal
+                                    .BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS);
 
             // Timespan must not be less than 1000ms to calculate a rate, because short timespan may
             // cause an exaggerated call-rate, e,g, 2 calls over 10ms makes call-rate to be 200/s.
@@ -166,10 +170,10 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
 
             if (isRateExceeded
                     && condition
-                            .getString(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME)
+                            .getString(RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME)
                             .equals(binderData.getInterfaceName())
                     && condition
-                            .getString(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME)
+                            .getString(RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME)
                             .equals(binderData.getMethodName())) {
                 Slog.d(TAG, "Binder spam condition met. Creating a report.");
 
