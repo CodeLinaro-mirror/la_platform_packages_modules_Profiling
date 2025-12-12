@@ -1507,7 +1507,6 @@ public final class ProfilingFrameworkTests {
      */
     @Test
     @RequiresFlagsEnabled(Flags.FLAG_PROFILING_TRIGGER_OOM)
-    @RequiresFlagsDisabled(Flags.FLAG_OOM_TRIGGER_EXPERIMENT_DO_NOT_RELEASE)
     public void testSystemTriggeredApplicationCrashNotRegistered() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 

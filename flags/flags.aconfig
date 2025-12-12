@@ -99,17 +99,6 @@ flag {
 }
 
 flag {
-     name: "oom_trigger_experiment_do_not_release"
-     namespace: "system_performance"
-     is_exported: false
-     description: "Bypass trigger registration to collect profiling. Experiment only."
-     bug: "448618175"
-     metadata {
-        purpose: PURPOSE_BUGFIX
-     }
-}
-
-flag {
      name: "system_trace_add_stack_sampling"
      namespace: "system_performance"
      is_exported: false
