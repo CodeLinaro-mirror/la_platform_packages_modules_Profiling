@@ -17,16 +17,16 @@
 package com.android.os.profiling.anomaly.core;
 
 import android.annotation.Nullable;
-import android.os.profiling.anomaly.Rule;
-import android.os.profiling.anomaly.Rule.ConditionType;
+import android.os.profiling.anomaly.RuleInternal;
+import android.os.profiling.anomaly.RuleInternal.ConditionType;
 
 import java.util.Set;
 
 /**
  * An abstract base class for an anomaly detector.
  *
- * <p>Each detector is responsible for evaluating data against a single {@link Rule} and reporting
- * when an anomaly is found.
+ * <p>Each detector is responsible for evaluating data against a single {@link RuleInternal} and
+ * reporting when an anomaly is found.
  *
  * @hide
  */
@@ -69,7 +69,7 @@ public abstract class AnomalyDetector {
      *
      * @param rule The rule to apply, or {@code null} to clear the current rule.
      */
-    public abstract void setRule(Rule rule);
+    public abstract void setRule(RuleInternal rule);
 
     /**
      * Sets the listener to be notified when an anomaly is detected.

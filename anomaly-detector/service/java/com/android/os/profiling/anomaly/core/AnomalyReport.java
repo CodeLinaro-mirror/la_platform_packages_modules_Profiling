@@ -17,7 +17,7 @@
 package com.android.os.profiling.anomaly.core;
 
 import android.annotation.Nullable;
-import android.os.profiling.anomaly.Rule;
+import android.os.profiling.anomaly.RuleInternal;
 
 /**
  * A data object representing a single detected anomaly.
@@ -29,7 +29,7 @@ import android.os.profiling.anomaly.Rule;
  */
 public interface AnomalyReport {
     /** Returns the rule that was triggered to generate this report. */
-    Rule getRule();
+    RuleInternal getRule();
 
     /**
      * Retrieves a report attribute of the specified type if it exists.
