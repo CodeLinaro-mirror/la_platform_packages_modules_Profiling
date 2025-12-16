@@ -23,7 +23,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import android.os.Bundle;
-import android.os.profiling.anomaly.Rule;
+import android.os.profiling.anomaly.RuleInternal;
 
 import androidx.test.runner.AndroidJUnit4;
 
@@ -65,8 +65,8 @@ public final class AnomalyDetectorControllerImplTests {
     @Captor private ArgumentCaptor<Consumer<SignalCollector<?, ?>>> mCallbackCaptor;
 
     private AnomalyDetectorControllerImpl mController;
-    private Rule mTestConditionRule;
-    private Rule mUnregisteredConditionRule;
+    private RuleInternal mTestConditionRule;
+    private RuleInternal mUnregisteredConditionRule;
 
     private static final String TEST_CONDITION_TYPE = "test_condition";
     private static final String UNREGISTERED_CONDITION_TYPE = "unregistered_condition";
@@ -86,16 +86,16 @@ public final class AnomalyDetectorControllerImplTests {
                         mMockAnomalyDetectorRegistry,
                         executor);
         mTestConditionRule =
-                new Rule.Builder()
+                new RuleInternal.Builder()
                         .setConditionType(TEST_CONDITION_TYPE)
                         .setRuleCondition(new Bundle())
-                        .addAnomalyAction(Rule.ACTION_TYPE_LOG)
+                        .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
                         .build();
         mUnregisteredConditionRule =
-                new Rule.Builder()
+                new RuleInternal.Builder()
                         .setConditionType(UNREGISTERED_CONDITION_TYPE)
                         .setRuleCondition(new Bundle())
-                        .addAnomalyAction(Rule.ACTION_TYPE_LOG)
+                        .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
                         .build();
     }
 

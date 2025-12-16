@@ -20,8 +20,8 @@ import android.annotation.Nullable;
 import android.annotation.WorkerThread;
 import android.os.Bundle;
 import android.os.OutcomeReceiver;
-import android.os.profiling.anomaly.Rule;
-import android.os.profiling.anomaly.Rule.AnomalyActionType;
+import android.os.profiling.anomaly.RuleInternal;
+import android.os.profiling.anomaly.RuleInternal.AnomalyActionType;
 import android.util.AtomicFile;
 import android.util.Slog;
 
@@ -42,8 +42,8 @@ import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
 /**
- * An implementation of {@link RuleStorage} that persists {@link Rule} objects to disk using Java
- * Proto Lite and {@link AtomicFile} for safe, atomic writes.
+ * An implementation of {@link RuleStorage} that persists {@link RuleInternal} objects to disk using
+ * Java Proto Lite and {@link AtomicFile} for safe, atomic writes.
  *
  * @hide
  */
@@ -62,11 +62,11 @@ public final class RuleStorageImpl implements RuleStorage {
 
     /** {@inheritDoc} */
     @Override
-    public void load(Executor executor, OutcomeReceiver<Set<Rule>, Throwable> callback) {
+    public void load(Executor executor, OutcomeReceiver<Set<RuleInternal>, Throwable> callback) {
         mIoExecutor.execute(
                 () -> {
                     try {
-                        Set<Rule> rules = readRulesFromDisk();
+                        Set<RuleInternal> rules = readRulesFromDisk();
                         executor.execute(() -> callback.onResult(rules));
                     } catch (Exception e) {
                         Slog.e(TAG, "Failed to load rules from proto", e);
@@ -78,7 +78,7 @@ public final class RuleStorageImpl implements RuleStorage {
     /** {@inheritDoc} */
     @Override
     public void save(
-            Set<Rule> rules, Executor executor, OutcomeReceiver<Void, Throwable> callback) {
+            Set<RuleInternal> rules, Executor executor, OutcomeReceiver<Void, Throwable> callback) {
         mIoExecutor.execute(
                 () -> {
                     try {
@@ -92,7 +92,8 @@ public final class RuleStorageImpl implements RuleStorage {
     }
 
     @WorkerThread
-    private Set<Rule> readRulesFromDisk() throws IOException, InvalidProtocolBufferException {
+    private Set<RuleInternal> readRulesFromDisk()
+            throws IOException, InvalidProtocolBufferException {
         synchronized (mLock) {
             if (!mFile.exists()) {
                 return new HashSet<>();
@@ -116,9 +117,9 @@ public final class RuleStorageImpl implements RuleStorage {
     }
 
     @WorkerThread
-    private void writeRulesToDisk(Set<Rule> rules) throws IOException {
+    private void writeRulesToDisk(Set<RuleInternal> rules) throws IOException {
         RuleSetProto.Builder ruleSetBuilder = RuleSetProto.newBuilder();
-        for (Rule rule : rules) {
+        for (RuleInternal rule : rules) {
             RuleProto ruleProto = convertRuleToProto(rule);
             if (ruleProto != null) {
                 ruleSetBuilder.addRules(ruleProto);
@@ -143,13 +144,14 @@ public final class RuleStorageImpl implements RuleStorage {
     }
 
     /**
-     * Converts an {@link android.os.Rule} object into its {@link RuleProto} equivalent.
+     * Converts an {@link android.os.profiling.anomaly.RuleInternal} object into its {@link
+     * RuleProto} equivalent.
      *
      * @return The converted {@link RuleProto}, or {@code null} if the rule contains an unsupported
      *     value type in its condition bundle.
      */
     @Nullable
-    private RuleProto convertRuleToProto(Rule rule) {
+    private RuleProto convertRuleToProto(RuleInternal rule) {
         RuleProto.Builder ruleBuilder =
                 RuleProto.newBuilder()
                         .addAllAnomalyActions(rule.getAnomalyActions())
@@ -188,13 +190,14 @@ public final class RuleStorageImpl implements RuleStorage {
     }
 
     /**
-     * Converts a {@link RuleProto} object back into its {@link android.os.Rule} equivalent.
+     * Converts a {@link RuleProto} object back into its {@link
+     * android.os.profiling.anomaly.RuleInternal} equivalent.
      *
-     * @return The converted {@link Rule}, or {@code null} if the proto is malformed (e.g. missing
-     *     condition type, unrecognized value type).
+     * @return The converted {@link RuleInternal}, or {@code null} if the proto is malformed (e.g.
+     *     missing condition type, unrecognized value type).
      */
     @Nullable
-    private Rule convertProtoToRule(RuleProto proto) {
+    private RuleInternal convertProtoToRule(RuleProto proto) {
         if (!proto.hasConditionType()) {
             Slog.w(
                     TAG,
@@ -238,8 +241,8 @@ public final class RuleStorageImpl implements RuleStorage {
             }
         }
 
-        Rule.Builder builder =
-                new Rule.Builder()
+        RuleInternal.Builder builder =
+                new RuleInternal.Builder()
                         .setConditionType(proto.getConditionType())
                         .setRuleCondition(bundle);
 
