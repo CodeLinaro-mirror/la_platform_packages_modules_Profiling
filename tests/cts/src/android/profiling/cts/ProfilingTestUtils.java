@@ -50,10 +50,10 @@ public final class ProfilingTestUtils {
 
     private static final String KEY_DURATION_MS = "KEY_DURATION_MS";
 
-    // Wait for rate limiter config to update for 250 milliseconds at a time for up to 12 increments
+    // Wait for device config to update for 250 milliseconds at a time for up to 12 increments
     // totalling 3 seconds.
-    private static final int RATE_LIMITER_WAIT_TIME_INCREMENT_MS = 250;
-    private static final int RATE_LIMITER_WAIT_TIME_INCREMENTS_COUNT = 12;
+    private static final int DEVICE_CONFIG_WAIT_TIME_INCREMENT_MS = 250;
+    private static final int DEVICE_CONFIG_WAIT_TIME_INCREMENTS_COUNT = 12;
 
     static class ImmediateExecutor implements Executor {
         public void execute(Runnable r) {
@@ -70,16 +70,19 @@ public final class ProfilingTestUtils {
     /** Overrides a device config with a new integer value. */
     public static void overrideDeviceConfig(String namespace, String config, int newValue) {
         executeShellCmd("device_config put %s %s %d", namespace, config, newValue);
+        verifyDeviceConfig(namespace, config, String.valueOf(newValue));
     }
 
     /** Overrides a device config with a new string value. */
     public static void overrideDeviceConfig(String namespace, String config, String newValue) {
         executeShellCmd("device_config put %s %s %s", namespace, config, newValue);
+        verifyDeviceConfig(namespace, config, newValue);
     }
 
     /** Overrides a device config with a new boolean value. */
     public static void overrideDeviceConfig(String namespace, String config, boolean newValue) {
         executeShellCmd("device_config put %s %s %b", namespace, config, newValue);
+        verifyDeviceConfig(namespace, config, String.valueOf(newValue));
     }
 
     /** Gets the current value of a device config. */
@@ -90,6 +93,8 @@ public final class ProfilingTestUtils {
     /** Deletes a device config override. */
     public static void deleteDeviceConfig(String namespace, String config) {
         executeShellCmd("device_config delete %s %s", namespace, config);
+        // DO NOT call verifyDeviceConfig. resetAllConfigs batches deleteDeviceConfig, which
+        // increases test runtime dramatically.
     }
 
     /**
@@ -101,16 +106,6 @@ public final class ProfilingTestUtils {
                 DeviceConfigHelper.NAMESPACE_TESTING,
                 DeviceConfigHelper.RATE_LIMITER_DISABLE_PROPERTY,
                 disable);
-        for (int i = 0; i < RATE_LIMITER_WAIT_TIME_INCREMENTS_COUNT; i++) {
-            sleep(RATE_LIMITER_WAIT_TIME_INCREMENT_MS);
-            String output =
-                    getDeviceConfig(
-                            DeviceConfigHelper.NAMESPACE_TESTING,
-                            DeviceConfigHelper.RATE_LIMITER_DISABLE_PROPERTY);
-            if (Boolean.parseBoolean(output.trim()) == disable) {
-                return;
-            }
-        }
     }
 
     /**
@@ -357,6 +352,18 @@ public final class ProfilingTestUtils {
             expect.that(result.getErrorMessage()).isNotNull();
         } else {
             expect.that(result.getErrorMessage()).isNull();
+        }
+    }
+
+    private static void verifyDeviceConfig(
+            String namespace, String property, String expectedValue) {
+        for (int i = 0; i < DEVICE_CONFIG_WAIT_TIME_INCREMENTS_COUNT; i++) {
+            String output = getDeviceConfig(namespace, property);
+            if (output != null && output.trim().equals(expectedValue)) {
+                return;
+            } else {
+                sleep(DEVICE_CONFIG_WAIT_TIME_INCREMENT_MS);
+            }
         }
     }
 }
