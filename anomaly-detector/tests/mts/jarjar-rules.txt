@@ -12,5 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# The following classes are jarjar'ed explicitly instead of using a wildcard
+# like android.os.profiling.anomaly.** because some literal strings have the same
+# prefix and would be subject to the same transformation. This would break string
+# lookups in "switch" statements since the lookup relies on a precomputed hashCode
+# (before doing a comparison for equality to take care of possible hash
+# collisions).
+rule android.os.profiling.anomaly.AnomalyDetectorFrameworkInitializer android.os.profiling.anomaly.jarjar.AnomalyDetectorFrameworkInitializer
+rule android.os.profiling.anomaly.AnomalyDetectorManager android.os.profiling.anomaly.jarjar.AnomalyDetectorManager
+rule android.os.profiling.anomaly.RuleInternal** android.os.profiling.anomaly.jarjar.RuleInternal@1
+rule android.os.profiling.anomaly.Rule android.os.profiling.anomaly.jarjar.Rule
+rule android.os.profiling.anomaly.Rule.Builder android.os.profiling.anomaly.jarjar.Rule.Builder
+
 rule android.os.profiling.anomaly.flags.** android.os.profiling.anomaly.mts.flags.@1
 rule com.google.protobuf.** com.android.os.profiling.anomaly.jarjar.protobuf.@0

@@ -126,7 +126,13 @@ public final class ProfilingTrigger {
      * {@link android.app.ApplicationStartInfo#START_TYPE_COLD}.
      *
      * <p>The system will provide a newly started system trace and stack sampling profile in
-     * response to this trigger.
+     * response to this trigger. Profiling will continue until the app calls {@link
+     * android.app.Activity#reportFullyDrawn}; otherwise, it will stop after a default period of 5
+     * seconds.
+     *
+     * <p>The system uses a discard buffer for this trigger. This means that if the buffer fills up,
+     * newer events are discarded. This ensures that the earliest available tracepoints are always
+     * retained.
      *
      * <p>Note: There might be a delay before profiling begins, similar to when {@link
      * ProfilingManager#requestProfiling} is used.

@@ -21,6 +21,10 @@ package {
 
 android_test {
     name: "CtsAnomalyDetectorTests",
+    enabled: select(release_flag("RELEASE_ANOMALY_DETECTOR"), {
+        true: true,
+        false: false,
+    }),
     defaults: ["cts_defaults"],
     static_libs: [
         "androidx.test.rules",
