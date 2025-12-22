@@ -17,22 +17,15 @@
 package android.os.profiling.anomaly;
 
 import android.annotation.FlaggedApi;
-import android.annotation.IntDef;
 import android.annotation.NonNull;
-import android.annotation.StringDef;
+import android.annotation.RequiresApi;
 import android.annotation.SystemApi;
 import android.os.Bundle;
+import android.os.profiling.anomaly.RuleInternal.AnomalyActionType;
+import android.os.profiling.anomaly.RuleInternal.ConditionType;
 import android.os.profiling.anomaly.flags.Flags;
-import android.util.ArraySet;
 
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
-import java.util.Set;
 
 /**
  * Defines a rule for detecting system anomalies.
@@ -45,16 +38,17 @@ import java.util.Set;
  *
  * @hide
  */
+@RequiresApi(37)
 @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
 @FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE)
-public final class Rule {
+public final class Rule extends RuleInternal {
     /**
      * Action to write a detailed report of the anomaly to the system log.
      *
      * @hide
      */
     @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
-    public static final int ACTION_TYPE_LOG = 1;
+    public static final int ACTION_TYPE_LOG = RuleInternal.ACTION_TYPE_LOG;
 
     /**
      * Condition type for monitoring excessive Binder Inter-Process Calls (IPCs), also known as
@@ -72,8 +66,7 @@ public final class Rule {
      * @hide
      */
     @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
-    public static final String CONDITION_TYPE_BINDER_SPAM =
-            "android.os.profiling.anomaly.Rule.binder_spam";
+    public static final String CONDITION_TYPE_BINDER_SPAM = RuleInternal.CONDITION_TYPE_BINDER_SPAM;
 
     /**
      * {@link Bundle} key for the fully qualified name of the AIDL interface to monitor.
@@ -86,7 +79,7 @@ public final class Rule {
      */
     @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
     public static final String BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME =
-            "android.os.profiling.anomaly.Rule.binder_interface_name";
+            RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME;
 
     /**
      * {@link Bundle} key for the name of the method within the AIDL interface to monitor.
@@ -99,7 +92,7 @@ public final class Rule {
      */
     @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
     public static final String BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME =
-            "android.os.profiling.anomaly.Rule.binder_method_name";
+            RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME;
 
     /**
      * {@link Bundle} key for the maximum number of allowed calls to the specified interface and
@@ -111,7 +104,7 @@ public final class Rule {
      */
     @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
     public static final String BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT =
-            "android.os.profiling.anomaly.Rule.binder_call_limit";
+            RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT;
 
     /**
      * {@link Bundle} key for the duration of the sliding time window in milliseconds used to count
@@ -126,37 +119,11 @@ public final class Rule {
      */
     @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
     public static final String BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS =
-            "android.os.profiling.anomaly.Rule.binder_call_interval_millis";
-
-    private static final Set<String> BINDER_SPAM_CONDITION_KEYS =
-            Set.of(
-                    BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME,
-                    BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME,
-                    BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT,
-                    BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS);
-
-    /**
-     * The list of actions to execute when the rule's condition (see {@link #getConditionType()}) is
-     * met. Each element must be a value from {@link AnomalyActionType}.
-     */
-    private final List<@AnomalyActionType Integer> mAnomalyActions;
-
-    /** The type of condition this rule monitors. Must be a value from {@link ConditionType}. */
-    private final @ConditionType String mConditionType;
-
-    /**
-     * A {@link Bundle} containing the specific parameters for the rule's condition.
-     *
-     * <p>The system enforces this condition. Non-compliance triggers the execution of the actions
-     * specified in {@link #getAnomalyActions()}.
-     */
-    private final Bundle mRuleCondition;
+            RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS;
 
     // Private constructor used by the Builder.
     private Rule(Builder builder) {
-        this.mAnomalyActions = new ArrayList<>(builder.mAnomalyActions);
-        this.mConditionType = builder.mConditionType;
-        this.mRuleCondition = builder.mRuleCondition;
+        super(builder);
     }
 
     /**
@@ -171,8 +138,9 @@ public final class Rule {
      */
     @NonNull
     @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
+    @Override
     public List<@AnomalyActionType Integer> getAnomalyActions() {
-        return new ArrayList<>(mAnomalyActions);
+        return super.getAnomalyActions();
     }
 
     /**
@@ -187,8 +155,9 @@ public final class Rule {
      */
     @NonNull
     @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
+    @Override
     public @ConditionType String getConditionType() {
-        return mConditionType;
+        return super.getConditionType();
     }
 
     /**
@@ -209,103 +178,10 @@ public final class Rule {
      */
     @NonNull
     @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
+    @Override
     public Bundle getRuleCondition() {
-        return new Bundle(mRuleCondition);
+        return super.getRuleCondition();
     }
-
-    @Override
-    @SuppressWarnings("deprecation")
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        Rule rule = (Rule) o;
-
-        if (!mConditionType.equals(rule.mConditionType)) {
-            return false;
-        }
-
-        // Compare mAnomalyActions. Order doesn't matter.
-        if (mAnomalyActions.size() != rule.mAnomalyActions.size()
-                || !new ArraySet<>(mAnomalyActions).equals(new ArraySet<>(rule.mAnomalyActions))) {
-            return false;
-        }
-
-        // Compare mRuleCondition
-        if (mRuleCondition.size() != rule.mRuleCondition.size()) {
-            return false;
-        }
-        for (String key : mRuleCondition.keySet()) {
-            if (!rule.mRuleCondition.containsKey(key)) {
-                return false;
-            }
-            Object value1 = mRuleCondition.get(key);
-            Object value2 = rule.mRuleCondition.get(key);
-            if (!Objects.equals(value1, value2)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    @Override
-    public int hashCode() {
-        int result = Objects.hash(mConditionType);
-
-        // Hash for mAnomalyActions, order-independent
-        result = 31 * result + new ArraySet<>(mAnomalyActions).hashCode();
-
-        // Hash for mRuleCondition, order-independent for keys
-        int bundleHash = 0;
-        for (String key : mRuleCondition.keySet()) {
-            Object value = mRuleCondition.get(key);
-            bundleHash += Objects.hash(key, value);
-        }
-        result = 31 * result + bundleHash;
-
-        return result;
-    }
-
-    /**
-     * Defines the types of actions to be executed by the {@code
-     * com.android.os.profiling.anomaly.AnomalyDetectorService} when an anomaly is detected based on
-     * the {@link Rule}.
-     *
-     * @hide
-     */
-    @Target(ElementType.TYPE_USE)
-    @Retention(RetentionPolicy.SOURCE)
-    @IntDef({
-        ACTION_TYPE_LOG,
-    })
-    // TODO(b/416804300): Add default and other action once finalized.
-    public @interface AnomalyActionType {}
-
-    /**
-     * Defines the possible types of conditions a {@link Rule} can represent.
-     *
-     * @hide
-     */
-    @Retention(RetentionPolicy.SOURCE)
-    @StringDef({
-        CONDITION_TYPE_BINDER_SPAM,
-    })
-    public @interface ConditionType {}
-
-    /**
-     * Defines the valid {@link Bundle} keys for the {@link #CONDITION_TYPE_BINDER_SPAM} condition
-     * type.
-     *
-     * @hide
-     */
-    @Retention(RetentionPolicy.SOURCE)
-    @StringDef({
-        BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME,
-        BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME,
-        BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT,
-        BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS
-    })
-    public @interface ConditionTypeBinderSpamBundleParams {}
 
     /**
      * Builder class for creating {@link Rule} instances.
@@ -313,11 +189,7 @@ public final class Rule {
      * @hide
      */
     @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
-    public static final class Builder {
-        private final Set<@AnomalyActionType Integer> mAnomalyActions = new ArraySet<>();
-        private @ConditionType String mConditionType;
-        private Bundle mRuleCondition;
-
+    public static final class Builder extends RuleInternal.Builder {
         /**
          * Adds a action to be taken when the rule's condition is met. Duplicate actions will be
          * ignored.
@@ -329,8 +201,9 @@ public final class Rule {
          */
         @NonNull
         @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
+        @Override
         public Builder addAnomalyAction(@AnomalyActionType int anomalyAction) {
-            this.mAnomalyActions.add(anomalyAction);
+            super.addAnomalyAction(anomalyAction);
             return this;
         }
 
@@ -343,9 +216,9 @@ public final class Rule {
          */
         @NonNull
         @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
+        @Override
         public Builder setConditionType(@NonNull @ConditionType String conditionType) {
-            Objects.requireNonNull(conditionType, "conditionType cannot be null");
-            this.mConditionType = conditionType;
+            super.setConditionType(conditionType);
             return this;
         }
 
@@ -361,9 +234,9 @@ public final class Rule {
          */
         @NonNull
         @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
+        @Override
         public Builder setRuleCondition(@NonNull Bundle ruleCondition) {
-            Objects.requireNonNull(ruleCondition, "ruleCondition cannot be null");
-            this.mRuleCondition = ruleCondition;
+            super.setRuleCondition(ruleCondition);
             return this;
         }
 
@@ -379,71 +252,10 @@ public final class Rule {
          */
         @NonNull
         @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
+        @Override
         public Rule build() {
-            if (mConditionType == null) {
-                throw new IllegalStateException("ConditionType must be set.");
-            }
-            if (mRuleCondition == null) {
-                throw new IllegalStateException("RuleCondition Bundle must be set.");
-            }
-            if (mAnomalyActions.isEmpty()) {
-                throw new IllegalStateException("AnomalyActions must be set.");
-            }
-
-            validateRuleConditionBundle();
-
+            super.validate();
             return new Rule(this);
-        }
-
-        private void validateRuleConditionBundle() {
-            Set<String> requiredKeys = new ArraySet<>();
-            Set<String> providedKeys = mRuleCondition.keySet();
-
-            switch (mConditionType) {
-                case CONDITION_TYPE_BINDER_SPAM -> {
-                    requiredKeys = new ArraySet<>(BINDER_SPAM_CONDITION_KEYS);
-                }
-            }
-
-            if (!providedKeys.containsAll(requiredKeys)) {
-                Set<String> missingKeys = new ArraySet<>(requiredKeys);
-                missingKeys.removeAll(providedKeys);
-
-                throw new IllegalArgumentException(
-                        "mRuleCondition is missing keys. Missing keys: " + missingKeys);
-            }
-
-            // if all the keys are present, we validate value types
-            switch (mConditionType) {
-                case CONDITION_TYPE_BINDER_SPAM -> validateBinderSpamBundleValuesType();
-                    // add validation for other types.
-            }
-        }
-
-        @SuppressWarnings("deprecation") // Using Bundle.get() for strict runtime type checking.
-        private void validateBinderSpamBundleValueType(String key, Class<?> expectedType) {
-            Object value = mRuleCondition.get(key);
-
-            if (!expectedType.isInstance(value)) {
-                throw new IllegalArgumentException(
-                        String.format(
-                                "Invalid value type for key: %s. Expected: %s, Actual: %s",
-                                key,
-                                expectedType.getSimpleName(),
-                                (value == null ? "null" : value.getClass().getSimpleName())));
-            }
-        }
-
-        // TODO(b/440140585): Validate the format of the interface name and method.
-        private void validateBinderSpamBundleValuesType() {
-            validateBinderSpamBundleValueType(
-                    BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME, String.class);
-            validateBinderSpamBundleValueType(
-                    BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME, String.class);
-            validateBinderSpamBundleValueType(
-                    BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT, Integer.class);
-            validateBinderSpamBundleValueType(
-                    BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS, Long.class);
         }
     }
 }

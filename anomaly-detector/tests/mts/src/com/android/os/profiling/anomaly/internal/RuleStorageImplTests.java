@@ -24,7 +24,7 @@ import static org.mockito.Mockito.verify;
 import android.content.Context;
 import android.os.Bundle;
 import android.os.OutcomeReceiver;
-import android.os.profiling.anomaly.Rule;
+import android.os.profiling.anomaly.RuleInternal;
 
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
@@ -59,9 +59,9 @@ public final class RuleStorageImplTests {
 
     @org.junit.Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
 
-    @Mock private OutcomeReceiver<Set<Rule>, Throwable> mLoadCallback;
+    @Mock private OutcomeReceiver<Set<RuleInternal>, Throwable> mLoadCallback;
     @Mock private OutcomeReceiver<Void, Throwable> mSaveCallback;
-    @Captor private ArgumentCaptor<Set<Rule>> mRuleSetCaptor;
+    @Captor private ArgumentCaptor<Set<RuleInternal>> mRuleSetCaptor;
 
     private RuleStorageImpl mRuleStorage;
     private Executor mDirectExecutor;
@@ -110,8 +110,8 @@ public final class RuleStorageImplTests {
         bundle1.putString("stringKey", "stringValue");
         bundle1.putInt("intKey", 123);
         bundle1.putBoolean("boolKey", true);
-        Rule rule1 =
-                new Rule.Builder()
+        RuleInternal rule1 =
+                new RuleInternal.Builder()
                         .setConditionType("TYPE_1")
                         .setRuleCondition(bundle1)
                         .addAnomalyAction(1)
@@ -121,15 +121,15 @@ public final class RuleStorageImplTests {
         bundle2.putLong("longKey", 456L);
         bundle2.putDouble("doubleKey", 123.456);
         bundle2.putFloat("floatKey", 789.0f);
-        Rule rule2 =
-                new Rule.Builder()
+        RuleInternal rule2 =
+                new RuleInternal.Builder()
                         .setConditionType("TYPE_2")
                         .setRuleCondition(bundle2)
                         .addAnomalyAction(2)
                         .addAnomalyAction(3)
                         .build();
 
-        Set<Rule> originalRules = Set.of(rule1, rule2);
+        Set<RuleInternal> originalRules = Set.of(rule1, rule2);
 
         mRuleStorage.save(originalRules, mDirectExecutor, mSaveCallback);
         verify(mSaveCallback).onResult(null);
@@ -137,17 +137,17 @@ public final class RuleStorageImplTests {
         mRuleStorage.load(mDirectExecutor, mLoadCallback);
         verify(mLoadCallback).onResult(mRuleSetCaptor.capture());
 
-        Set<Rule> loadedRules = mRuleSetCaptor.getValue();
+        Set<RuleInternal> loadedRules = mRuleSetCaptor.getValue();
         assertThat(loadedRules).isNotNull();
         assertThat(loadedRules).hasSize(2);
 
         // Verify rules content individually as Bundle does not implement equals().
-        Rule loadedRule1 =
+        RuleInternal loadedRule1 =
                 loadedRules.stream()
                         .filter(r -> r.getConditionType().equals("TYPE_1"))
                         .findFirst()
                         .get();
-        Rule loadedRule2 =
+        RuleInternal loadedRule2 =
                 loadedRules.stream()
                         .filter(r -> r.getConditionType().equals("TYPE_2"))
                         .findFirst()
@@ -180,8 +180,8 @@ public final class RuleStorageImplTests {
     public void save_skipsRuleWithUnsupportedBundleType() {
         Bundle validBundle = new Bundle();
         validBundle.putString("key", "value");
-        Rule validRule =
-                new Rule.Builder()
+        RuleInternal validRule =
+                new RuleInternal.Builder()
                         .setConditionType("VALID_TYPE")
                         .setRuleCondition(validBundle)
                         .addAnomalyAction(1)
@@ -190,8 +190,8 @@ public final class RuleStorageImplTests {
         Bundle invalidBundle = new Bundle();
         invalidBundle.putByteArray(
                 "unsupported", new byte[] {1, 2, 3}); // byte array is not supported
-        Rule invalidRule =
-                new Rule.Builder()
+        RuleInternal invalidRule =
+                new RuleInternal.Builder()
                         .setConditionType("INVALID_TYPE")
                         .setRuleCondition(invalidBundle)
                         .addAnomalyAction(2)
@@ -203,7 +203,7 @@ public final class RuleStorageImplTests {
         mRuleStorage.load(mDirectExecutor, mLoadCallback);
         verify(mLoadCallback).onResult(mRuleSetCaptor.capture());
 
-        Set<Rule> loadedRules = mRuleSetCaptor.getValue();
+        Set<RuleInternal> loadedRules = mRuleSetCaptor.getValue();
         assertThat(loadedRules).isNotNull();
         assertThat(loadedRules).hasSize(1);
         assertThat(loadedRules.iterator().next()).isEqualTo(validRule);
@@ -226,7 +226,7 @@ public final class RuleStorageImplTests {
         mRuleStorage.load(mDirectExecutor, mLoadCallback);
         verify(mLoadCallback).onResult(mRuleSetCaptor.capture());
 
-        Set<Rule> loadedRules = mRuleSetCaptor.getValue();
+        Set<RuleInternal> loadedRules = mRuleSetCaptor.getValue();
         assertThat(loadedRules).hasSize(1);
         assertThat(loadedRules.iterator().next().getConditionType()).isEqualTo("VALID_TYPE");
     }
@@ -253,7 +253,7 @@ public final class RuleStorageImplTests {
         mRuleStorage.load(mDirectExecutor, mLoadCallback);
         verify(mLoadCallback).onResult(mRuleSetCaptor.capture());
 
-        Set<Rule> loadedRules = mRuleSetCaptor.getValue();
+        Set<RuleInternal> loadedRules = mRuleSetCaptor.getValue();
         assertThat(loadedRules).hasSize(1);
         assertThat(loadedRules.iterator().next().getConditionType()).isEqualTo("VALID_TYPE");
     }

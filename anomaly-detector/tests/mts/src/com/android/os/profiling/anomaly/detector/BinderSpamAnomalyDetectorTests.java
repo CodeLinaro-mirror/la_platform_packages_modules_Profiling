@@ -25,7 +25,7 @@ import static org.mockito.Mockito.when;
 
 import android.os.Bundle;
 import android.os.OutcomeReceiver;
-import android.os.profiling.anomaly.Rule;
+import android.os.profiling.anomaly.RuleInternal;
 
 import androidx.test.runner.AndroidJUnit4;
 
@@ -80,15 +80,17 @@ public final class BinderSpamAnomalyDetectorTests {
         ArgumentCaptor<OutcomeReceiver<BinderSpamData, Throwable>> receiverCaptor =
                 ArgumentCaptor.forClass(OutcomeReceiver.class);
         Bundle condition = new Bundle();
-        condition.putString(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME, TEST_INTERFACE);
-        condition.putString(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME, TEST_METHOD);
-        condition.putInt(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT, 100);
-        condition.putLong(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS, 1000);
-        Rule rule =
-                new Rule.Builder()
-                        .setConditionType(Rule.CONDITION_TYPE_BINDER_SPAM)
+        condition.putString(
+                RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME, TEST_INTERFACE);
+        condition.putString(RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME, TEST_METHOD);
+        condition.putInt(RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT, 100);
+        condition.putLong(
+                RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS, 1000);
+        RuleInternal rule =
+                new RuleInternal.Builder()
+                        .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
                         .setRuleCondition(condition)
-                        .addAnomalyAction(Rule.ACTION_TYPE_LOG)
+                        .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
                         .build();
         mDetector.setRule(rule);
         verify(mMockCollector).subscribe(any(), receiverCaptor.capture());

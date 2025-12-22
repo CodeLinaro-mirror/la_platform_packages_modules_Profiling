@@ -18,8 +18,8 @@ package com.android.os.profiling.anomaly.handler;
 
 import static com.google.common.truth.Truth.assertThat;
 
-import android.os.profiling.anomaly.Rule;
-import android.os.profiling.anomaly.Rule.AnomalyActionType;
+import android.os.profiling.anomaly.RuleInternal;
+import android.os.profiling.anomaly.RuleInternal.AnomalyActionType;
 
 import androidx.test.runner.AndroidJUnit4;
 
@@ -43,7 +43,7 @@ public final class AnomalyHandlerRegistryImplTests {
 
     @Test
     public void constructor_registersDefaultHandlers() {
-        assertThat(mRegistry.getHandler(Rule.ACTION_TYPE_LOG))
+        assertThat(mRegistry.getHandler(RuleInternal.ACTION_TYPE_LOG))
                 .isInstanceOf(LogAnomalyHandler.class);
     }
 
