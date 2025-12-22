@@ -154,6 +154,7 @@ public final class RuleStorageImpl implements RuleStorage {
     private RuleProto convertRuleToProto(RuleInternal rule) {
         RuleProto.Builder ruleBuilder =
                 RuleProto.newBuilder()
+                        .setName(rule.getName())
                         .addAllAnomalyActions(rule.getAnomalyActions())
                         .setConditionType(rule.getConditionType());
 
@@ -243,6 +244,7 @@ public final class RuleStorageImpl implements RuleStorage {
 
         RuleInternal.Builder builder =
                 new RuleInternal.Builder()
+                        .setName(proto.getName())
                         .setConditionType(proto.getConditionType())
                         .setRuleCondition(bundle);
 

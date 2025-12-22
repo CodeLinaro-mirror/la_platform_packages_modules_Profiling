@@ -33,6 +33,8 @@ import java.util.List;
 @RunWith(AndroidJUnit4.class)
 public final class RuleInternalTests {
 
+    private static final String TEST_NAME = "test_rule_name";
+
     private Bundle createBinderSpamBundle() {
         Bundle bundle = new Bundle();
         bundle.putString(
@@ -62,12 +64,14 @@ public final class RuleInternalTests {
         Bundle binderSpamConditionBundle = createBinderSpamBundle();
         RuleInternal rule =
                 new RuleInternal.Builder()
+                        .setName(TEST_NAME)
                         .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
                         .setRuleCondition(binderSpamConditionBundle)
                         .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
                         .build();
 
         assertThat(rule).isNotNull();
+        assertThat(rule.getRuleCondition().keySet()).isEqualTo(binderSpamConditionBundle.keySet());
         assertThat(rule.getConditionType()).isEqualTo(RuleInternal.CONDITION_TYPE_BINDER_SPAM);
         assertBundlesEqual(binderSpamConditionBundle, rule.getRuleCondition());
         assertThat(rule.getAnomalyActions()).containsExactly(RuleInternal.ACTION_TYPE_LOG);
@@ -77,6 +81,7 @@ public final class RuleInternalTests {
     public void buildRule_withNewActions_buildsSuccessfully() {
         RuleInternal rule =
                 new RuleInternal.Builder()
+                        .setName(TEST_NAME)
                         .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
                         .setRuleCondition(createBinderSpamBundle())
                         .addAnomalyAction(Integer.MAX_VALUE)
@@ -92,6 +97,7 @@ public final class RuleInternalTests {
         Bundle binderSpamConditionBundle = createBinderSpamBundle();
         RuleInternal rule =
                 new RuleInternal.Builder()
+                        .setName(TEST_NAME)
                         .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
                         .setRuleCondition(binderSpamConditionBundle)
                         .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
@@ -107,6 +113,7 @@ public final class RuleInternalTests {
                 IllegalStateException.class,
                 () ->
                         new RuleInternal.Builder()
+                                .setName(TEST_NAME)
                                 .setRuleCondition(createBinderSpamBundle())
                                 .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
                                 .build());
@@ -118,6 +125,7 @@ public final class RuleInternalTests {
                 IllegalStateException.class,
                 () ->
                         new RuleInternal.Builder()
+                                .setName(TEST_NAME)
                                 .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
                                 .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
                                 .build());
@@ -129,6 +137,7 @@ public final class RuleInternalTests {
                 IllegalStateException.class,
                 () ->
                         new RuleInternal.Builder()
+                                .setName(TEST_NAME)
                                 .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
                                 .setRuleCondition(createBinderSpamBundle())
                                 .build());
@@ -155,6 +164,7 @@ public final class RuleInternalTests {
                 IllegalArgumentException.class,
                 () ->
                         new RuleInternal.Builder()
+                                .setName(TEST_NAME)
                                 .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
                                 .setRuleCondition(binderSpamConditionBundle)
                                 .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
@@ -167,6 +177,7 @@ public final class RuleInternalTests {
                 IllegalArgumentException.class,
                 () ->
                         new RuleInternal.Builder()
+                                .setName(TEST_NAME)
                                 .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
                                 .setRuleCondition(new Bundle())
                                 .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
@@ -183,6 +194,7 @@ public final class RuleInternalTests {
                 IllegalArgumentException.class,
                 () ->
                         new RuleInternal.Builder()
+                                .setName(TEST_NAME)
                                 .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
                                 .setRuleCondition(binderSpamConditionBundle)
                                 .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
@@ -199,6 +211,7 @@ public final class RuleInternalTests {
                 IllegalArgumentException.class,
                 () ->
                         new RuleInternal.Builder()
+                                .setName(TEST_NAME)
                                 .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
                                 .setRuleCondition(binderSpamConditionBundle)
                                 .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
@@ -243,6 +256,7 @@ public final class RuleInternalTests {
         Bundle binderSpamConditionBundle = createBinderSpamBundle();
         RuleInternal rule =
                 new RuleInternal.Builder()
+                        .setName(TEST_NAME)
                         .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
                         .setRuleCondition(binderSpamConditionBundle)
                         .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
@@ -255,6 +269,7 @@ public final class RuleInternalTests {
     public void getAnomalyActions_returnsACopy() {
         RuleInternal rule =
                 new RuleInternal.Builder()
+                        .setName(TEST_NAME)
                         .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
                         .setRuleCondition(createBinderSpamBundle())
                         .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
@@ -271,6 +286,7 @@ public final class RuleInternalTests {
         Bundle binderSpamConditionBundle = createBinderSpamBundle();
         RuleInternal rule =
                 new RuleInternal.Builder()
+                        .setName(TEST_NAME)
                         .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
                         .setRuleCondition(binderSpamConditionBundle)
                         .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
@@ -281,15 +297,16 @@ public final class RuleInternalTests {
 
     @Test
     public void getRuleCondition_returnsCorrectBundle() {
-        Bundle binderSpamConditionBundle = createBinderSpamBundle();
+        Bundle expectedConditionBundle = createBinderSpamBundle();
         RuleInternal rule =
                 new RuleInternal.Builder()
+                        .setName(TEST_NAME)
                         .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
-                        .setRuleCondition(binderSpamConditionBundle)
+                        .setRuleCondition(expectedConditionBundle)
                         .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
                         .build();
 
-        assertBundlesEqual(binderSpamConditionBundle, rule.getRuleCondition());
+        assertBundlesEqual(expectedConditionBundle, rule.getRuleCondition());
     }
 
     @Test
@@ -297,6 +314,7 @@ public final class RuleInternalTests {
         Bundle binderSpamConditionBundle = createBinderSpamBundle();
         RuleInternal rule =
                 new RuleInternal.Builder()
+                        .setName(TEST_NAME)
                         .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
                         .setRuleCondition(binderSpamConditionBundle)
                         .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
@@ -313,6 +331,7 @@ public final class RuleInternalTests {
     public void equalsAndHashCode_identicalObjects_areEqual() {
         RuleInternal rule1 =
                 new RuleInternal.Builder()
+                        .setName(TEST_NAME)
                         .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
                         .setRuleCondition(createBinderSpamBundle())
                         .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
@@ -320,6 +339,7 @@ public final class RuleInternalTests {
 
         RuleInternal rule2 =
                 new RuleInternal.Builder()
+                        .setName(TEST_NAME)
                         .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
                         .setRuleCondition(createBinderSpamBundle())
                         .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
@@ -333,6 +353,7 @@ public final class RuleInternalTests {
     public void equals_differentActions_areNotEqual() {
         RuleInternal rule1 =
                 new RuleInternal.Builder()
+                        .setName(TEST_NAME)
                         .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
                         .setRuleCondition(createBinderSpamBundle())
                         .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
@@ -340,6 +361,7 @@ public final class RuleInternalTests {
 
         RuleInternal rule2 =
                 new RuleInternal.Builder()
+                        .setName(TEST_NAME)
                         .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
                         .setRuleCondition(createBinderSpamBundle())
                         .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
@@ -353,6 +375,7 @@ public final class RuleInternalTests {
     public void equals_differentRuleConditionValue_areNotEqual() {
         RuleInternal rule1 =
                 new RuleInternal.Builder()
+                        .setName(TEST_NAME)
                         .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
                         .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
                         .setRuleCondition(createBinderSpamBundle())
@@ -362,6 +385,7 @@ public final class RuleInternalTests {
         bundle2.putInt(RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT, 200);
         RuleInternal rule2 =
                 new RuleInternal.Builder()
+                        .setName(TEST_NAME)
                         .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
                         .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
                         .setRuleCondition(bundle2)
@@ -387,5 +411,41 @@ public final class RuleInternalTests {
                         .build();
 
         assertThat(rule1).isNotEqualTo(rule2);
+    }
+
+    @Test
+    public void getName_returnsCorrectName() {
+        RuleInternal rule =
+                new RuleInternal.Builder()
+                        .setName(TEST_NAME)
+                        .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
+                        .setRuleCondition(createBinderSpamBundle())
+                        .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
+                        .build();
+
+        assertThat(rule.getName()).isEqualTo(TEST_NAME);
+    }
+
+    @Test
+    public void setName_empty_throws() {
+        assertThrows(IllegalArgumentException.class, () -> new RuleInternal.Builder().setName(""));
+    }
+
+    @Test
+    public void setName_blank_throws() {
+        assertThrows(
+                IllegalArgumentException.class, () -> new RuleInternal.Builder().setName("   "));
+    }
+
+    @Test
+    public void buildRule_withoutName_usesDefaultEmptyName() {
+        RuleInternal rule =
+                new RuleInternal.Builder()
+                        .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
+                        .setRuleCondition(createBinderSpamBundle())
+                        .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
+                        .build();
+
+        assertThat(rule.getName()).isEmpty();
     }
 }

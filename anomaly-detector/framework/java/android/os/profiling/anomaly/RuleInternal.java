@@ -105,6 +105,9 @@ public class RuleInternal {
                     BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT,
                     BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS);
 
+    /** The name of the rule. */
+    private final String mName;
+
     /**
      * The list of actions to execute when the rule's condition (see {@link #getConditionType()}) is
      * met. Each element must be a value from {@link AnomalyActionType}.
@@ -124,9 +127,20 @@ public class RuleInternal {
 
     // constructor used by the Builder.
     protected RuleInternal(Builder builder) {
+        mName = builder.mName;
         mAnomalyActions = new ArrayList<>(builder.mAnomalyActions);
         mConditionType = builder.mConditionType;
         mRuleCondition = builder.mRuleCondition;
+    }
+
+    /**
+     * Returns the name of the rule.
+     *
+     * @return The name of the rule.
+     */
+    @NonNull
+    public String getName() {
+        return mName;
     }
 
     /**
@@ -191,6 +205,10 @@ public class RuleInternal {
         if (o == null || getClass() != o.getClass()) return false;
         RuleInternal rule = (RuleInternal) o;
 
+        if (!mName.equals(rule.mName)) {
+            return false;
+        }
+
         if (!mConditionType.equals(rule.mConditionType)) {
             return false;
         }
@@ -221,7 +239,7 @@ public class RuleInternal {
 
     @Override
     public int hashCode() {
-        int result = Objects.hash(mConditionType);
+        int result = Objects.hash(mName, mConditionType);
 
         // Hash for mAnomalyActions, order-independent
         result = 31 * result + new ArraySet<>(mAnomalyActions).hashCode();
@@ -284,9 +302,26 @@ public class RuleInternal {
      * @hide
      */
     public static class Builder {
+        private String mName = "";
         private final Set<@AnomalyActionType Integer> mAnomalyActions = new ArraySet<>();
         private @ConditionType String mConditionType;
         private Bundle mRuleCondition;
+
+        /**
+         * Sets the name of the rule.
+         *
+         * @param name The name of the rule.
+         * @return This Builder instance for chaining.
+         */
+        @NonNull
+        public Builder setName(@NonNull String name) {
+            Objects.requireNonNull(name, "name cannot be null");
+            if (name.trim().isEmpty()) {
+                throw new IllegalArgumentException("name cannot be empty or blank");
+            }
+            mName = name;
+            return this;
+        }
 
         /**
          * Adds a action to be taken when the rule's condition is met. Duplicate actions will be

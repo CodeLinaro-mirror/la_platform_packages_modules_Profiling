@@ -8,6 +8,7 @@ package android.os.profiling.anomaly {
   @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public final class Rule {
     method @NonNull public java.util.List<java.lang.Integer> getAnomalyActions();
     method @NonNull public String getConditionType();
+    method @NonNull public String getName();
     method @NonNull public android.os.Bundle getRuleCondition();
     field public static final int ACTION_TYPE_LOG = 1; // 0x1
     field public static final String BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS = "android.os.profiling.anomaly.Rule.binder_call_interval_millis";
@@ -22,6 +23,7 @@ package android.os.profiling.anomaly {
     method @NonNull public android.os.profiling.anomaly.Rule.Builder addAnomalyAction(int);
     method @NonNull public android.os.profiling.anomaly.Rule build();
     method @NonNull public android.os.profiling.anomaly.Rule.Builder setConditionType(@NonNull String);
+    method @NonNull public android.os.profiling.anomaly.Rule.Builder setName(@NonNull String);
     method @NonNull public android.os.profiling.anomaly.Rule.Builder setRuleCondition(@NonNull android.os.Bundle);
   }
 
