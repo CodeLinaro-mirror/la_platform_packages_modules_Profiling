@@ -1008,7 +1008,8 @@ public class ProfilingService extends IProfilingService.Stub {
                 } else {
                     session.setError(ProfilingResult.ERROR_NONE);
                 }
-                processTracingSessionResultCallback(session, true /* Continue advancing session */);
+                processTracingSessionResultCallback(
+                        session, !Flags.notifyResultDelivered() /* Continue advancing session */);
 
                 // This is a good place to persist the queue if possible because the processing work
                 // is complete and we tried to send a callback to the app. If the callback
@@ -1020,7 +1021,8 @@ public class ProfilingService extends IProfilingService.Stub {
                 break;
             case ERROR_OCCURRED:
                 // An error has occurred, proceed to callback.
-                processTracingSessionResultCallback(session, true /* Continue advancing session */);
+                processTracingSessionResultCallback(
+                        session, !Flags.notifyResultDelivered() /* Continue advancing session */);
 
                 // This is a good place to persist the queue if possible because the processing work
                 // is complete and we tried to send a callback to the app. If the callback
@@ -1502,6 +1504,39 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
         stopProfiling(key, LoggingHelper.PROFILING_STOPPED_REASON_APP_REQUESTED);
+    }
+
+    /** Call from manager to notify that the result has been successfully delivered to the app. */
+    public void notifyResultDelivered(long keyMostSigBits, long keyLeastSigBits) {
+        if (!Flags.notifyResultDelivered()) {
+            return;
+        }
+        int uid = Binder.getCallingUid();
+        List<TracingSession> sessions = mQueuedTracingResults.get(uid);
+        if (sessions == null) {
+            return;
+        }
+
+        String searchKey = new UUID(keyMostSigBits, keyLeastSigBits).toString();
+        for (int i = 0; i < sessions.size(); i++) {
+            TracingSession session = sessions.get(i);
+            if (session.getKey().equals(searchKey)) {
+                TracingState state = session.getState();
+                if (state == TracingState.COPIED_FILE || state == TracingState.ERROR_OCCURRED) {
+                    advanceTracingSession(session, TracingState.NOTIFIED_REQUESTER);
+                } else {
+                    if (DEBUG) {
+                        Log.w(
+                                TAG,
+                                "Received delivery notify for session "
+                                        + searchKey
+                                        + " in unexpected state: "
+                                        + state);
+                    }
+                }
+                return;
+            }
+        }
     }
 
     /**
@@ -2201,6 +2236,16 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
 
+        long keyMostSigBits = 0L;
+        long keyLeastSigBits = 0L;
+        if (Flags.notifyResultDelivered()) {
+            // Generate a random key for this trigger so that we can uniquely identify the session
+            // later.
+            UUID key = UUID.randomUUID();
+            keyMostSigBits = key.getMostSignificantBits();
+            keyLeastSigBits = key.getLeastSignificantBits();
+        }
+
         // If a future trigger requires starting a new trace rather than leveraging the existing
         // one, then an additional condition will need to be added to this check.
         if (profilingType == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE
@@ -2210,8 +2255,8 @@ public class ProfilingService extends IProfilingService.Stub {
                     packageName,
                     triggerType,
                     tag,
-                    0L, /* keyMostSigBits */
-                    0L, /* keyLeastSigBits */
+                    keyMostSigBits,
+                    keyLeastSigBits,
                     false, /* returnToAnomalyDetectorOnly */
                     callback);
         } else {
@@ -2221,8 +2266,8 @@ public class ProfilingService extends IProfilingService.Stub {
                     triggerType,
                     profilingType,
                     tag,
-                    0L, /* keyMostSigBits */
-                    0L, /* keyLeastSigBits */
+                    keyMostSigBits,
+                    keyLeastSigBits,
                     false, /* returnToAnomalyDetectorOnly */
                     getParamsForTriggerType(triggerType),
                     callback);

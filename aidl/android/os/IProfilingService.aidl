@@ -60,4 +60,6 @@ interface IProfilingService {
     oneway void sendAnomalyProfile(long keyMostSigBits, long keyLeastSigBits, int uid, String packageName, int triggerType, String tag, String resultFileName);
 
     oneway void collectAnomalyProfile(long keyMostSigBits, long keyLeastSigBits, int uid, String packageName, int profilingType, int triggerType, boolean returnToAnomalyDetectorOnly, String tag, in Bundle params);
+
+    oneway void notifyResultDelivered(long keyMostSigBits, long keyLeastSigBits);
 }
