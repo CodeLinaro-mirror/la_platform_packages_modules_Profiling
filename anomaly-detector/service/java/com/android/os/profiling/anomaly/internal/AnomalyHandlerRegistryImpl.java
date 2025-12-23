@@ -16,8 +16,8 @@
 
 package com.android.os.profiling.anomaly.internal;
 
-import android.os.profiling.anomaly.Rule;
-import android.os.profiling.anomaly.Rule.AnomalyActionType;
+import android.os.profiling.anomaly.RuleInternal;
+import android.os.profiling.anomaly.RuleInternal.AnomalyActionType;
 import android.util.SparseArray;
 
 import com.android.os.profiling.anomaly.core.AnomalyHandler;
@@ -33,7 +33,7 @@ public final class AnomalyHandlerRegistryImpl implements AnomalyHandlerRegistry 
     private final SparseArray<AnomalyHandler> mHandlers = new SparseArray<>();
 
     public AnomalyHandlerRegistryImpl() {
-        register(Rule.ACTION_TYPE_LOG, new LogAnomalyHandler());
+        register(RuleInternal.ACTION_TYPE_LOG, new LogAnomalyHandler());
     }
 
     /** Registers a handler for a given action type. */

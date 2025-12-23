@@ -16,7 +16,7 @@
 
 package com.android.os.profiling.anomaly.core;
 
-import android.os.profiling.anomaly.Rule;
+import android.os.profiling.anomaly.RuleInternal;
 
 import java.util.Set;
 
@@ -31,7 +31,7 @@ public interface AnomalyDetectorController {
      *
      * @param rules A set of rules to be used for anomaly detection.
      */
-    void setRules(Set<Rule> rules);
+    void setRules(Set<RuleInternal> rules);
 
     /**
      * Called when the system services are ready.

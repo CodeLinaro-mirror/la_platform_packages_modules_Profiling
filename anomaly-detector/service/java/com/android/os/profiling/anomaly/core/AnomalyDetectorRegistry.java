@@ -17,8 +17,8 @@
 package com.android.os.profiling.anomaly.core;
 
 import android.annotation.Nullable;
-import android.os.profiling.anomaly.Rule;
-import android.os.profiling.anomaly.Rule.ConditionType;
+import android.os.profiling.anomaly.RuleInternal;
+import android.os.profiling.anomaly.RuleInternal.ConditionType;
 
 import com.android.os.profiling.anomaly.core.AnomalyDetector.AnomalyDetectorFactory;
 
@@ -48,5 +48,5 @@ public interface AnomalyDetectorRegistry {
      * @return A configured AnomalyDetector, or {@code null} if no factory is registered or if the
      *     detector could not be created.
      */
-    AnomalyDetector createDetectorForRule(Rule rule, SignalCollectorRegistry registry);
+    AnomalyDetector createDetectorForRule(RuleInternal rule, SignalCollectorRegistry registry);
 }
