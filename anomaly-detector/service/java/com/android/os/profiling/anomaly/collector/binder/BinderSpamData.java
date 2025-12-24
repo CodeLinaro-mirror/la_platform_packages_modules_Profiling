@@ -21,12 +21,14 @@ import static android.annotation.SystemApi.Client.SYSTEM_SERVER;
 import android.annotation.FlaggedApi;
 import android.annotation.NonNull;
 import android.annotation.SystemApi;
+import android.app.ActivityManager;
 import android.os.profiling.anomaly.flags.Flags;
 import android.text.TextUtils;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.os.profiling.anomaly.collector.SignalCollectorData;
 
+import java.time.Duration;
 import java.util.Objects;
 
 /**
@@ -42,6 +44,9 @@ public final class BinderSpamData implements SignalCollectorData {
     /** Either the direct client process UID or the source client process UID. */
     private final int mCallingUid;
 
+    /** The server process UID. */
+    private final int mServerUid;
+
     /** The count of the binder calls from the calling UID incurred over the timespan. */
     private final int mCallCount;
 
@@ -52,19 +57,27 @@ public final class BinderSpamData implements SignalCollectorData {
     private final String mMethodName;
 
     /** The timespan of the binder calls incurred over. */
-    private final long mTimespanMillis;
+    private final Duration mTimespan;
+
+    /**
+     * The importance of the calling process. See {@link
+     * ActivityManager.RunningAppProcessInfo#importance}
+     */
+    private final int mCallerImportance;
 
     private BinderSpamData(Builder builder) {
-        this.mCallingUid = builder.mCallingUid;
-        this.mCallCount = builder.mCallCount;
-        this.mInterfaceName = builder.mInterfaceName;
-        this.mMethodName = builder.mMethodName;
-        this.mTimespanMillis = builder.mTimespanMillis;
+        mCallingUid = builder.mCallingUid;
+        mServerUid = builder.mServerUid;
+        mCallCount = builder.mCallCount;
+        mInterfaceName = builder.mInterfaceName;
+        mMethodName = builder.mMethodName;
+        mTimespan = builder.mTimespan;
+        mCallerImportance = builder.mCallerImportance;
     }
 
     /**
      * Get the count of the binder transactions that incurred over the timespan returned by {@link
-     * #getTimespanMillis()}. Note that this value is the maximum count since last report.
+     * #getTimespan()}. Note that this value is the maximum count since last report.
      */
     public int getCallCount() {
         return mCallCount;
@@ -83,11 +96,12 @@ public final class BinderSpamData implements SignalCollectorData {
     }
 
     /**
-     * Get the timespan that the call count returned by {@link #getCallCount()} incurred over, in
-     * milliseconds. The default value is 1000 if not specifically set.
+     * Get the timespan that the call count returned by {@link #getCallCount()} incurred over. The
+     * default value is 1 second if not specifically set.
      */
-    public long getTimespanMillis() {
-        return mTimespanMillis;
+    @NonNull
+    public Duration getTimespan() {
+        return mTimespan;
     }
 
     /** Get the calling uid of the binder transactions this signal contains. */
@@ -95,12 +109,57 @@ public final class BinderSpamData implements SignalCollectorData {
         return mCallingUid;
     }
 
+    /** Get the server uid of the binder transactions this signal contains. */
+    public int getServerUid() {
+        return mServerUid;
+    }
+
+    /**
+     * Get the importance of the calling process. See {@link
+     * ActivityManager.RunningAppProcessInfo#importance}.
+     */
+    public int getCallerImportance() {
+        return mCallerImportance;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof BinderSpamData that)) {
+            return false;
+        }
+        return mCallingUid == that.mCallingUid
+                && mServerUid == that.mServerUid
+                && mCallCount == that.mCallCount
+                && mCallerImportance == that.mCallerImportance
+                && Objects.equals(mInterfaceName, that.mInterfaceName)
+                && Objects.equals(mMethodName, that.mMethodName)
+                && Objects.equals(mTimespan, that.mTimespan);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(
+                mCallingUid,
+                mServerUid,
+                mCallCount,
+                mInterfaceName,
+                mMethodName,
+                mTimespan,
+                mCallerImportance);
+    }
+
     public static final class Builder {
-        /** The default value of timespan in milliseconds. */
-        @VisibleForTesting static final long DEFAULT_TIMESPAN_MILLIS = 1000;
+        /** The default value of timespan. */
+        @VisibleForTesting static final Duration DEFAULT_TIMESPAN = Duration.ofSeconds(1);
 
         /** Either the direct client process UID or the source client process UID. */
         private int mCallingUid = -1;
+
+        /** The server process UID. */
+        private int mServerUid = -1;
 
         /** The count of the binder calls from the calling UID incurred over the timespan. */
         private int mCallCount;
@@ -112,7 +171,13 @@ public final class BinderSpamData implements SignalCollectorData {
         private String mMethodName;
 
         /** The timespan of the binder calls incurred over. */
-        private long mTimespanMillis = DEFAULT_TIMESPAN_MILLIS;
+        private Duration mTimespan = DEFAULT_TIMESPAN;
+
+        /**
+         * The importance of the calling process. See {@link
+         * ActivityManager.RunningAppProcessInfo#importance}.
+         */
+        private int mCallerImportance;
 
         /**
          * Set the calling UID.
@@ -122,7 +187,25 @@ public final class BinderSpamData implements SignalCollectorData {
          */
         @NonNull
         public Builder setCallingUid(int callingUid) {
+            if (callingUid < 0) {
+                throw new IllegalArgumentException("Invalid calling UID!");
+            }
             mCallingUid = callingUid;
+            return this;
+        }
+
+        /**
+         * Set the server UID.
+         *
+         * @param serverUid The server process UID.
+         * @return this builder for method chaining
+         */
+        @NonNull
+        public Builder setServerUid(int serverUid) {
+            if (serverUid < 0) {
+                throw new IllegalArgumentException("Invalid server UID!");
+            }
+            mServerUid = serverUid;
             return this;
         }
 
@@ -130,11 +213,14 @@ public final class BinderSpamData implements SignalCollectorData {
          * Set the call count
          *
          * @param callCount The count of the binder calls from the calling UID incurred over the
-         *     timespan set by {@link #setTimespanMillis(long)}.
+         *     timespan set by {@link #setTimespan(Duration)}.
          * @return this builder for method chaining
          */
         @NonNull
         public Builder setCallCount(int callCount) {
+            if (callCount <= 0) {
+                throw new IllegalArgumentException("Invalid call count!");
+            }
             mCallCount = callCount;
             return this;
         }
@@ -148,7 +234,10 @@ public final class BinderSpamData implements SignalCollectorData {
         @NonNull
         public Builder setInterfaceName(@NonNull String interfaceName) {
             // TODO(b/440140585): Validate the format of the interface name.
-            mInterfaceName = Objects.requireNonNull(interfaceName);
+            if (TextUtils.isEmpty(interfaceName)) {
+                throw new IllegalArgumentException("Interface name must not be empty!");
+            }
+            mInterfaceName = interfaceName;
             return this;
         }
 
@@ -160,20 +249,39 @@ public final class BinderSpamData implements SignalCollectorData {
          */
         @NonNull
         public Builder setMethodName(@NonNull String methodName) {
-            mMethodName = Objects.requireNonNull(methodName);
+            if (TextUtils.isEmpty(methodName)) {
+                throw new IllegalArgumentException("Method name must not be empty!");
+            }
+            mMethodName = methodName;
             return this;
         }
 
         /**
          * Set the duration of the timespan
          *
-         * @param timespanMillis the timespan that the call count set by {@link #setCallCount(int)}
-         *     incurred over in milliseconds.
+         * @param timespan the timespan that the call count set by {@link #setCallCount(int)}
+         *     incurred over. The default value is 1 second if not specifically set.
          * @return this builder for method chaining
          */
         @NonNull
-        public Builder setTimespanMillis(long timespanMillis) {
-            mTimespanMillis = timespanMillis;
+        public Builder setTimespan(@NonNull Duration timespan) {
+            if (Objects.requireNonNull(timespan).isPositive()) {
+                mTimespan = timespan;
+                return this;
+            }
+            throw new IllegalArgumentException("Timespan must be positive!");
+        }
+
+        /**
+         * Set the importance of the calling process.
+         *
+         * @param importance The importance of the calling process. See {@link
+         *     ActivityManager.RunningAppProcessInfo#importance}.
+         * @return this builder for method chaining
+         */
+        @NonNull
+        public Builder setCallerImportance(int importance) {
+            mCallerImportance = importance;
             return this;
         }
 
@@ -187,17 +295,16 @@ public final class BinderSpamData implements SignalCollectorData {
             // Validate here instead of in the setters, because we do not want to build without
             // these values being set.
             if (mCallingUid < 0) {
-                throw new IllegalArgumentException("Calling UID must be set to valid UID!");
+                throw new IllegalArgumentException("Calling UID must be set!");
             }
-            if (mCallCount <= 0) {
-                throw new IllegalArgumentException("Call count must be greater than 0!");
+            if (mServerUid < 0) {
+                throw new IllegalArgumentException("Server UID must be set!");
             }
-            if (TextUtils.isEmpty(mInterfaceName) || TextUtils.isEmpty(mMethodName)) {
-                throw new IllegalArgumentException("Interface and method names must be set!");
+            if (mCallCount == 0) {
+                throw new IllegalArgumentException("Call count must be set!");
             }
-            if (mTimespanMillis <= 0) {
-                throw new IllegalArgumentException("TimespanMillis must be greater than 0!");
-            }
+            Objects.requireNonNull(mInterfaceName);
+            Objects.requireNonNull(mMethodName);
             return new BinderSpamData(this);
         }
     }
