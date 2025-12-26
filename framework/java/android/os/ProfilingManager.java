@@ -125,34 +125,40 @@ public final class ProfilingManager {
     /** Profiling type for {@link #requestProfiling} to request a system trace. */
     public static final int PROFILING_TYPE_SYSTEM_TRACE = 4;
 
+    /* Values 100-199 are reserved for {@link AnomalyProfilingManager}, do not use. */
+
     /* Begin public API defined keys. */
     /* End public API defined keys. */
 
     /* Begin not-public API defined keys/values. */
     /**
-     * Can only be used with profiling type heap profile, stack sampling, or system trace. Value of
-     * type int.
+     * Can be used with profiling type {@link #PROFILING_TYPE_HEAP_PROFILE}, {@link
+     * #PROFILING_TYPE_STACK_SAMPLING}, or {@link #PROFILING_TYPE_SYSTEM_TRACE}. Value of type int.
      *
      * @hide
      */
     public static final String KEY_DURATION_MS = "KEY_DURATION_MS";
 
     /**
-     * Can only be used with profiling type heap profile. Value of type long.
+     * Can only be used with profiling type {@link #PROFILING_TYPE_HEAP_PROFILE}. Value of type
+     * long.
      *
      * @hide
      */
     public static final String KEY_SAMPLING_INTERVAL_BYTES = "KEY_SAMPLING_INTERVAL_BYTES";
 
     /**
-     * Can only be used with profiling type heap profile. Value of type boolean.
+     * Can only be used with profiling type {@link #PROFILING_TYPE_HEAP_PROFILE}. Value of type
+     * boolean.
      *
      * @hide
      */
     public static final String KEY_TRACK_JAVA_ALLOCATIONS = "KEY_TRACK_JAVA_ALLOCATIONS";
 
     /**
-     * Can only be used with profiling type stack sampling. Value of type int.
+     * Can be used with profiling types {@link #PROFILING_TYPE_STACK_SAMPLING}, or {@link
+     * #PROFILING_TYPE_SYSTEM_TRACE} if {@link #KEY_COLLECT_STACK_SAMPLING} is set to true. Value of
+     * type int.
      *
      * @hide
      */
@@ -166,7 +172,8 @@ public final class ProfilingManager {
     public static final String KEY_SIZE_KB = "KEY_SIZE_KB";
 
     /**
-     * Can be used with profiling type system trace or stack sampling.
+     * Can be used with profiling types {@link #PROFILING_TYPE_STACK_SAMPLING} or {@link
+     * #PROFILING_TYPE_SYSTEM_TRACE}.
      *
      * <p>Value of type int must be one of: {@link VALUE_BUFFER_FILL_POLICY_DISCARD} {@link
      * VALUE_BUFFER_FILL_POLICY_RING_BUFFER}
@@ -182,11 +189,21 @@ public final class ProfilingManager {
     public static final int VALUE_BUFFER_FILL_POLICY_RING_BUFFER = 2;
 
     /**
-     * Can only be used with profiling type stack sampling. Value of type boolean.
+     * Can be used with profiling types {@link #PROFILING_TYPE_STACK_SAMPLING}, or {@link
+     * #PROFILING_TYPE_SYSTEM_TRACE} if {@link #KEY_COLLECT_STACK_SAMPLING} is set to true. Value of
+     * type boolean.
      *
      * @hide
      */
     public static final String KEY_SAMPLE_BINDER_ONLY = "KEY_SAMPLE_BINDER_ONLY";
+
+    /**
+     * Can only be used with profiling type {@link #PROFILING_TYPE_SYSTEM_TRACE}. Value of type
+     * boolean.
+     *
+     * @hide
+     */
+    public static final String KEY_COLLECT_STACK_SAMPLING = "KEY_COLLECT_STACK_SAMPLING";
 
     /* End not-public API defined keys/values. */
 

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package android.os;
+package android.os.profiling.anomaly;
 
 import android.annotation.FlaggedApi;
 import android.annotation.IntDef;
@@ -22,6 +22,7 @@ import android.annotation.NonNull;
 import android.annotation.RequiresApi;
 import android.annotation.StringDef;
 import android.annotation.SystemApi;
+import android.os.Bundle;
 import android.os.profiling.anomaly.flags.Flags;
 import android.util.ArraySet;
 
@@ -38,7 +39,8 @@ import java.util.Set;
  * Defines a rule for detecting system anomalies.
  *
  * <p>Each rule consists of a condition and a set of actions to be taken if the condition is met.
- * These rules are set through {@link android.os.AnomalyDetectorManager#setAnomalyDetectorRules}.
+ * These rules are set through {@link
+ * android.os.profiling.anomaly.AnomalyDetectorManager#setAnomalyDetectorRules}.
  *
  * <p>Use the {@link Builder} to construct {@link Rule} instances.
  *
@@ -72,7 +74,8 @@ public final class Rule {
      * @hide
      */
     @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
-    public static final String CONDITION_TYPE_BINDER_SPAM = "android.os.Rule.binder_spam";
+    public static final String CONDITION_TYPE_BINDER_SPAM =
+            "android.os.profiling.anomaly.Rule.binder_spam";
 
     /**
      * {@link Bundle} key for the fully qualified name of the AIDL interface to monitor.
@@ -85,7 +88,7 @@ public final class Rule {
      */
     @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
     public static final String BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME =
-            "android.os.Rule.binder_interface_name";
+            "android.os.profiling.anomaly.Rule.binder_interface_name";
 
     /**
      * {@link Bundle} key for the name of the method within the AIDL interface to monitor.
@@ -98,7 +101,7 @@ public final class Rule {
      */
     @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
     public static final String BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME =
-            "android.os.Rule.binder_method_name";
+            "android.os.profiling.anomaly.Rule.binder_method_name";
 
     /**
      * {@link Bundle} key for the maximum number of allowed calls to the specified interface and
@@ -110,7 +113,7 @@ public final class Rule {
      */
     @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
     public static final String BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT =
-            "android.os.Rule.binder_call_limit";
+            "android.os.profiling.anomaly.Rule.binder_call_limit";
 
     /**
      * {@link Bundle} key for the duration of the sliding time window in milliseconds used to count
@@ -125,7 +128,7 @@ public final class Rule {
      */
     @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
     public static final String BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS =
-            "android.os.Rule.binder_call_interval_millis";
+            "android.os.profiling.anomaly.Rule.binder_call_interval_millis";
 
     private static final Set<String> BINDER_SPAM_CONDITION_KEYS =
             Set.of(

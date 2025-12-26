@@ -19,9 +19,9 @@ package android.os.cts;
 import static org.junit.Assert.assertThrows;
 
 import android.content.Context;
-import android.os.AnomalyDetectorManager;
 import android.os.Bundle;
-import android.os.Rule;
+import android.os.profiling.anomaly.AnomalyDetectorManager;
+import android.os.profiling.anomaly.Rule;
 import android.os.profiling.anomaly.flags.Flags;
 import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
@@ -59,13 +59,13 @@ public final class AnomalyDetectorManagerTest {
     }
 
     @Test
-    @ApiTest(apis = "android.os.AnomalyDetectorManager#setAnomalyDetectorRules")
+    @ApiTest(apis = "android.os.profiling.anomaly.AnomalyDetectorManager#setAnomalyDetectorRules")
     public void setAnomalyDetectorRules_nullRules_throwsException() {
         assertThrows(NullPointerException.class, () -> mManager.setAnomalyDetectorRules(null));
     }
 
     @Test
-    @ApiTest(apis = "android.os.AnomalyDetectorManager#setAnomalyDetectorRules")
+    @ApiTest(apis = "android.os.profiling.anomaly.AnomalyDetectorManager#setAnomalyDetectorRules")
     public void setAnomalyDetectorRules_serviceThrowsRemoteException_rethrows() throws Exception {
         Set<Rule> rules = Collections.singleton(createRule(createBinderSpamBundle()));
         // RemoteException.rethrowFromSystemServer() wraps the exception in a RuntimeException
@@ -73,7 +73,7 @@ public final class AnomalyDetectorManagerTest {
     }
 
     @Test
-    @ApiTest(apis = "android.os.AnomalyDetectorManager#setAnomalyDetectorRules")
+    @ApiTest(apis = "android.os.profiling.anomaly.AnomalyDetectorManager#setAnomalyDetectorRules")
     public void setAnomalyDetectorRules_withoutPermission_throwsSecurityException() {
         InstrumentationRegistry.getInstrumentation()
                 .getUiAutomation()
@@ -91,7 +91,7 @@ public final class AnomalyDetectorManagerTest {
     }
 
     @Test
-    @ApiTest(apis = "android.os.AnomalyDetectorManager#setAnomalyDetectorRules")
+    @ApiTest(apis = "android.os.profiling.anomaly.AnomalyDetectorManager#setAnomalyDetectorRules")
     public void setAnomalyDetectorRules_withPermission_doesNotThrowException() {
         InstrumentationRegistry.getInstrumentation()
                 .getUiAutomation()

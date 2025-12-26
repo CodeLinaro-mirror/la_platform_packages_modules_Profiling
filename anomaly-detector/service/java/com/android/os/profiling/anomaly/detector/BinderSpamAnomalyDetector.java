@@ -145,13 +145,14 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector<BinderSpamC
             }
 
             BinderSpamCondition condition = mRule.baseCondition();
-            long callCount = binderData.getCallCount();
+            int callCount = binderData.getCallCount();
             long timespanMillis = binderData.getTimespanMillis();
             long threshold = condition.callCountThreshold();
 
-            // Timespan must be positive to calculate a rate.
-            if (timespanMillis <= 0) {
-                Slog.w(TAG, "Timespan is not positive, cannot calculate rate. Ignoring data.");
+            // Timespan must not be less than 1000ms to calculate a rate, because short timespan may
+            // cause an exaggerated call-rate, e,g, 2 calls over 10ms makes call-rate to be 200/s.
+            if (timespanMillis < 1000) {
+                Slog.w(TAG, "Timespan is too short, cannot calculate rate. Ignoring data.");
                 return;
             }
 

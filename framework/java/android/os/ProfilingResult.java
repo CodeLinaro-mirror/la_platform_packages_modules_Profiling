@@ -76,6 +76,8 @@ public final class ProfilingResult implements Parcelable {
     /** The request was denied or failed for an unspecified reason. */
     public static final int ERROR_UNKNOWN = 8;
 
+    // Result codes 100-199 are reserved for anomaly and defined in {@link AnomalyRequestResult}.
+
     /** @hide */
     @IntDef(
             value = {

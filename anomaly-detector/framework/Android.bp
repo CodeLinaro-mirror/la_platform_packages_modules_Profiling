@@ -54,7 +54,7 @@ java_sdk_library {
 
     permitted_packages: [
         "android.app",
-        "android.os",
+        "android.os.profiling.anomaly",
         "android.util",
         "com.android.modules.utils.build",
         "com.android.internal.profiling.anomaly",
@@ -62,7 +62,7 @@ java_sdk_library {
 
     api_packages: [
         "android.app",
-        "android.os",
+        "android.os.profiling.anomaly",
         "android.util",
     ],
 

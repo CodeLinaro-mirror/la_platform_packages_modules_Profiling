@@ -21,7 +21,7 @@ import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.assertThrows;
 
 import android.os.Bundle;
-import android.os.Rule;
+import android.os.profiling.anomaly.Rule;
 import android.os.profiling.anomaly.flags.Flags;
 import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
@@ -64,16 +64,16 @@ public final class RuleTest {
     @Test
     @ApiTest(
             apis = {
-                "android.os.Rule.Builder",
-                "android.os.Rule.Builder#setConditionType",
-                "android.os.Rule.Builder#setRuleCondition",
-                "android.os.Rule.Builder#addAnomalyAction",
-                "android.os.Rule.Builder#build",
-                "android.os.Rule#getConditionType",
-                "android.os.Rule#getRuleCondition",
-                "android.os.Rule#getAnomalyActions",
-                "android.os.Rule.CONDITION_TYPE_BINDER_SPAM",
-                "android.os.Rule.ACTION_TYPE_LOG"
+                "android.os.profiling.anomaly.Rule.Builder",
+                "android.os.profiling.anomaly.Rule.Builder#setConditionType",
+                "android.os.profiling.anomaly.Rule.Builder#setRuleCondition",
+                "android.os.profiling.anomaly.Rule.Builder#addAnomalyAction",
+                "android.os.profiling.anomaly.Rule.Builder#build",
+                "android.os.profiling.anomaly.Rule#getConditionType",
+                "android.os.profiling.anomaly.Rule#getRuleCondition",
+                "android.os.profiling.anomaly.Rule#getAnomalyActions",
+                "android.os.profiling.anomaly.Rule.CONDITION_TYPE_BINDER_SPAM",
+                "android.os.profiling.anomaly.Rule.ACTION_TYPE_LOG"
             })
     public void buildRule_withBinderSpam_buildsSuccessfully() {
         Bundle binderSpamConditionBundle = createBinderSpamBundle();
@@ -93,12 +93,12 @@ public final class RuleTest {
     @Test
     @ApiTest(
             apis = {
-                "android.os.Rule.Builder",
-                "android.os.Rule.Builder#setConditionType",
-                "android.os.Rule.Builder#setRuleCondition",
-                "android.os.Rule.Builder#build",
-                "android.os.Rule#getAnomalyActions",
-                "android.os.Rule.CONDITION_TYPE_BINDER_SPAM"
+                "android.os.profiling.anomaly.Rule.Builder",
+                "android.os.profiling.anomaly.Rule.Builder#setConditionType",
+                "android.os.profiling.anomaly.Rule.Builder#setRuleCondition",
+                "android.os.profiling.anomaly.Rule.Builder#build",
+                "android.os.profiling.anomaly.Rule#getAnomalyActions",
+                "android.os.profiling.anomaly.Rule.CONDITION_TYPE_BINDER_SPAM"
             })
     public void buildRule_withNewActions_buildsSuccessfully() {
         Rule rule =
@@ -116,12 +116,12 @@ public final class RuleTest {
     @Test
     @ApiTest(
             apis = {
-                "android.os.Rule.Builder",
-                "android.os.Rule.Builder#setConditionType",
-                "android.os.Rule.Builder#setRuleCondition",
-                "android.os.Rule.Builder#build",
-                "android.os.Rule#getAnomalyActions",
-                "android.os.Rule.CONDITION_TYPE_BINDER_SPAM"
+                "android.os.profiling.anomaly.Rule.Builder",
+                "android.os.profiling.anomaly.Rule.Builder#setConditionType",
+                "android.os.profiling.anomaly.Rule.Builder#setRuleCondition",
+                "android.os.profiling.anomaly.Rule.Builder#build",
+                "android.os.profiling.anomaly.Rule#getAnomalyActions",
+                "android.os.profiling.anomaly.Rule.CONDITION_TYPE_BINDER_SPAM"
             })
     public void buildRule_withDuplicateActions_duplicatesIgnored() {
         Bundle binderSpamConditionBundle = createBinderSpamBundle();
@@ -137,7 +137,7 @@ public final class RuleTest {
     }
 
     @Test
-    @ApiTest(apis = {"android.os.Rule.Builder#build"})
+    @ApiTest(apis = {"android.os.profiling.anomaly.Rule.Builder#build"})
     public void buildRule_missingConditionType_throwsIllegalStateException() {
         assertThrows(
                 IllegalStateException.class,
@@ -149,7 +149,7 @@ public final class RuleTest {
     }
 
     @Test
-    @ApiTest(apis = {"android.os.Rule.Builder#build"})
+    @ApiTest(apis = {"android.os.profiling.anomaly.Rule.Builder#build"})
     public void buildRule_missingRuleCondition_throwsIllegalStateException() {
         assertThrows(
                 IllegalStateException.class,
@@ -163,12 +163,12 @@ public final class RuleTest {
     @Test
     @ApiTest(
             apis = {
-                "android.os.Rule.Builder",
-                "android.os.Rule.Builder#setConditionType",
-                "android.os.Rule.Builder#setRuleCondition",
-                "android.os.Rule.Builder#build",
-                "android.os.Rule#getAnomalyActions",
-                "android.os.Rule.CONDITION_TYPE_BINDER_SPAM"
+                "android.os.profiling.anomaly.Rule.Builder",
+                "android.os.profiling.anomaly.Rule.Builder#setConditionType",
+                "android.os.profiling.anomaly.Rule.Builder#setRuleCondition",
+                "android.os.profiling.anomaly.Rule.Builder#build",
+                "android.os.profiling.anomaly.Rule#getAnomalyActions",
+                "android.os.profiling.anomaly.Rule.CONDITION_TYPE_BINDER_SPAM"
             })
     public void buildRule_missingActions_throwsIllegalStateException() {
         assertThrows(
@@ -183,12 +183,12 @@ public final class RuleTest {
     @Test
     @ApiTest(
             apis = {
-                "android.os.Rule.Builder",
-                "android.os.Rule.Builder#setConditionType",
-                "android.os.Rule.Builder#setRuleCondition",
-                "android.os.Rule.Builder#build",
-                "android.os.Rule#getAnomalyActions",
-                "android.os.Rule.CONDITION_TYPE_BINDER_SPAM"
+                "android.os.profiling.anomaly.Rule.Builder",
+                "android.os.profiling.anomaly.Rule.Builder#setConditionType",
+                "android.os.profiling.anomaly.Rule.Builder#setRuleCondition",
+                "android.os.profiling.anomaly.Rule.Builder#build",
+                "android.os.profiling.anomaly.Rule#getAnomalyActions",
+                "android.os.profiling.anomaly.Rule.CONDITION_TYPE_BINDER_SPAM"
             })
     public void buildRule_binderSpamWithNewBundleKey_buildsSuccessfully() {
         Bundle binderSpamConditionBundle = createBinderSpamBundle();
@@ -208,9 +208,9 @@ public final class RuleTest {
     @Test
     @ApiTest(
             apis = {
-                "android.os.Rule.Builder#setRuleCondition",
-                "android.os.Rule.CONDITION_TYPE_BINDER_SPAM",
-                "android.os.Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT"
+                "android.os.profiling.anomaly.Rule.Builder#setRuleCondition",
+                "android.os.profiling.anomaly.Rule.CONDITION_TYPE_BINDER_SPAM",
+                "android.os.profiling.anomaly.Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT"
             })
     public void buildRule_binderSpamMissingBundleKey_throwsIllegalArgumentException() {
         Bundle binderSpamConditionBundle = createBinderSpamBundle();
@@ -229,8 +229,8 @@ public final class RuleTest {
     @Test
     @ApiTest(
             apis = {
-                "android.os.Rule.Builder#setRuleCondition",
-                "android.os.Rule.CONDITION_TYPE_BINDER_SPAM"
+                "android.os.profiling.anomaly.Rule.Builder#setRuleCondition",
+                "android.os.profiling.anomaly.Rule.CONDITION_TYPE_BINDER_SPAM"
             })
     public void buildRule_binderSpamEmptyBundle_throwsIllegalArgumentException() {
         assertThrows(
@@ -246,14 +246,14 @@ public final class RuleTest {
     @Test
     @ApiTest(
             apis = {
-                "android.os.Rule.Builder#setRuleCondition",
-                "android.os.Rule.Builder#setConditionType"
+                "android.os.profiling.anomaly.Rule.Builder#setRuleCondition",
+                "android.os.profiling.anomaly.Rule.Builder#setConditionType"
             })
     public void buildRule_newConditions_buildsSuccessfully() {
         Bundle newConditionTypeBundle = new Bundle();
         newConditionTypeBundle.putString("testKey", "testValue");
         newConditionTypeBundle.putInt("testKey2", 123);
-        String newCondition = "android.os.Rule.rss_anon";
+        String newCondition = "android.os.profiling.anomaly.Rule.rss_anon";
 
         Rule rule =
                 new Rule.Builder()
@@ -271,8 +271,8 @@ public final class RuleTest {
     @Test
     @ApiTest(
             apis = {
-                "android.os.Rule.Builder#setRuleCondition",
-                "android.os.Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME"
+                "android.os.profiling.anomaly.Rule.Builder#setRuleCondition",
+                "android.os.profiling.anomaly.Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME"
             })
     public void buildRule_binderSpamWrongTypeInterfaceName_throwsIllegalArgumentException() {
         Bundle binderSpamConditionBundle = createBinderSpamBundle();
@@ -292,8 +292,8 @@ public final class RuleTest {
     @Test
     @ApiTest(
             apis = {
-                "android.os.Rule.Builder#setRuleCondition",
-                "android.os.Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME"
+                "android.os.profiling.anomaly.Rule.Builder#setRuleCondition",
+                "android.os.profiling.anomaly.Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME"
             })
     public void buildRule_binderSpamWrongTypeMethodName_throwsIllegalArgumentException() {
         Bundle binderSpamConditionBundle = createBinderSpamBundle();
@@ -313,8 +313,8 @@ public final class RuleTest {
     @Test
     @ApiTest(
             apis = {
-                "android.os.Rule.Builder#setRuleCondition",
-                "android.os.Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT"
+                "android.os.profiling.anomaly.Rule.Builder#setRuleCondition",
+                "android.os.profiling.anomaly.Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT"
             })
     public void buildRule_binderSpamWrongTypeCallLimit_throwsIllegalArgumentException() {
         Bundle binderSpamConditionBundle = createBinderSpamBundle();
@@ -334,8 +334,9 @@ public final class RuleTest {
     @Test
     @ApiTest(
             apis = {
-                "android.os.Rule.Builder#setRuleCondition",
-                "android.os.Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS"
+                "android.os.profiling.anomaly.Rule.Builder#setRuleCondition",
+                "android.os.profiling.anomaly.Rule"
+                        + ".BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS"
             })
     public void buildRule_binderSpamWrongTypeIntervalMillis_throwsIllegalArgumentException() {
         Bundle binderSpamConditionBundle = createBinderSpamBundle();
@@ -353,7 +354,7 @@ public final class RuleTest {
     }
 
     @Test
-    @ApiTest(apis = {"android.os.Rule#getAnomalyActions"})
+    @ApiTest(apis = {"android.os.profiling.anomaly.Rule#getAnomalyActions"})
     public void getAnomalyActions_returnsCorrectActions() {
         Bundle binderSpamConditionBundle = createBinderSpamBundle();
         Rule rule =
@@ -367,7 +368,7 @@ public final class RuleTest {
     }
 
     @Test
-    @ApiTest(apis = {"android.os.Rule#getAnomalyActions"})
+    @ApiTest(apis = {"android.os.profiling.anomaly.Rule#getAnomalyActions"})
     public void getAnomalyActions_returnsACopy() {
         Rule rule =
                 new Rule.Builder()
@@ -383,7 +384,7 @@ public final class RuleTest {
     }
 
     @Test
-    @ApiTest(apis = {"android.os.Rule#getConditionType"})
+    @ApiTest(apis = {"android.os.profiling.anomaly.Rule#getConditionType"})
     public void getConditionType_returnsCorrectType() {
         Bundle binderSpamConditionBundle = createBinderSpamBundle();
         Rule rule =
@@ -397,7 +398,7 @@ public final class RuleTest {
     }
 
     @Test
-    @ApiTest(apis = {"android.os.Rule#getRuleCondition"})
+    @ApiTest(apis = {"android.os.profiling.anomaly.Rule#getRuleCondition"})
     public void getRuleCondition_returnsCorrectBundle() {
         Bundle binderSpamConditionBundle = createBinderSpamBundle();
         Rule rule =
@@ -411,7 +412,7 @@ public final class RuleTest {
     }
 
     @Test
-    @ApiTest(apis = {"android.os.Rule#getRuleCondition"})
+    @ApiTest(apis = {"android.os.profiling.anomaly.Rule#getRuleCondition"})
     public void getRuleCondition_returnsACopy() {
         Bundle binderSpamConditionBundle = createBinderSpamBundle();
         Rule rule =
@@ -429,7 +430,7 @@ public final class RuleTest {
     }
 
     @Test
-    @ApiTest(apis = {"android.os.Rule.Builder#setRuleCondition"})
+    @ApiTest(apis = {"android.os.profiling.anomaly.Rule.Builder#setRuleCondition"})
     public void setRuleCondition_nullInput_throwsNullPointerException() {
         Rule.Builder builder = new Rule.Builder();
 

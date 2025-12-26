@@ -99,6 +99,24 @@ public final class ProfilingTrigger {
     @FlaggedApi(Flags.FLAG_PROFILING_TRIGGER_OOM)
     public static final int TRIGGER_TYPE_OOM = 7;
 
+    /**
+     * Stub trigger for anomalies.
+     *
+     * @hide
+     */
+    @FlaggedApi(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public static final int TRIGGER_TYPE_ANOMALY_STUB = 8;
+
+    /**
+     * Trigger occurs when an app is killed due to excessive CPU usage with an {@link
+     * android.app.ApplicationExitInfo#getReason} of {@link
+     * android.app.ApplicationExitInfo#REASON_EXCESSIVE_RESOURCE_USAGE}.
+     *
+     * <p>System will provide a snapshot of a running system trace in response to this trigger.
+     */
+    @FlaggedApi(Flags.FLAG_PROFILING_TRIGGER_KILL_EXCESSIVE_CPU_USAGE)
+    public static final int TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE = 9;
+
     /** @hide */
     @IntDef(
             value = {
@@ -110,6 +128,8 @@ public final class ProfilingTrigger {
                 TRIGGER_TYPE_KILL_RECENTS,
                 TRIGGER_TYPE_KILL_TASK_MANAGER,
                 TRIGGER_TYPE_OOM,
+                TRIGGER_TYPE_ANOMALY_STUB,
+                TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE,
             })
     @Retention(RetentionPolicy.SOURCE)
     @interface TriggerType {}
@@ -227,6 +247,26 @@ public final class ProfilingTrigger {
                 || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_KILL_FORCE_STOP)
                 || (Flags.profilingTriggerKillRecents() && triggerType == TRIGGER_TYPE_KILL_RECENTS)
                 || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_KILL_TASK_MANAGER)
-                || (Flags.profilingTriggerOom() && triggerType == TRIGGER_TYPE_OOM);
+                || (Flags.profilingTriggerOom() && triggerType == TRIGGER_TYPE_OOM)
+                || (android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()
+                        && triggerType == TRIGGER_TYPE_ANOMALY_STUB)
+                || (Flags.profilingTriggerKillExcessiveCpuUsage()
+                        && triggerType == TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE);
+    }
+
+    /**
+     * Check whether the provided trigger type is one of the anomaly trigger types.
+     *
+     * @hide
+     */
+    public static boolean isAnomalyTriggerType(int triggerType) {
+        if (!android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()) {
+            // If the flag is off then it can't be an anomaly trigger.
+            return false;
+        }
+        if (triggerType != ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB) {
+            return false;
+        }
+        return true;
     }
 }
