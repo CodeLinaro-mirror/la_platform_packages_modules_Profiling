@@ -20,7 +20,6 @@ import static android.Manifest.permission.CONFIGURE_ANOMALY_DETECTOR;
 
 import android.annotation.FlaggedApi;
 import android.annotation.NonNull;
-import android.annotation.RequiresApi;
 import android.annotation.RequiresPermission;
 import android.annotation.SystemApi;
 import android.annotation.SystemService;
@@ -67,7 +66,6 @@ public final class AnomalyDetectorManager {
      * @param rules A Set of {@link Rule} objects to be enforced.
      * @hide
      */
-    @RequiresApi(37)
     @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
     @RequiresPermission(CONFIGURE_ANOMALY_DETECTOR)
     public void setAnomalyDetectorRules(@NonNull Set<Rule> rules) {

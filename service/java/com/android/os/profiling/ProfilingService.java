@@ -17,6 +17,8 @@
 package android.os.profiling;
 
 import static android.os.Process.SYSTEM_UID;
+import static android.os.profiling.DeviceConfigHelper.updateBoolean;
+import static android.os.profiling.DeviceConfigHelper.updateInt;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
@@ -138,6 +140,8 @@ public class ProfilingService extends IProfilingService.Stub {
     // Targeting a period of around 24 hours, so set max and min to 24 +/- 6 hours, respectively.
     private static final int DEFAULT_SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS = 18 * 60 * 60;
     private static final int DEFAULT_SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS = 30 * 60 * 60;
+
+    private static final int PROFILING_TRIGGER_COLD_START_TRACE_DURATION_DEFAULT_MS = 5_000;
 
     private final Context mContext;
     private final Object mLock = new Object();
@@ -365,7 +369,8 @@ public class ProfilingService extends IProfilingService.Stub {
         synchronized (mLock) {
             mKeepResultInTempDir =
                     DeviceConfigHelper.getTestBoolean(
-                            DeviceConfigHelper.DISABLE_DELETE_TEMPORARY_RESULTS, false);
+                            DeviceConfigHelper.DISABLE_DELETE_TEMPORARY_RESULTS,
+                            DeviceConfigHelper.DEFAULT_DISABLE_DELETE_TEMPORARY_RESULTS);
 
             mPersistFrequencyMs =
                     new AtomicInteger(
@@ -397,9 +402,12 @@ public class ProfilingService extends IProfilingService.Stub {
                             // the value is unchanged when the specific config is not present in the
                             // update config.
                             mKeepResultInTempDir =
-                                    properties.getBoolean(
+                                    updateBoolean(
+                                            properties,
                                             DeviceConfigHelper.DISABLE_DELETE_TEMPORARY_RESULTS,
-                                            mKeepResultInTempDir);
+                                            mKeepResultInTempDir,
+                                            DeviceConfigHelper
+                                                    .DEFAULT_DISABLE_DELETE_TEMPORARY_RESULTS);
 
                             getRateLimiter().maybeUpdateRateLimiterDisabled(properties);
 
@@ -423,9 +431,12 @@ public class ProfilingService extends IProfilingService.Stub {
                             }
 
                             mSkipEnforceSystemCaller.set(
-                                    properties.getBoolean(
+                                    updateBoolean(
+                                            properties,
                                             DeviceConfigHelper.DISABLE_SYSTEM_CALLER_ENFORCEMENT,
-                                            mSkipEnforceSystemCaller.get()));
+                                            mSkipEnforceSystemCaller.get(),
+                                            DeviceConfigHelper
+                                                    .DEFAULT_DISABLE_SYSTEM_CALLER_ENFORCEMENT));
                         }
                     }
                 });
@@ -442,25 +453,33 @@ public class ProfilingService extends IProfilingService.Stub {
                             Configs.maybeUpdateConfigs(properties);
 
                             mPerfettoDestroyTimeoutMs =
-                                    properties.getInt(
+                                    updateInt(
+                                            properties,
                                             DeviceConfigHelper.PERFETTO_DESTROY_TIMEOUT_MS,
-                                            mPerfettoDestroyTimeoutMs);
+                                            mPerfettoDestroyTimeoutMs,
+                                            PERFETTO_DESTROY_DEFAULT_TIMEOUT_MS);
 
                             mMaxResultRedeliveryCount =
-                                    properties.getInt(
+                                    updateInt(
+                                            properties,
                                             DeviceConfigHelper.MAX_RESULT_REDELIVERY_COUNT,
-                                            mMaxResultRedeliveryCount);
+                                            mMaxResultRedeliveryCount,
+                                            DEFAULT_MAX_RESULT_REDELIVERY_COUNT);
 
                             mProfilingRecheckDelayMs =
-                                    properties.getInt(
+                                    updateInt(
+                                            properties,
                                             DeviceConfigHelper.PROFILING_RECHECK_DELAY_MS,
-                                            mProfilingRecheckDelayMs);
+                                            mProfilingRecheckDelayMs,
+                                            PROFILING_DEFAULT_RECHECK_DELAY_MS);
 
                             mClearTemporaryDirectoryFrequencyMs =
-                                    properties.getInt(
+                                    updateInt(
+                                            properties,
                                             DeviceConfigHelper
                                                     .CLEAR_TEMPORARY_DIRECTORY_FREQUENCY_MS,
-                                            mClearTemporaryDirectoryFrequencyMs);
+                                            mClearTemporaryDirectoryFrequencyMs,
+                                            CLEAR_TEMPORARY_DIRECTORY_FREQUENCY_DEFAULT_MS);
 
                             // No need to handle updates for
                             // {@link mClearTemporaryDirectoryBootDelayMs} as it's only used on
@@ -468,31 +487,41 @@ public class ProfilingService extends IProfilingService.Stub {
                             // be used again.
 
                             mRedactionCheckFrequencyMs =
-                                    properties.getInt(
+                                    updateInt(
+                                            properties,
                                             DeviceConfigHelper.REDACTION_CHECK_FREQUENCY_MS,
-                                            mRedactionCheckFrequencyMs);
+                                            mRedactionCheckFrequencyMs,
+                                            REDACTION_DEFAULT_CHECK_FREQUENCY_MS);
 
                             mRedactionMaxRuntimeAllottedMs =
-                                    properties.getInt(
+                                    updateInt(
+                                            properties,
                                             DeviceConfigHelper.REDACTION_MAX_RUNTIME_ALLOTTED_MS,
-                                            mRedactionMaxRuntimeAllottedMs);
+                                            mRedactionMaxRuntimeAllottedMs,
+                                            REDACTION_DEFAULT_MAX_RUNTIME_ALLOTTED_MS);
 
                             mPersistFrequencyMs.set(
-                                    properties.getInt(
+                                    updateInt(
+                                            properties,
                                             DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS,
-                                            mPersistFrequencyMs.get()));
+                                            mPersistFrequencyMs.get(),
+                                            PERSIST_TO_DISK_DEFAULT_FREQUENCY_MS));
 
                             mSystemTriggeredTraceMinPeriodSeconds.set(
-                                    DeviceConfigHelper.getInt(
+                                    updateInt(
+                                            properties,
                                             DeviceConfigHelper
                                                     .SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS,
-                                            mSystemTriggeredTraceMinPeriodSeconds.get()));
+                                            mSystemTriggeredTraceMinPeriodSeconds.get(),
+                                            DEFAULT_SYSTEM_TRIGGERED_TRACE_MIN_PERIOD_SECONDS));
 
                             mSystemTriggeredTraceMaxPeriodSeconds.set(
-                                    DeviceConfigHelper.getInt(
+                                    updateInt(
+                                            properties,
                                             DeviceConfigHelper
                                                     .SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS,
-                                            mSystemTriggeredTraceMaxPeriodSeconds.get()));
+                                            mSystemTriggeredTraceMaxPeriodSeconds.get(),
+                                            DEFAULT_SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS));
                         }
                     }
                 });
@@ -1171,7 +1200,13 @@ public class ProfilingService extends IProfilingService.Stub {
         }
     }
 
-    private void enforceSystemCaller() {
+    /**
+     * Enforce that the caller is the system process.
+     *
+     * @throws SecurityException if the caller is not the system process.
+     */
+    @VisibleForTesting
+    public void enforceSystemCaller() {
         if (mSkipEnforceSystemCaller.get()) {
             if (DEBUG) Log.d(TAG, "System caller enforcement disabled.", new Throwable());
             return;
@@ -2078,6 +2113,38 @@ public class ProfilingService extends IProfilingService.Stub {
                         });
     }
 
+    /**
+     * Stops all profiling sessions that matches the provided uid, package name, and trigger type.
+     */
+    public void stopActiveProfiling(int uid, @NonNull String packageName, int triggerType) {
+        enforceSystemCaller();
+
+        // StopActiveProfiling works with specific trigger types only.
+        if (triggerType != ProfilingTrigger.TRIGGER_TYPE_COLD_START) {
+            return;
+        }
+
+        // Don't block the calling thread.
+        getHandler()
+                .post(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                for (int i = 0; i < mActiveTracingSessions.size(); i++) {
+                                    TracingSession session = mActiveTracingSessions.valueAt(i);
+                                    if (session.getUid() == uid
+                                            && session.getPackageName().equals(packageName)
+                                            && session.getTriggerType() == triggerType) {
+                                        stopProfiling(
+                                                session,
+                                                LoggingHelper
+                                                        .PROFILING_STOPPED_REASON_SYSTEM_REQUESTED);
+                                    }
+                                }
+                            }
+                        });
+    }
+
     /** Returns the correct profiling type for each trigger. */
     private int getProfilingTypeForTrigger(int triggerType) {
         if (triggerType == ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN
@@ -2090,7 +2157,9 @@ public class ProfilingService extends IProfilingService.Stub {
                 || (Flags.profiling25q4()
                         && triggerType == ProfilingTrigger.TRIGGER_TYPE_KILL_TASK_MANAGER)
                 || (Flags.profilingTriggerKillExcessiveCpuUsage()
-                        && triggerType == ProfilingTrigger.TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE)) {
+                        && triggerType == ProfilingTrigger.TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE)
+                || (Flags.profilingTriggerColdStart()
+                        && triggerType == ProfilingTrigger.TRIGGER_TYPE_COLD_START)) {
             return ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE;
         }
 
@@ -2131,7 +2200,8 @@ public class ProfilingService extends IProfilingService.Stub {
 
         // If a future trigger requires starting a new trace rather than leveraging the existing
         // one, then an additional condition will need to be added to this check.
-        if (profilingType == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE) {
+        if (profilingType == ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE
+                && triggerType != ProfilingTrigger.TRIGGER_TYPE_COLD_START) {
             processTriggerInternalRunningTrace(
                     uid,
                     packageName,
@@ -2151,7 +2221,7 @@ public class ProfilingService extends IProfilingService.Stub {
                     0L, /* keyMostSigBits */
                     0L, /* keyLeastSigBits */
                     false, /* returnToAnomalyDetectorOnly */
-                    null, /* params */
+                    getParamsForTriggerType(triggerType),
                     callback);
         }
     }
@@ -2976,7 +3046,8 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     /** Stop active profiling for the given session. */
-    private void stopProfiling(TracingSession session, int loggingReason) {
+    @VisibleForTesting
+    public void stopProfiling(TracingSession session, int loggingReason) {
         if (session == null || session.getActiveTrace() == null) {
             if (DEBUG) Log.d(TAG, "No active trace, nothing to stop.");
             return;
@@ -3569,7 +3640,9 @@ public class ProfilingService extends IProfilingService.Stub {
         return needsRedaction(session) ? session.getRedactedFileName() : session.getFileName();
     }
 
-    private Handler getHandler() {
+    /** Returns the handler for the ProfilingService's internal thread. */
+    @VisibleForTesting
+    public Handler getHandler() {
         if (mHandler == null) {
             mHandler = new Handler(mHandlerThread.getLooper());
         }
@@ -3926,6 +3999,29 @@ public class ProfilingService extends IProfilingService.Stub {
                 Log.w(TAG, "Exception notifying caller of process trigger complete.", e);
             }
         }
+    }
+
+    /**
+     * Returns a Bundle of parameters for a given trigger type, or null if no specific parameters
+     * are needed.
+     */
+    private @Nullable Bundle getParamsForTriggerType(int triggerType) {
+        if (triggerType == ProfilingTrigger.TRIGGER_TYPE_COLD_START) {
+            Bundle params = new Bundle();
+            // Collect both system trace and stack sampling.
+            params.putBoolean(ProfilingManager.KEY_COLLECT_STACK_SAMPLING, true);
+            params.putInt(
+                    ProfilingManager.KEY_DURATION_MS,
+                    DeviceConfigHelper.getInt(
+                            DeviceConfigHelper.PROFILING_TRIGGER_COLD_START_TRACE_DURATION_MS,
+                            PROFILING_TRIGGER_COLD_START_TRACE_DURATION_DEFAULT_MS));
+            // Persist the beginning part of the collected trace.
+            params.putInt(
+                    ProfilingManager.KEY_BUFFER_FILL_POLICY,
+                    ProfilingManager.VALUE_BUFFER_FILL_POLICY_DISCARD);
+            return params;
+        }
+        return null;
     }
 
     private class ProfilingDeathRecipient implements IBinder.DeathRecipient {

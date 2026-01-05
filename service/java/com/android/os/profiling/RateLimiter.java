@@ -16,6 +16,10 @@
 
 package android.os.profiling;
 
+import static android.os.profiling.DeviceConfigHelper.updateBoolean;
+import static android.os.profiling.DeviceConfigHelper.updateInt;
+import static android.os.profiling.DeviceConfigHelper.updateLong;
+
 import android.annotation.IntDef;
 import android.annotation.Nullable;
 import android.os.Bundle;
@@ -60,6 +64,7 @@ public class RateLimiter {
     private static final int DEFAULT_MAX_COST_PROCESS_WEEK = 30;
     private static final int DEFAULT_COST_PER_SESSION = 10;
     private static final int DEFAULT_COST_PER_SYSTEM_TRIGGERED_SESSION = 5;
+    private static final long DEFAULT_PERSIST_TO_DISK_FREQUENCY_MS = 0;
 
     public static final int RATE_LIMIT_RESULT_ALLOWED = 0;
     public static final int RATE_LIMIT_RESULT_BLOCKED_PROCESS = 1;
@@ -166,7 +171,9 @@ public class RateLimiter {
                         DEFAULT_COST_PER_SYSTEM_TRIGGERED_SESSION);
 
         mPersistToDiskFrequency =
-                properties.getLong(DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS, 0);
+                properties.getLong(
+                        DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS,
+                        DEFAULT_PERSIST_TO_DISK_FREQUENCY_MS);
         mLastPersistedTimestampMs = System.currentTimeMillis();
 
         // Get initial value for whether rate limiter should be enforcing or if it should always
@@ -507,8 +514,11 @@ public class RateLimiter {
     public void maybeUpdateRateLimiterDisabled(DeviceConfig.Properties properties) {
         synchronized (mLock) {
             mRateLimiterDisabled =
-                    properties.getBoolean(
-                            DeviceConfigHelper.RATE_LIMITER_DISABLE_PROPERTY, mRateLimiterDisabled);
+                    updateBoolean(
+                            properties,
+                            DeviceConfigHelper.RATE_LIMITER_DISABLE_PROPERTY,
+                            mRateLimiterDisabled,
+                            DeviceConfigHelper.DEFAULT_RATE_LIMITER_DISABLE_PROPERTY);
         }
     }
 
@@ -520,20 +530,41 @@ public class RateLimiter {
         // If the field is not present in the changed properties then we want the value to stay the
         // same, so use the current value as the default in the properties.get.
         mPersistToDiskFrequency =
-                properties.getLong(
-                        DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS, mPersistToDiskFrequency);
+                updateLong(
+                        properties,
+                        DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS,
+                        mPersistToDiskFrequency,
+                        DEFAULT_PERSIST_TO_DISK_FREQUENCY_MS);
         mCostJavaHeapDump =
-                properties.getInt(DeviceConfigHelper.COST_JAVA_HEAP_DUMP, mCostJavaHeapDump);
+                updateInt(
+                        properties,
+                        DeviceConfigHelper.COST_JAVA_HEAP_DUMP,
+                        mCostJavaHeapDump,
+                        DEFAULT_COST_PER_SESSION);
         mCostHeapProfile =
-                properties.getInt(DeviceConfigHelper.COST_HEAP_PROFILE, mCostHeapProfile);
+                updateInt(
+                        properties,
+                        DeviceConfigHelper.COST_HEAP_PROFILE,
+                        mCostHeapProfile,
+                        DEFAULT_COST_PER_SESSION);
         mCostStackSampling =
-                properties.getInt(DeviceConfigHelper.COST_STACK_SAMPLING, mCostStackSampling);
+                updateInt(
+                        properties,
+                        DeviceConfigHelper.COST_STACK_SAMPLING,
+                        mCostStackSampling,
+                        DEFAULT_COST_PER_SESSION);
         mCostSystemTrace =
-                properties.getInt(DeviceConfigHelper.COST_SYSTEM_TRACE, mCostSystemTrace);
+                updateInt(
+                        properties,
+                        DeviceConfigHelper.COST_SYSTEM_TRACE,
+                        mCostSystemTrace,
+                        DEFAULT_COST_PER_SESSION);
         mCostSystemTriggeredSystemTrace =
-                properties.getInt(
+                updateInt(
+                        properties,
                         DeviceConfigHelper.COST_SYSTEM_TRIGGERED_SYSTEM_TRACE,
-                        mCostSystemTriggeredSystemTrace);
+                        mCostSystemTriggeredSystemTrace,
+                        DEFAULT_COST_PER_SYSTEM_TRIGGERED_SESSION);
 
         // For max cost values, set a invalid default value and pass through to each group wrapper
         // to determine whether to update values.

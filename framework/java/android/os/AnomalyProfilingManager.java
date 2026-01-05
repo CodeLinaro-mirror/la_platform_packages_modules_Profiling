@@ -95,7 +95,8 @@ public final class AnomalyProfilingManager {
     @IntDef(
             prefix = {"TRIGGER_TYPE_"},
             value = {
-                ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
+                ProfilingTrigger.TRIGGER_TYPE_APP_COMPAT,
             })
     @Retention(RetentionPolicy.SOURCE)
     public @interface AnomalyTriggerType {}

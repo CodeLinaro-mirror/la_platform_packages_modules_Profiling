@@ -8,3 +8,10 @@ flag {
    description: "Flag for the anomaly detection service"
    bug: "418225779"
 }
+flag {
+   name: "anomaly_detector_memory"
+   namespace: "backstage_power"
+   is_exported: false
+   description: "Flag for the anomaly detection memory feature"
+   bug: "415136779"
+}

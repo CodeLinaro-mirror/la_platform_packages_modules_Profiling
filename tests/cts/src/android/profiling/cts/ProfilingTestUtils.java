@@ -25,7 +25,6 @@ import android.os.ProfilingResult;
 import android.os.ProfilingTrigger;
 import android.os.profiling.DeviceConfigHelper;
 import android.os.profiling.Flags;
-import android.util.Log;
 
 import com.android.compatibility.common.util.SystemUtil;
 
@@ -239,6 +238,9 @@ public final class ProfilingTestUtils {
                 DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.STACK_SAMPLING_FREQUENCY_MAX);
         deleteDeviceConfig(
                 DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.STACK_SAMPLING_DISCARD_BUFFER_SIZE_KB);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.COST_SYSTEM_TRIGGERED_SYSTEM_TRACE);
         deleteDeviceConfig(
                 DeviceConfigHelper.NAMESPACE,
@@ -282,6 +284,9 @@ public final class ProfilingTestUtils {
                 DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.REDACTION_CHECK_FREQUENCY_MS);
         deleteDeviceConfig(
                 DeviceConfigHelper.NAMESPACE, DeviceConfigHelper.REDACTION_MAX_RUNTIME_ALLOTTED_MS);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.PROFILING_TRIGGER_COLD_START_TRACE_DURATION_MS);
         // LINT.ThenChange(/service/java/com/android/os/profiling/DeviceConfigHelper.java:configs)
     }
 
@@ -303,7 +308,6 @@ public final class ProfilingTestUtils {
      */
     @FormatMethod
     public static String executeShellCmd(String command, Object... args) {
-        Log.d(TAG, "Executing shell command: " + String.format(command, args));
         return SystemUtil.runShellCommand(String.format(command, args));
     }
 

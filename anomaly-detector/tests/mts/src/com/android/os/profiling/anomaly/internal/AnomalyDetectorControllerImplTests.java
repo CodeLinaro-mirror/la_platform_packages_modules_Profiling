@@ -22,6 +22,9 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import android.os.Bundle;
+import android.os.profiling.anomaly.Rule;
+
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.os.profiling.anomaly.collector.SignalCollector;
@@ -30,12 +33,10 @@ import com.android.os.profiling.anomaly.collector.SignalCollectorData;
 import com.android.os.profiling.anomaly.core.AnomalyDetector;
 import com.android.os.profiling.anomaly.core.AnomalyDetectorRegistry;
 import com.android.os.profiling.anomaly.core.AnomalyHandlerRegistry;
-import com.android.os.profiling.anomaly.core.BaseCondition;
 import com.android.os.profiling.anomaly.core.RuleStorage;
 import com.android.os.profiling.anomaly.core.SignalCollectorRegistry;
 
 import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
@@ -51,30 +52,28 @@ import java.util.function.Consumer;
 /** Tests for {@link AnomalyDetectorControllerImpl}. */
 @RunWith(AndroidJUnit4.class)
 public final class AnomalyDetectorControllerImplTests {
-    @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
+    @org.junit.Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
 
     @Mock private RuleStorage mMockRuleStorage;
     @Mock private SignalCollectorRegistry mMockSignalCollectorRegistry;
     @Mock private AnomalyHandlerRegistry mMockAnomalyHandlerRegistry;
     @Mock private AnomalyDetectorRegistry mMockAnomalyDetectorRegistry;
-    @Mock private AnomalyDetector.AnomalyDetectorFactory<TestCondition> mMockFactory;
-    @Mock private AnomalyDetector<TestCondition> mMockDetector;
+    @Mock private AnomalyDetector.AnomalyDetectorFactory mMockFactory;
+    @Mock private AnomalyDetector mMockDetector;
     @Mock private SignalCollector<TestConfig, TestData> mMockCollector;
 
     @Captor private ArgumentCaptor<Consumer<SignalCollector<?, ?>>> mCallbackCaptor;
 
     private AnomalyDetectorControllerImpl mController;
-    private com.android.os.profiling.anomaly.core.Rule<TestCondition> mTestConditionRule;
-    private com.android.os.profiling.anomaly.core.Rule<UnregisteredCondition>
-            mUnregisteredConditionRule;
+    private Rule mTestConditionRule;
+    private Rule mUnregisteredConditionRule;
 
-    private static class TestCondition implements BaseCondition {}
+    private static final String TEST_CONDITION_TYPE = "test_condition";
+    private static final String UNREGISTERED_CONDITION_TYPE = "unregistered_condition";
 
     private static class TestConfig implements SignalCollectorConfig {}
 
     private static class TestData implements SignalCollectorData {}
-
-    private static class UnregisteredCondition implements BaseCondition {}
 
     @Before
     public void setUp() {
@@ -87,23 +86,29 @@ public final class AnomalyDetectorControllerImplTests {
                         mMockAnomalyDetectorRegistry,
                         executor);
         mTestConditionRule =
-                new com.android.os.profiling.anomaly.core.Rule<>(
-                        new TestCondition(), Collections.emptySet());
+                new Rule.Builder()
+                        .setConditionType(TEST_CONDITION_TYPE)
+                        .setRuleCondition(new Bundle())
+                        .addAnomalyAction(Rule.ACTION_TYPE_LOG)
+                        .build();
         mUnregisteredConditionRule =
-                new com.android.os.profiling.anomaly.core.Rule<>(
-                        new UnregisteredCondition(), Collections.emptySet());
+                new Rule.Builder()
+                        .setConditionType(UNREGISTERED_CONDITION_TYPE)
+                        .setRuleCondition(new Bundle())
+                        .addAnomalyAction(Rule.ACTION_TYPE_LOG)
+                        .build();
     }
 
     @Test
     public void setRules_detectorCreated() {
-        when(mMockAnomalyDetectorRegistry.getFactory(any(Class.class)))
+        when(mMockAnomalyDetectorRegistry.getFactory(any(String.class)))
                 .thenAnswer(i -> mMockFactory);
         when(mMockAnomalyDetectorRegistry.createDetectorForRule(any(), any()))
                 .thenAnswer(i -> mMockDetector);
 
         mController.setRules(Collections.singleton(mTestConditionRule));
 
-        verify(mMockAnomalyDetectorRegistry).getFactory(TestCondition.class);
+        verify(mMockAnomalyDetectorRegistry).getFactory(TEST_CONDITION_TYPE);
         verify(mMockAnomalyDetectorRegistry)
                 .createDetectorForRule(mTestConditionRule, mMockSignalCollectorRegistry);
         verify(mMockDetector).setOnAnomalyDetectedListener(mController);
@@ -112,7 +117,7 @@ public final class AnomalyDetectorControllerImplTests {
     @Test
     public void setRules_flushesOldDetectors() {
         // Activate a first rule.
-        when(mMockAnomalyDetectorRegistry.getFactory(any(Class.class)))
+        when(mMockAnomalyDetectorRegistry.getFactory(any(String.class)))
                 .thenAnswer(i -> mMockFactory);
         when(mMockAnomalyDetectorRegistry.createDetectorForRule(any(), any()))
                 .thenAnswer(i -> mMockDetector);
@@ -133,7 +138,7 @@ public final class AnomalyDetectorControllerImplTests {
         Consumer<SignalCollector<?, ?>> callback = mCallbackCaptor.getValue();
 
         // Set up a rule for which the detector cannot be created initially.
-        when(mMockAnomalyDetectorRegistry.getFactory(any(Class.class)))
+        when(mMockAnomalyDetectorRegistry.getFactory(any(String.class)))
                 .thenAnswer(i -> mMockFactory);
         when(mMockAnomalyDetectorRegistry.createDetectorForRule(
                         mTestConditionRule, mMockSignalCollectorRegistry))
@@ -159,11 +164,11 @@ public final class AnomalyDetectorControllerImplTests {
 
     @Test
     public void setRules_detectorNotCreatedWhenFactoryMissing() {
-        when(mMockAnomalyDetectorRegistry.getFactory(UnregisteredCondition.class)).thenReturn(null);
+        when(mMockAnomalyDetectorRegistry.getFactory(UNREGISTERED_CONDITION_TYPE)).thenReturn(null);
 
         mController.setRules(Collections.singleton(mUnregisteredConditionRule));
 
-        verify(mMockAnomalyDetectorRegistry).getFactory(UnregisteredCondition.class);
+        verify(mMockAnomalyDetectorRegistry).getFactory(UNREGISTERED_CONDITION_TYPE);
         verify(mMockAnomalyDetectorRegistry, never()).createDetectorForRule(any(), any());
     }
 }

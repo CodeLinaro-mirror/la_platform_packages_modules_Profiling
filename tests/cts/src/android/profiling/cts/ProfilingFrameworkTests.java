@@ -130,11 +130,11 @@ public final class ProfilingFrameworkTests {
 
     private static final String REQUEST_TAG_TEXT = "some_tag";
 
+    private static final int ONE_HUNDRED_MS = 100;
     private static final int ONE_SECOND_MS = 1 * 1000;
     private static final int FIVE_SECONDS_MS = 5 * 1000;
     private static final int TEN_SECONDS_MS = 10 * 1000;
     private static final int TEN_MINUTES_MS = 10 * 60 * 1000;
-
 
     private ProfilingManager mProfilingManager = null;
     private Context mContext = null;
@@ -157,8 +157,6 @@ public final class ProfilingFrameworkTests {
         mProfilingManager = mContext.getSystemService(ProfilingManager.class);
         mInstrumentation = InstrumentationRegistry.getInstrumentation();
 
-        mProfilingManager.clearProfilingTriggers();
-
         // This permission is required for Headless (HSUM) tests, including Auto.
         mInstrumentation
                 .getUiAutomation()
@@ -170,7 +168,7 @@ public final class ProfilingFrameworkTests {
 
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager.mProfilingService lock.
     @After
-    public void cleanup() throws Exception {
+    public void cleanup() {
         mProfilingManager.mProfilingService = null;
         resetAllConfigs();
     }
@@ -1166,6 +1164,99 @@ public final class ProfilingFrameworkTests {
     }
 
     /**
+     * Test adding a profiling trigger for cold start and receiving a result works correctly.
+     *
+     * <p>This is done by: adding the trigger through the public api, force starting a system
+     * triggered trace, sending a fake trigger as if from the system, and then confirming the result
+     * is received.
+     */
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_PROFILING_TRIGGER_COLD_START)
+    public void testSystemTriggeredProfilingColdStart() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // Override SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME for testing as this covers rate limiting
+        // override and bypass enforceSystemCaller for triggers.
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME);
+
+        overrideStackSamplingDeviceConfigValues(
+                false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
+        overrideSystemTraceDeviceConfigValues(false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
+
+        // First add a trigger
+        ProfilingTrigger trigger =
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_COLD_START).build();
+        mProfilingManager.addProfilingTriggers(List.of(trigger));
+
+        // And add a global listener
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
+
+        // Now fake a system trigger.
+        ProfilingServiceHelper.getInstance()
+                .onProfilingTriggerOccurred(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        ProfilingTrigger.TRIGGER_TYPE_COLD_START);
+
+        // Wait for the trace to process.
+        waitForCallback(callbackGeneral);
+
+        // Finally, confirm that a result was received.
+        confirmCollectionSuccess(
+                callbackGeneral.mResult,
+                OUTPUT_FILE_TRACE_SUFFIX,
+                ProfilingTrigger.TRIGGER_TYPE_COLD_START);
+    }
+
+    /** Test that Stopping an active triggered profiling session works correctly. */
+    @Test
+    @RequiresFlagsEnabled({android.os.profiling.Flags.FLAG_PROFILING_TRIGGER_COLD_START})
+    public void testStopActiveProfiling() {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // Override SYSTEM_TRIGGERED_DEBUG_PACKAGE_NAME for testing as this covers rate limiting
+        // override and bypass enforceSystemCaller for triggers.
+        startSystemTriggeredTraceForTesting(REAL_PACKAGE_NAME);
+
+        // First add a trigger
+        ProfilingTrigger trigger =
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_COLD_START).build();
+        mProfilingManager.addProfilingTriggers(List.of(trigger));
+
+        // Add a global listener.
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
+
+        // Fake a system trigger.
+        ProfilingServiceHelper.getInstance()
+                .onProfilingTriggerOccurred(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        ProfilingTrigger.TRIGGER_TYPE_COLD_START);
+
+        // Wait a bit for collection to get started.
+        sleep(WAIT_TIME_FOR_PROFILING_START_MS);
+
+        // Cancel the profiling session.
+        ProfilingServiceHelper.getInstance()
+                .stopActiveProfiling(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        ProfilingTrigger.TRIGGER_TYPE_COLD_START);
+
+        // Wait until callback#onAccept is triggered so we can confirm the result.
+        waitForCallback(callbackGeneral);
+
+        // Confirm that a result was received.
+        confirmCollectionSuccess(
+                callbackGeneral.mResult,
+                OUTPUT_FILE_TRACE_SUFFIX,
+                ProfilingTrigger.TRIGGER_TYPE_COLD_START);
+    }
+
+    /**
      * Test add all profiling triggers and receiving a result works correctly.
      *
      * <p>This is done by:
@@ -1742,9 +1833,9 @@ public final class ProfilingFrameworkTests {
     }
 
     /**
-     * Test anomaly profiling manager method for checking trigger registration by registering 1 of
-     * the anomaly triggers, and then checking each of the anomaly triggers and confirming that the
-     * registered one shows as registered, and the other shows not registered.
+     * Test anomaly profiling manager method for checking trigger registration by registering all
+     * anomaly triggers, and then checking each of the anomaly triggers and confirming that the
+     * registered ones show as registered, and the other show as not registered.
      */
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
     @Test
@@ -1754,10 +1845,15 @@ public final class ProfilingFrameworkTests {
 
         overrideSystemCallerEnforcement();
 
-        // Register a trigger to this process.
-        ProfilingTrigger trigger =
-                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB).build();
-        mProfilingManager.addProfilingTriggers(List.of(trigger));
+        // Register 2 anomaly triggers to this process.
+        ProfilingTrigger anomalyTrigger =
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY).build();
+        ProfilingTrigger appCompatTrigger =
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_APP_COMPAT).build();
+        mProfilingManager.addProfilingTriggers(List.of(anomalyTrigger, appCompatTrigger));
+
+        // Wait for the triggers to be registered to avoid a race condition.
+        sleep(ONE_HUNDRED_MS);
 
         AnomalyProfilingManager anomalyProfilingManager = new AnomalyProfilingManager();
         assertThat(anomalyProfilingManager).isNotNull();
@@ -1767,7 +1863,14 @@ public final class ProfilingFrameworkTests {
                         anomalyProfilingManager.isTriggerRegistered(
                                 Binder.getCallingUid(),
                                 REAL_PACKAGE_NAME,
-                                ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB))
+                                ProfilingTrigger.TRIGGER_TYPE_ANOMALY))
+                .isTrue();
+
+        expect.that(
+                        anomalyProfilingManager.isTriggerRegistered(
+                                Binder.getCallingUid(),
+                                REAL_PACKAGE_NAME,
+                                ProfilingTrigger.TRIGGER_TYPE_APP_COMPAT))
                 .isTrue();
 
         // Check that another not-registered trigger is not showing as registered to this process.
@@ -1775,7 +1878,7 @@ public final class ProfilingFrameworkTests {
                         anomalyProfilingManager.isTriggerRegistered(
                                 Binder.getCallingUid(),
                                 REAL_PACKAGE_NAME,
-                                ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB))
+                                ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN))
                 .isFalse();
     }
 
@@ -1802,7 +1905,7 @@ public final class ProfilingFrameworkTests {
 
         // Register a trigger to this process.
         ProfilingTrigger trigger =
-                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB).build();
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY).build();
         mProfilingManager.addProfilingTriggers(List.of(trigger));
 
         // Add a global listener
@@ -1840,7 +1943,7 @@ public final class ProfilingFrameworkTests {
                 anomalyProfilingManager.sendAnomalyProfile(
                         Binder.getCallingUid(),
                         REAL_PACKAGE_NAME,
-                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
                         REQUEST_TAG_TEXT,
                         fileName);
 
@@ -1851,7 +1954,7 @@ public final class ProfilingFrameworkTests {
         confirmCollectionSuccess(
                 callbackGeneral.mResult,
                 OUTPUT_FILE_STACK_SAMPLING_SUFFIX,
-                ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB);
+                ProfilingTrigger.TRIGGER_TYPE_ANOMALY);
 
         // Confirm that anomaly results are as expected.
         confirmAnomalyResult(
@@ -1873,7 +1976,7 @@ public final class ProfilingFrameworkTests {
 
         // Register a trigger to this process.
         ProfilingTrigger trigger =
-                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB).build();
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY).build();
         mProfilingManager.addProfilingTriggers(List.of(trigger));
 
         // Add a global listener.
@@ -1900,7 +2003,7 @@ public final class ProfilingFrameworkTests {
                         Binder.getCallingUid(),
                         REAL_PACKAGE_NAME,
                         AnomalyProfilingManager.PROFILING_TYPE_SYSTEM_TRACE_ONGOING,
-                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
                         REQUEST_TAG_TEXT,
                         null);
 
@@ -1927,7 +2030,7 @@ public final class ProfilingFrameworkTests {
 
         // Register a trigger to this process.
         ProfilingTrigger trigger =
-                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB).build();
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY).build();
         mProfilingManager.addProfilingTriggers(List.of(trigger));
 
         // Add a global listener.
@@ -1948,7 +2051,7 @@ public final class ProfilingFrameworkTests {
                         Binder.getCallingUid(),
                         REAL_PACKAGE_NAME,
                         ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
-                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
                         REQUEST_TAG_TEXT,
                         getOneSecondDurationParamBundle());
 
@@ -1979,7 +2082,7 @@ public final class ProfilingFrameworkTests {
 
         // Register a trigger to this process.
         ProfilingTrigger trigger =
-                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB).build();
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY).build();
         mProfilingManager.addProfilingTriggers(List.of(trigger));
 
         // Add a global listener.
@@ -2006,7 +2109,7 @@ public final class ProfilingFrameworkTests {
                         Binder.getCallingUid(),
                         REAL_PACKAGE_NAME,
                         AnomalyProfilingManager.PROFILING_TYPE_SYSTEM_TRACE_ONGOING,
-                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
                         REQUEST_TAG_TEXT,
                         null);
 
@@ -2017,7 +2120,7 @@ public final class ProfilingFrameworkTests {
         confirmCollectionSuccess(
                 callbackGeneral.mResult,
                 OUTPUT_FILE_TRACE_SUFFIX,
-                ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB);
+                ProfilingTrigger.TRIGGER_TYPE_ANOMALY);
 
         // Confirm that anomaly results are as expected.
         confirmAnomalyResult(
@@ -2032,12 +2135,13 @@ public final class ProfilingFrameworkTests {
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
     @Test
     @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
-    public void testAnomalyProfilingManagerCollectAndSendNewProfilingSuccess() throws Exception {
+    public void testAnomalyProfilingManagerCollectAndSendNewProfilingSuccess_triggerAnomaly()
+            throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
         // Register a trigger to this process.
         ProfilingTrigger trigger =
-                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB).build();
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY).build();
         mProfilingManager.addProfilingTriggers(List.of(trigger));
 
         // Add a global listener.
@@ -2058,7 +2162,7 @@ public final class ProfilingFrameworkTests {
                         Binder.getCallingUid(),
                         REAL_PACKAGE_NAME,
                         ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
-                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
                         REQUEST_TAG_TEXT,
                         getOneSecondDurationParamBundle());
 
@@ -2068,7 +2172,59 @@ public final class ProfilingFrameworkTests {
         confirmCollectionSuccess(
                 callbackGeneral.mResult,
                 OUTPUT_FILE_STACK_SAMPLING_SUFFIX,
-                ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB);
+                ProfilingTrigger.TRIGGER_TYPE_ANOMALY);
+
+        // Confirm that anomaly results are as expected.
+        confirmAnomalyResult(
+                anomalyCallback, ProfilingResult.ERROR_NONE, key, REQUEST_TAG_TEXT, false);
+    }
+
+    /**
+     * Test that anomaly profiling manager collect and send profile method works for new profiling
+     * by ensuring that the profiling is received by the app callback and that anomaly callback
+     * receives the status update.
+     */
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public void testAnomalyProfilingManagerCollectAndSendNewProfilingSuccess_triggerAppCompat()
+            throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // Register a trigger to this process.
+        ProfilingTrigger trigger =
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_APP_COMPAT).build();
+        mProfilingManager.addProfilingTriggers(List.of(trigger));
+
+        // Add a global listener.
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
+
+        overrideSystemCallerEnforcement();
+
+        // Add an anomaly result callback.
+        AnomalyProfilingManager anomalyProfilingManager = new AnomalyProfilingManager();
+        assertThat(anomalyProfilingManager).isNotNull();
+        AnomalyCallback anomalyCallback = new AnomalyCallback();
+        anomalyProfilingManager.registerCallback(anomalyCallback);
+
+        // Send anomaly request.
+        UUID key =
+                anomalyProfilingManager.collectAndSendAnomalyProfile(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
+                        ProfilingTrigger.TRIGGER_TYPE_APP_COMPAT,
+                        REQUEST_TAG_TEXT,
+                        getOneSecondDurationParamBundle());
+
+        waitForCallback(callbackGeneral);
+
+        // Confirm that result received by app is as expected.
+        confirmCollectionSuccess(
+                callbackGeneral.mResult,
+                OUTPUT_FILE_STACK_SAMPLING_SUFFIX,
+                ProfilingTrigger.TRIGGER_TYPE_APP_COMPAT);
 
         // Confirm that anomaly results are as expected.
         confirmAnomalyResult(
@@ -2105,7 +2261,7 @@ public final class ProfilingFrameworkTests {
                         Binder.getCallingUid(),
                         REAL_PACKAGE_NAME,
                         ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
-                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
                         REQUEST_TAG_TEXT,
                         getOneSecondDurationParamBundle());
 
@@ -2164,7 +2320,7 @@ public final class ProfilingFrameworkTests {
                         Binder.getCallingUid(),
                         REAL_PACKAGE_NAME,
                         AnomalyProfilingManager.PROFILING_TYPE_SYSTEM_TRACE_ONGOING,
-                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
                         REQUEST_TAG_TEXT,
                         getOneSecondDurationParamBundle());
 
@@ -2197,7 +2353,7 @@ public final class ProfilingFrameworkTests {
 
         // Register a trigger to this process.
         ProfilingTrigger trigger =
-                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB).build();
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY).build();
         mProfilingManager.addProfilingTriggers(List.of(trigger));
 
         // Add a global listener.
@@ -2218,7 +2374,7 @@ public final class ProfilingFrameworkTests {
                         Binder.getCallingUid(),
                         REAL_PACKAGE_NAME,
                         AnomalyProfilingManager.PROFILING_TYPE_SYSTEM_TRACE_ONGOING,
-                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY_STUB,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
                         REQUEST_TAG_TEXT,
                         null);
 
@@ -2235,6 +2391,34 @@ public final class ProfilingFrameworkTests {
                 key,
                 REQUEST_TAG_TEXT,
                 false);
+    }
+
+    @Test
+    @RequiresFlagsDisabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public void testIsAnomalyTriggerType_flagOff() {
+        // When the flag is off, no trigger type should be returned as anomaly type.
+        assertThat(ProfilingTrigger.isAnomalyTriggerType(ProfilingTrigger.TRIGGER_TYPE_ANOMALY))
+                .isFalse();
+        assertThat(ProfilingTrigger.isAnomalyTriggerType(ProfilingTrigger.TRIGGER_TYPE_APP_COMPAT))
+                .isFalse();
+        assertThat(ProfilingTrigger.isAnomalyTriggerType(ProfilingTrigger.TRIGGER_TYPE_ANR))
+                .isFalse();
+    }
+
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public void testIsAnomalyTriggerType() {
+        // With the flag on, ANOMALY and APP_COMPAT should be identified as anomaly type.
+        assertThat(ProfilingTrigger.isAnomalyTriggerType(ProfilingTrigger.TRIGGER_TYPE_ANOMALY))
+                .isTrue();
+        assertThat(ProfilingTrigger.isAnomalyTriggerType(ProfilingTrigger.TRIGGER_TYPE_APP_COMPAT))
+                .isTrue();
+
+        // APP_FULLY_DRAWN is not anomaly trigger type.
+        assertThat(
+                        ProfilingTrigger.isAnomalyTriggerType(
+                                ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN))
+                .isFalse();
     }
 
     /** Disable the rate limiter and wait long enough for the update to be picked up. */
