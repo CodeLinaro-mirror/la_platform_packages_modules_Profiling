@@ -2166,7 +2166,14 @@ public class ProfilingService extends IProfilingService.Stub {
             return ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE;
         }
 
-        if (Flags.profilingTriggerOom() && triggerType == ProfilingTrigger.TRIGGER_TYPE_OOM) {
+        if ((Flags.profilingTriggerOom() && triggerType == ProfilingTrigger.TRIGGER_TYPE_OOM)
+                || (android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()
+                        && triggerType == ProfilingTrigger.TRIGGER_TYPE_ANOMALY)) {
+            // Anomaly trigger types are sent from anomaly detector service and include an
+            // associated profiling type, therefore they would not trigger this logic. The only
+            // exception to this rule is the memory runtime limit anomaly, which is sent directly to
+            // ProfilingService via {@link #processTrigger}. The anomaly type if reaching this logic
+            // must therefore be memory runtime limit, so return a java heap dump.
             return ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP;
         }
 
