@@ -60,7 +60,10 @@ systemserverclasspath_fragment {
 
     name: "com.android.profiling-systemserverclasspath-fragment",
     standalone_contents: ["service-profiling"],
-    contents: ["service-anomaly-detector"],
+    contents: select(release_flag("RELEASE_ANOMALY_DETECTOR"), {
+        true: ["service-anomaly-detector"],
+        false: [],
+    }),
     apex_available: ["com.android.profiling"],
 }
 
@@ -72,10 +75,10 @@ bootclasspath_fragment {
     }),
 
     name: "com.android.profiling-bootclasspath-fragment",
-    contents: [
-        "framework-profiling",
-        "framework-anomaly-detector",
-    ],
+    contents: ["framework-profiling"] + select(release_flag("RELEASE_ANOMALY_DETECTOR"), {
+        true: ["framework-anomaly-detector"],
+        false: [],
+    }),
     apex_available: ["com.android.profiling"],
 
     // The bootclasspath_fragments that provide APIs on which this depends.
