@@ -33,6 +33,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -58,6 +59,7 @@ import android.os.ProfilingTrigger;
 import android.os.ProfilingTriggerValueParcel;
 import android.os.TestLooperManager;
 import android.os.profiling.DeviceConfigHelper;
+import android.os.profiling.Flags;
 import android.os.profiling.LoggingHelper;
 import android.os.profiling.ProfilingService;
 import android.os.profiling.ProfilingService.TracingState;
@@ -1197,8 +1199,9 @@ public final class ProfilingServiceTests {
         // Trigger an advance to a subsequent state.
         mProfilingService.advanceTracingSession(session, TracingState.ERROR_OCCURRED);
 
-        // Ensure it does try to advance.
-        verify(mProfilingService, times(1)).processTracingSessionResultCallback(any(), eq(true));
+        // Ensure it attempts to send a callback to the requester. Advancement depends on flag.
+        verify(mProfilingService, times(1))
+                .processTracingSessionResultCallback(any(), eq(!Flags.notifyResultDelivered()));
     }
 
     /** Test that advancing state in backwards direction does not work. */
@@ -2105,8 +2108,10 @@ public final class ProfilingServiceTests {
         // Trigger handle queued results
         mProfilingService.handleQueuedResults(FAKE_UID);
 
-        // Confirm that the correct path was called that a success callback was received.
-        verify(mProfilingService, times(1)).processTracingSessionResultCallback(any(), eq(true));
+        // Confirm that the correct path was called and a success callback was received.
+        // Advancement depends on flag.
+        verify(mProfilingService, times(1))
+                .processTracingSessionResultCallback(any(), eq(!Flags.notifyResultDelivered()));
         assertFalse(mProfilingService.mQueuedTracingResults.contains(FAKE_UID));
     }
 
@@ -2143,8 +2148,10 @@ public final class ProfilingServiceTests {
         // Trigger handle queued results
         mProfilingService.handleQueuedResults(FAKE_UID);
 
-        // Confirm that the correct path was called that an error callback was received.
-        verify(mProfilingService, times(1)).processTracingSessionResultCallback(any(), eq(true));
+        // Confirm that the correct path was called and an error callback was received.
+        // Advancement depends on flag.
+        verify(mProfilingService, times(1))
+                .processTracingSessionResultCallback(any(), eq(!Flags.notifyResultDelivered()));
         expect.that(callback.mResultSent).isTrue();
         expect.that(callback.mStatus).isEqualTo(ProfilingResult.ERROR_UNKNOWN);
     }
@@ -3143,6 +3150,118 @@ public final class ProfilingServiceTests {
         }
     }
 
+    /**
+     * Test that notifyResultDelivered advances the state from COPIED_FILE to NOTIFIED_REQUESTER.
+     */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_NOTIFY_RESULT_DELIVERED)
+    public void testNotifyResultDelivered_CopiedFile_AdvancesState() {
+        TracingSession session =
+                new TracingSession(
+                        ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
+                        new Bundle(),
+                        FAKE_UID,
+                        APP_PACKAGE_NAME,
+                        REQUEST_TAG,
+                        KEY_MOST_SIG_BITS,
+                        KEY_LEAST_SIG_BITS,
+                        TRIGGER_TYPE_NONE);
+        session.setState(TracingState.COPIED_FILE);
+
+        int uid = Binder.getCallingUid();
+        List<TracingSession> sessions = new ArrayList<>();
+        sessions.add(session);
+        mProfilingService.mQueuedTracingResults.put(uid, sessions);
+
+        mProfilingService.notifyResultDelivered(KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+
+        // Verify state advanced
+        verify(mProfilingService).advanceTracingSession(session, TracingState.NOTIFIED_REQUESTER);
+    }
+
+    /**
+     * Test that notifyResultDelivered advances the state from ERROR_OCCURRED to NOTIFIED_REQUESTER.
+     */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_NOTIFY_RESULT_DELIVERED)
+    public void testNotifyResultDelivered_ErrorOccurred_AdvancesState() {
+        TracingSession session =
+                new TracingSession(
+                        ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
+                        new Bundle(),
+                        FAKE_UID,
+                        APP_PACKAGE_NAME,
+                        REQUEST_TAG,
+                        KEY_MOST_SIG_BITS,
+                        KEY_LEAST_SIG_BITS,
+                        TRIGGER_TYPE_NONE);
+        session.setState(TracingState.ERROR_OCCURRED);
+
+        int uid = Binder.getCallingUid();
+        List<TracingSession> sessions = new ArrayList<>();
+        sessions.add(session);
+        mProfilingService.mQueuedTracingResults.put(uid, sessions);
+
+        mProfilingService.notifyResultDelivered(KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+
+        // Verify state advanced
+        verify(mProfilingService).advanceTracingSession(session, TracingState.NOTIFIED_REQUESTER);
+    }
+
+    /** Test that notifyResultDelivered does NOT advance the state if not in correct state. */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_NOTIFY_RESULT_DELIVERED)
+    public void testNotifyResultDelivered_WrongState_DoesNotAdvance() {
+        TracingSession session =
+                new TracingSession(
+                        ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
+                        new Bundle(),
+                        FAKE_UID,
+                        APP_PACKAGE_NAME,
+                        REQUEST_TAG,
+                        KEY_MOST_SIG_BITS,
+                        KEY_LEAST_SIG_BITS,
+                        TRIGGER_TYPE_NONE);
+        session.setState(TracingState.REQUESTED);
+
+        int uid = Binder.getCallingUid();
+        List<TracingSession> sessions = new ArrayList<>();
+        sessions.add(session);
+        mProfilingService.mQueuedTracingResults.put(uid, sessions);
+
+        mProfilingService.notifyResultDelivered(KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+
+        // Verify state did NOT advance
+        verify(mProfilingService, never()).advanceTracingSession(any(), any());
+    }
+
+    @Test
+    @RequiresFlagsEnabled({Flags.FLAG_PROFILING_TRIGGER_OOM, Flags.FLAG_NOTIFY_RESULT_DELIVERED})
+    public void testProcessTrigger_GeneratesKey() {
+        // Setup rate limiter to allow.
+        doReturn(RateLimiter.RATE_LIMIT_RESULT_ALLOWED)
+                .when(mRateLimiter)
+                .isProfilingRequestAllowed(anyInt(), anyInt(), anyBoolean(), any());
+
+        // Mock startProfilingProcess to succeed.
+        doReturn(mActiveTrace).when(mProfilingService).startProfilingProcess(any(), anyString());
+        doReturn(true).when(mActiveTrace).isAlive();
+
+        mProfilingService.addTrigger(
+                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_OOM, 0);
+
+        mProfilingService.processTriggerInternal(
+                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_OOM, null, null);
+
+        // Verify session in active sessions.
+        assertThat(mProfilingService.mActiveTracingSessions.size()).isEqualTo(1);
+        TracingSession session = mProfilingService.mActiveTracingSessions.valueAt(0);
+
+        // Verify key is not 0L.
+        expect.that(session.getKeyMostSigBits()).isNotEqualTo(0L);
+        expect.that(session.getKeyLeastSigBits()).isNotEqualTo(0L);
+    }
+
     public class ProfilingResultCallback extends IProfilingResultCallback.Stub {
         boolean mResultSent = false;
         boolean mFileRequested = false;
@@ -3171,6 +3290,8 @@ public final class ProfilingServiceTests {
             mTag = tag;
             mError = error;
             mTriggerType = triggerType;
+
+            mProfilingService.notifyResultDelivered(keyMostSigBits, keyLeastSigBits);
         }
 
         @Override

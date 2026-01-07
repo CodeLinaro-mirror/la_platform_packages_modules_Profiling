@@ -744,6 +744,7 @@ public final class ProfilingManager {
 
                                 UUID key = new UUID(keyMostSigBits, keyLeastSigBits);
                                 int removeListenerPos = -1;
+                                boolean resultDelivered = false;
                                 for (int i = 0; i < mCallbacks.size(); i++) {
                                     ProfilingRequestCallbackWrapper wrapper = mCallbacks.get(i);
                                     if (key.equals(wrapper.mKey)) {
@@ -782,12 +783,31 @@ public final class ProfilingManager {
                                                                     tag,
                                                                     error,
                                                                     triggerType)));
+                                    resultDelivered = true;
                                 }
 
                                 // Remove the single listener that was tied to the request, if
                                 // applicable.
                                 if (removeListenerPos != -1) {
                                     mCallbacks.remove(removeListenerPos);
+                                }
+
+                                if (Flags.notifyResultDelivered() && resultDelivered) {
+                                    try {
+                                        if (mProfilingService != null) {
+                                            mProfilingService.notifyResultDelivered(
+                                                    keyMostSigBits, keyLeastSigBits);
+                                        }
+                                    } catch (RemoteException e) {
+                                        if (DEBUG) {
+                                            Log.w(
+                                                    TAG,
+                                                    "Failed to notify service of result delivery"
+                                                            + " for key "
+                                                            + key,
+                                                    e);
+                                        }
+                                    }
                                 }
                             }
                         }
