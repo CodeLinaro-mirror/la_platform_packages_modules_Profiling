@@ -27,6 +27,7 @@ import com.android.os.profiling.anomaly.attribute.UidAttribute;
 import com.android.os.profiling.anomaly.collector.SignalCollector;
 import com.android.os.profiling.anomaly.collector.SubscriptionId;
 import com.android.os.profiling.anomaly.collector.binder.BinderSpamConfig;
+import com.android.os.profiling.anomaly.collector.binder.BinderSpamConfigList;
 import com.android.os.profiling.anomaly.collector.binder.BinderSpamData;
 import com.android.os.profiling.anomaly.core.AnomalyDetector;
 import com.android.os.profiling.anomaly.core.AnomalyReport;
@@ -34,6 +35,8 @@ import com.android.os.profiling.anomaly.core.SignalCollectorRegistry;
 import com.android.os.profiling.anomaly.core.SignalTypeId;
 import com.android.os.profiling.anomaly.internal.AnomalyReportImpl;
 
+import java.time.Duration;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -45,6 +48,7 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
     private static final String TAG = "BinderSpamAnomalyDetector";
 
     private static final long MILLIS_PER_SECOND = 1000L;
+    private static final Duration MINIMUM_TIME_SPAN_ONE_SECOND = Duration.ofSeconds(1);
 
     private final SignalCollectorRegistry mRegistry;
     private final Object mLock = new Object();
@@ -56,7 +60,7 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
     private SubscriptionId mSubscriptionId;
 
     @GuardedBy("mLock")
-    private SignalCollector<BinderSpamConfig, BinderSpamData> mCollector;
+    private SignalCollector<BinderSpamConfigList, BinderSpamData> mCollector;
 
     /**
      * Constructs a new BinderSpamAnomalyDetector.
@@ -76,7 +80,8 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
 
                 @Override
                 public Set<SignalTypeId> getRequiredSignalCollectorTypes() {
-                    return Set.of(new SignalTypeId(BinderSpamConfig.class, BinderSpamData.class));
+                    return Set.of(
+                            new SignalTypeId(BinderSpamConfigList.class, BinderSpamData.class));
                 }
 
                 @Override
@@ -103,7 +108,8 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
 
             Bundle condition = mRule.getRuleCondition();
 
-            mCollector = mRegistry.getSignalCollector(BinderSpamConfig.class, BinderSpamData.class);
+            mCollector =
+                    mRegistry.getSignalCollector(BinderSpamConfigList.class, BinderSpamData.class);
 
             if (mCollector != null) {
                 String interfaceName =
@@ -112,15 +118,24 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
                 String methodName =
                         condition.getString(
                                 RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME);
+                int callCountThreshold =
+                        condition.getInt(RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT);
+                long windowSizeMillis =
+                        condition.getLong(
+                                RuleInternal
+                                        .BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS);
                 BinderSpamConfig config =
                         new BinderSpamConfig.Builder()
                                 .setInterfaceName(interfaceName)
                                 .setMethodName(methodName)
+                                .setCallCountThreshold(callCountThreshold)
+                                .setWindowSize(Duration.ofMillis(windowSizeMillis))
                                 .build();
+                BinderSpamConfigList configList = new BinderSpamConfigList(List.of(config));
 
                 mSubscriptionId =
                         mCollector.subscribe(
-                                config,
+                                configList,
                                 new OutcomeReceiver<>() {
                                     @Override
                                     public void onResult(BinderSpamData data) {
@@ -151,7 +166,7 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
 
             Bundle condition = mRule.getRuleCondition();
             long callCount = binderData.getCallCount();
-            long timespanMillis = binderData.getTimespanMillis();
+            Duration timespan = binderData.getTimespan();
             long threshold =
                     condition.getInt(RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT);
             long intervalMillis =
@@ -159,14 +174,13 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
                             RuleInternal
                                     .BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS);
 
-            // Timespan must not be less than 1000ms to calculate a rate, because short timespan may
-            // cause an exaggerated call-rate, e,g, 2 calls over 10ms makes call-rate to be 200/s.
-            if (timespanMillis < 1000) {
+            if (timespan.compareTo(MINIMUM_TIME_SPAN_ONE_SECOND) < 0) {
                 Slog.w(TAG, "Timespan is too short, cannot calculate rate. Ignoring data.");
                 return;
             }
 
-            boolean isRateExceeded = callCount * intervalMillis > threshold * timespanMillis;
+            // Cross-multiplying to avoid floating point:
+            boolean isRateExceeded = callCount * intervalMillis > threshold * timespan.toMillis();
 
             if (isRateExceeded
                     && condition
@@ -175,23 +189,22 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
                     && condition
                             .getString(RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME)
                             .equals(binderData.getMethodName())) {
-                Slog.d(TAG, "Binder spam condition met. Creating a report.");
 
                 // For logging purposes, calculate the actual rate.
-                double actualCallsPerSecond =
-                        (double) callCount * MILLIS_PER_SECOND / timespanMillis;
+                double actualCallsPerSecond = (double) callCount / timespan.toSeconds();
 
                 String summary =
                         String.format(
-                                "UID %d made %d calls to %s#%s in %dms (Rate: %.2f calls/sec, "
-                                        + "Threshold: %d calls/sec)",
+                                "UID %d made %d calls to %s#%s in %ds (Rate: %.2f calls/sec, "
+                                        + "Threshold: %d calls/%dms)",
                                 binderData.getCallingUid(),
                                 callCount,
                                 binderData.getInterfaceName(),
                                 binderData.getMethodName(),
-                                timespanMillis,
+                                timespan.toSeconds(),
                                 actualCallsPerSecond,
-                                threshold);
+                                threshold,
+                                intervalMillis);
 
                 AnomalyReport report =
                         new AnomalyReportImpl.Builder(mRule)
