@@ -167,7 +167,12 @@ public class ProfilingService extends IProfilingService.Stub {
     public String mSystemTriggeredTraceUniqueSessionName = null;
     private long mLastStartedSystemTriggeredTraceMs = 0;
 
-    // Map of uid + package name to a sparse array of trigger objects.
+    /**
+     * Map of uid + package name to a sparse array of trigger objects.
+     *
+     * Adding items to this data structure must only be done using
+     * {@link #addTrigger(ProfilingTriggerData, boolean)} which validates the added triggers.
+     */
     @VisibleForTesting
     public ProcessMap<SparseArray<ProfilingTriggerData>> mAppTriggers = new ProcessMap<>();
     @VisibleForTesting
@@ -590,7 +595,13 @@ public class ProfilingService extends IProfilingService.Stub {
         // Populate in memory app triggers store
         for (int i = 0; i < wrapper.getTriggersCount(); i++) {
             ProfilingTriggersWrapper.ProfilingTrigger triggerProto = wrapper.getTriggers(i);
-            addTrigger(new ProfilingTriggerData(triggerProto), false);
+            try {
+                addTrigger(new ProfilingTriggerData(triggerProto), false);
+            } catch (IllegalArgumentException e) {
+                // If this exception is thrown, then a trigger was added with an unsupported type.
+                // Ignore and continue.
+                if (DEBUG) Log.w(TAG, "Trigger loaded from storage with invalid type", e);
+            }
         }
 
         mAppTriggersLoaded = true;
@@ -963,6 +974,39 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     /**
+     * Enforce that the caller's UID matches the provided package name.
+     *
+     * @throws SecurityException if the package name does not match the calling UID.
+     */
+    private void enforceCallerMatchesPackageName(String packageName) {
+        if (packageName == null || packageName.isEmpty()) {
+            // Empty package cannot be valid.
+            throw new SecurityException("Package name empty, is not associated with caller.");
+        }
+
+        int callingUid = Binder.getCallingUid();
+        String[] uidPackages = mContext.getPackageManager().getPackagesForUid(callingUid);
+        if (uidPackages == null || uidPackages.length == 0) {
+            // Failed to get packages for this uid, cannot validate package name.
+            throw new SecurityException("Failed to resolve package name for uid: " + callingUid);
+        }
+
+        boolean packageNameInUidList = false;
+        for (int i = 0; i < uidPackages.length; i++) {
+            if (packageName.equals(uidPackages[i])) {
+                packageNameInUidList = true;
+                break;
+            }
+        }
+
+        if (!packageNameInUidList) {
+            // Package name is not associated with calling uid, reject request.
+            throw new SecurityException("Package name " + packageName + " not associated with "
+                    + "calling uid: " + callingUid);
+        }
+    }
+
+    /**
      * This method validates the request, arguments, whether the app is allowed to profile now,
      * and if so, starts the profiling.
      */
@@ -1177,6 +1221,8 @@ public class ProfilingService extends IProfilingService.Stub {
      */
     public void addProfilingTriggers(List<ProfilingTriggerValueParcel> triggers,
             String packageName) {
+        enforceCallerMatchesPackageName(packageName);
+
         int uid = Binder.getCallingUid();
         for (int i = 0; i < triggers.size(); i++) {
             ProfilingTriggerValueParcel trigger = triggers.get(i);
@@ -1189,6 +1235,8 @@ public class ProfilingService extends IProfilingService.Stub {
      * name and the uid of the caller.
      */
     public void removeProfilingTriggers(int[] triggerTypesToRemove, String packageName) {
+        enforceCallerMatchesPackageName(packageName);
+
         SparseArray<ProfilingTriggerData> triggers =
                 mAppTriggers.get(packageName, Binder.getCallingUid());
 
@@ -1209,6 +1257,8 @@ public class ProfilingService extends IProfilingService.Stub {
      * Remove all triggers from a process with the provided packagename and the uid of the caller.
      */
     public void clearProfilingTriggers(String packageName) {
+        enforceCallerMatchesPackageName(packageName);
+
         mAppTriggers.remove(packageName, Binder.getCallingUid());
     }
 
@@ -1775,6 +1825,11 @@ public class ProfilingService extends IProfilingService.Stub {
         if (!Flags.systemTriggeredProfilingNew()) {
             // Flag disabled.
             return;
+        }
+
+        if (!ProfilingTrigger.isValidRequestTriggerType(trigger.getTriggerType())) {
+            Log.w(TAG, "Attempted to add invalid profiling trigger.");
+            throw new IllegalArgumentException("Trigger type is not supported");
         }
 
         SparseArray<ProfilingTriggerData> perProcessTriggers = mAppTriggers.get(
