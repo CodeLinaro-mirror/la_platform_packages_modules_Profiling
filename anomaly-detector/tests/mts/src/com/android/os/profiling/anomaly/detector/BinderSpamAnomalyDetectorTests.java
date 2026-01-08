@@ -92,6 +92,7 @@ public final class BinderSpamAnomalyDetectorTests {
                 RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS, 1000);
         RuleInternal rule =
                 new RuleInternal.Builder()
+                        .setName("test_rule")
                         .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
                         .setRuleCondition(condition)
                         .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
