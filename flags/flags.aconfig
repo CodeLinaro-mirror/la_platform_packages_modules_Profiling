@@ -132,3 +132,14 @@ flag {
        purpose: PURPOSE_BUGFIX
     }
 }
+
+flag {
+    name: "notify_result_delivered"
+    namespace: "system_performance"
+    is_exported: false
+    description: "Enables notifying the service when the profiling trigger result is delivered."
+    bug: "450568699"
+    metadata {
+       purpose: PURPOSE_BUGFIX
+    }
+}
