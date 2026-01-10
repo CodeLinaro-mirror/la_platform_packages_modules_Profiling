@@ -127,6 +127,19 @@ public final class Rule extends RuleInternal {
     }
 
     /**
+     * Returns the name of the rule.
+     *
+     * @return The name of the rule.
+     * @hide
+     */
+    @NonNull
+    @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
+    @Override
+    public String getName() {
+        return super.getName();
+    }
+
+    /**
      * Returns the list of actions to be executed by the anomaly detection service when the {@code
      * mRuleCondition} defined by this rule is met.
      *
@@ -190,6 +203,27 @@ public final class Rule extends RuleInternal {
      */
     @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
     public static final class Builder extends RuleInternal.Builder {
+        /**
+         * Sets the name of the rule.
+         *
+         * <p>Rule names are displayed in logs and system dumps for debugging purposes and are
+         * intended only for human consumption.
+         *
+         * <p>The name must be a non-empty string. There are no other restrictions on the format. If
+         * a name is not explicitly set using this method, it will default to an empty string.
+         *
+         * @param name The name of the rule.
+         * @return This Builder instance for chaining.
+         * @hide
+         */
+        @NonNull
+        @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
+        @Override
+        public Builder setName(@NonNull String name) {
+            super.setName(name);
+            return this;
+        }
+
         /**
          * Adds a action to be taken when the rule's condition is met. Duplicate actions will be
          * ignored.
