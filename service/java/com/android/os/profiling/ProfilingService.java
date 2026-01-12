@@ -3225,7 +3225,6 @@ public class ProfilingService extends IProfilingService.Stub {
         if (perUidCallbacks == null || perUidCallbacks.isEmpty()) {
             // No callback so no way to obtain a file to populate with result.
             if (DEBUG) Log.d(TAG, "No callback to ProfilingManager, callback dropped.");
-            // TODO: b/333456916 run a cleanup of old results based on a max size and time.
             return;
         }
 
