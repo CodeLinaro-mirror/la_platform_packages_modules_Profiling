@@ -2392,6 +2392,48 @@ public final class ProfilingFrameworkTests {
                 false);
     }
 
+    /**
+     * Test the memory runtime limit case of the anomaly trigger which calls profiling directly,
+     * rather than through anomaly detector.
+     */
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public void testAnomalyProfilingMemoryRuntimeLimit() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // This trigger is enforced to system caller, so override the requriement.
+        overrideSystemCallerEnforcement();
+
+        // Register a trigger to this process.
+        ProfilingTrigger trigger =
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY).build();
+        mProfilingManager.addProfilingTriggers(List.of(trigger));
+
+        // Add a global listener.
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
+
+        // There is no need to override any rate limiting for this test as this trigger type is
+        // exempt from rate limiting.
+
+        // Now fake a the system trigger.
+        ProfilingServiceHelper.getInstance()
+                .onProfilingTriggerOccurred(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY);
+
+        // Wait for the profiling to process.
+        waitForCallback(callbackGeneral);
+
+        // Finally, confirm that a result was received.
+        confirmCollectionSuccess(
+                callbackGeneral.mResult,
+                OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX,
+                ProfilingTrigger.TRIGGER_TYPE_ANOMALY);
+    }
+
     @Test
     @RequiresFlagsDisabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
     public void testIsAnomalyTriggerType_flagOff() {
