@@ -2654,6 +2654,18 @@ public class ProfilingService extends IProfilingService.Stub {
             int profilingType,
             @Nullable IProfilingTriggerCallback callback) {
         ProfilingTriggerData trigger = getTriggerDataObject(uid, packageName, triggerType);
+
+        if (trigger == null
+                && android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()
+                && triggerType == ProfilingTrigger.TRIGGER_TYPE_ANOMALY
+                && profilingType == ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP
+                && Flags.memoryLimitAnomalyTriggerExperimentDoNotRelease()) {
+            // In order to evaluate perf impact of the memory limit anomaly trigger, create a fake
+            // trigger object if the real one is non-existent, and proceed with that object.
+            // The object will not be saved in this flow so it will only apply to this session.
+            trigger = new ProfilingTriggerData(uid, packageName, triggerType, 0);
+        }
+
         if (trigger == null) {
             // No trigger object, process isn't registered for this trigger.
             performTriggerCallback(callback);
