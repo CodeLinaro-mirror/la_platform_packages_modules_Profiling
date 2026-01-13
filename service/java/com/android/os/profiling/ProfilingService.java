@@ -47,6 +47,7 @@ import android.os.ProfilingTriggerValueParcel;
 import android.os.ProfilingTriggersWrapper;
 import android.os.QueuedResultsWrapper;
 import android.os.RemoteException;
+import android.profiling.utils.RateLimiterBase;
 import android.provider.DeviceConfig;
 import android.text.TextUtils;
 import android.util.ArrayMap;

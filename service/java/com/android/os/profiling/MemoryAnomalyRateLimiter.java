@@ -16,6 +16,8 @@
 
 package android.os.profiling;
 
+import android.profiling.utils.RateLimiterBase;
+
 import java.util.ArrayList;
 import java.util.List;
 

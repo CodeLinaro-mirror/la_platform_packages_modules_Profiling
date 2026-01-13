@@ -66,11 +66,11 @@ import android.os.profiling.ProfilingService;
 import android.os.profiling.ProfilingService.TracingState;
 import android.os.profiling.ProfilingTriggerData;
 import android.os.profiling.RateLimiter;
-import android.os.profiling.RateLimiterBase;
 import android.os.profiling.TracingSession;
 import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
+import android.profiling.utils.RateLimiterBase;
 import android.util.SparseArray;
 
 import androidx.test.core.app.ApplicationProvider;

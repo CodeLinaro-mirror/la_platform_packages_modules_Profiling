@@ -23,6 +23,7 @@ import static android.os.profiling.DeviceConfigHelper.updateLong;
 import android.annotation.Nullable;
 import android.os.Bundle;
 import android.os.ProfilingManager;
+import android.profiling.utils.RateLimiterBase;
 import android.provider.DeviceConfig;
 import android.util.Log;
 

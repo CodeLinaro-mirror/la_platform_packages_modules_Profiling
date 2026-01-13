@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package android.os.profiling;
+package android.profiling.utils;
 
 import android.annotation.IntDef;
 import android.os.Environment;
@@ -74,7 +74,7 @@ public abstract class RateLimiterBase {
                 RATE_LIMIT_RESULT_BLOCKED_SYSTEM,
             })
     @Retention(RetentionPolicy.SOURCE)
-    @interface RateLimitResult {}
+    public @interface RateLimitResult {}
 
     /**
      * @param handlerCallback Callback for rate limiter to obtain a {@link Handler} to schedule work
