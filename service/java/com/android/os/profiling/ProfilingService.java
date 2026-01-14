@@ -1382,7 +1382,7 @@ public class ProfilingService extends IProfilingService.Stub {
                     uid,
                     keyMostSigBits,
                     keyLeastSigBits,
-                    RateLimiter.statusToResult(status),
+                    statusToResult(status),
                     null,
                     tag,
                     null,
@@ -3717,6 +3717,7 @@ public class ProfilingService extends IProfilingService.Stub {
                                     return getHandler();
                                 }
                             });
+            mRateLimiter.initialize();
         }
         return mRateLimiter;
     }
@@ -3783,6 +3784,16 @@ public class ProfilingService extends IProfilingService.Stub {
             return true;
         }
         return false;
+    }
+
+    private static int statusToResult(@RateLimiterBase.RateLimitResult int resultStatus) {
+        return switch (resultStatus) {
+            case RateLimiterBase.RATE_LIMIT_RESULT_BLOCKED_PROCESS ->
+                    ProfilingResult.ERROR_FAILED_RATE_LIMIT_PROCESS;
+            case RateLimiterBase.RATE_LIMIT_RESULT_BLOCKED_SYSTEM ->
+                    ProfilingResult.ERROR_FAILED_RATE_LIMIT_SYSTEM;
+            default -> ProfilingResult.ERROR_UNKNOWN;
+        };
     }
 
     /**
