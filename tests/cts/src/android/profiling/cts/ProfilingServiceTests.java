@@ -61,6 +61,7 @@ import android.os.TestLooperManager;
 import android.os.profiling.DeviceConfigHelper;
 import android.os.profiling.Flags;
 import android.os.profiling.LoggingHelper;
+import android.os.profiling.MemoryAnomalyRateLimiter;
 import android.os.profiling.ProfilingService;
 import android.os.profiling.ProfilingService.TracingState;
 import android.os.profiling.ProfilingTriggerData;
@@ -117,6 +118,7 @@ public final class ProfilingServiceTests {
 
     private static final int FAKE_UID = 12345;
     private static final int FAKE_UID_2 = 12346;
+    private static final int FAKE_UID_3 = 12347;
 
     // Stub value for tests when system triggered api is not guaranteed to be enabled so
     // {@link ProfilingTrigger#TRIGGER_TYPE_NONE} cannot be accessed. Value is the same as trigger
@@ -149,6 +151,7 @@ public final class ProfilingServiceTests {
     private Instrumentation mInstrumentation;
     private ProfilingService mProfilingService;
     private RateLimiter mRateLimiter;
+    private MemoryAnomalyRateLimiter mMemoryAnomalyRateLimiter;
     private TestLooperManager mLooperManager;
 
     @Before
@@ -173,6 +176,17 @@ public final class ProfilingServiceTests {
                                 }));
         mRateLimiter.initialize();
         mProfilingService.mRateLimiter = mRateLimiter;
+        mMemoryAnomalyRateLimiter =
+                spy(
+                        new MemoryAnomalyRateLimiter(
+                                new RateLimiterBase.HandlerCallback() {
+                                    @Override
+                                    public Handler obtainHandler() {
+                                        return mProfilingService.getHandler();
+                                    }
+                                }));
+        mMemoryAnomalyRateLimiter.initialize();
+        mProfilingService.mMemoryAnomalyRateLimiter = mMemoryAnomalyRateLimiter;
 
         // Override the persist file/directory, for both queue and rate limiter, and instead point
         // to our own file/directory in app storage, since the test app context can't access
@@ -181,6 +195,8 @@ public final class ProfilingServiceTests {
         mRateLimiter.mPersistStoreDir = new File(mContext.getFilesDir(), PERSIST_TEST_DIR);
         mRateLimiter.mPersistStoreDir.mkdir();
         mRateLimiter.mPersistFile = new File(mRateLimiter.mPersistStoreDir, PERSIST_TEST_FILE);
+
+        doReturn(true).when(mMemoryAnomalyRateLimiter).setupPersistDir();
 
         doReturn(true).when(mProfilingService).setupPersistQueueFiles();
         mProfilingService.mPersistStoreDir = new File(mContext.getFilesDir(), PERSIST_TEST_DIR);
@@ -195,6 +211,7 @@ public final class ProfilingServiceTests {
         // Since we use mock files we can't rely on the setup call that would typically come from
         // initialization of rate limiter, so trigger setup manually.
         mRateLimiter.setupFromPersistedData();
+        mMemoryAnomalyRateLimiter.setupFromPersistedData();
 
         doReturn(true).when(mProfilingService).tempProfileExists(any());
     }
@@ -2962,6 +2979,57 @@ public final class ProfilingServiceTests {
                                         null));
         assertThat(throwable).isNotNull();
         assertThat(throwable.getMessage()).isEqualTo(NOT_SYSTEM_CALLER_SECURITY_EXCEPTION);
+    }
+
+    /**
+     * Test that the memory limit anomaly trigger path executes correctly, calling the right rate
+     * limiter and proceeding with the session.
+     */
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public void testMemoryLimiterAnomaly_execution() {
+        // Register for anomaly trigger.
+        mProfilingService.addTrigger(
+                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_ANOMALY, 0);
+
+        // Call processTriggerInternal with anomaly trigger type and null tag.
+        mProfilingService.processTriggerInternal(
+                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_ANOMALY, null, null);
+
+        // Verify that the correct rate limiter was called.
+        verify(mMemoryAnomalyRateLimiter, times(1)).isProfilingRequestAllowed(eq(FAKE_UID));
+        verify(mRateLimiter, never())
+                .isProfilingRequestAllowed(eq(FAKE_UID), anyInt(), anyBoolean(), any());
+
+        // The rate limiter instance is created for the test so it should pass with not overrides,
+        // verify that the session was approved for processing.
+        verify(mProfilingService, times(1)).advanceTracingSession(any(), eq(TracingState.APPROVED));
+    }
+
+    /** Test that the memory limit anomaly rate limiter works as expected. */
+    @Test
+    public void testMemoryLimiterAnomalyRateLimiter() {
+        // This rate limiter does not support any overrides, so nothing to override.
+
+        // Check that the first request for a given uid passes.
+        assertEquals(
+                MemoryAnomalyRateLimiter.RATE_LIMIT_RESULT_ALLOWED,
+                mMemoryAnomalyRateLimiter.isProfilingRequestAllowed(FAKE_UID));
+
+        // Check that the second request for that same uid fails process rate limiting.
+        assertEquals(
+                MemoryAnomalyRateLimiter.RATE_LIMIT_RESULT_BLOCKED_PROCESS,
+                mMemoryAnomalyRateLimiter.isProfilingRequestAllowed(FAKE_UID));
+
+        // Check that the first request for another uid passes.
+        assertEquals(
+                MemoryAnomalyRateLimiter.RATE_LIMIT_RESULT_ALLOWED,
+                mMemoryAnomalyRateLimiter.isProfilingRequestAllowed(FAKE_UID_2));
+
+        // Check that the first request for a third uid fails system rate limiting.
+        assertEquals(
+                MemoryAnomalyRateLimiter.RATE_LIMIT_RESULT_BLOCKED_SYSTEM,
+                mMemoryAnomalyRateLimiter.isProfilingRequestAllowed(FAKE_UID_3));
     }
 
     private File createAndConfirmFileExists(File directory, String fileName) throws Exception {

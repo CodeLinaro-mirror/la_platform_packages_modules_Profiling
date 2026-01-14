@@ -52,7 +52,7 @@ public class RateLimiter extends RateLimiterBase {
     private static final int DEFAULT_COST_PER_SESSION = 10;
     private static final int DEFAULT_COST_PER_SYSTEM_TRIGGERED_SESSION = 5;
 
-    protected static final long DEFAULT_PERSIST_TO_DISK_FREQUENCY_MS = 0;
+    public static final long DEFAULT_PERSIST_TO_DISK_FREQUENCY_MS = 0;
 
     @VisibleForTesting public int mCostJavaHeapDump;
     @VisibleForTesting public int mCostHeapProfile;
