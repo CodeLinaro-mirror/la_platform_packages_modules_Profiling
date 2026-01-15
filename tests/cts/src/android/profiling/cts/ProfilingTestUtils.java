@@ -20,6 +20,8 @@ import static android.os.ProfilingResult.ERROR_NONE;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import static org.junit.Assert.fail;
+
 import android.os.Bundle;
 import android.os.ProfilingResult;
 import android.os.ProfilingTrigger;
@@ -32,6 +34,7 @@ import com.google.common.truth.Expect;
 import com.google.errorprone.annotations.FormatMethod;
 
 import java.util.concurrent.Executor;
+import java.util.function.BooleanSupplier;
 
 public final class ProfilingTestUtils {
     private static final String TAG = ProfilingTestUtils.class.getSimpleName();
@@ -54,6 +57,8 @@ public final class ProfilingTestUtils {
     // totalling 3 seconds.
     private static final int DEVICE_CONFIG_WAIT_TIME_INCREMENT_MS = 250;
     private static final int DEVICE_CONFIG_WAIT_TIME_INCREMENTS_COUNT = 12;
+
+    private static final int WAIT_FOR_CONDITION_INCREMENT_MS = 100;
 
     static class ImmediateExecutor implements Executor {
         public void execute(Runnable r) {
@@ -364,6 +369,29 @@ public final class ProfilingTestUtils {
             } else {
                 sleep(DEVICE_CONFIG_WAIT_TIME_INCREMENT_MS);
             }
+        }
+    }
+
+    /**
+     * Waits until the given condition is true or the timeout is reached.
+     *
+     * @param condition The condition to check.
+     * @param timeoutMs The maximum time to wait in milliseconds.
+     * @param failIfTimedOut Whether to fail test if the timeout is reached without the condition
+     *     passing.
+     */
+    public static void waitForCondition(
+            BooleanSupplier condition, int timeoutMs, boolean failIfTimedOut) {
+        int numIncrements = timeoutMs / WAIT_FOR_CONDITION_INCREMENT_MS;
+        for (int i = 0; i < numIncrements; i++) {
+            if (condition.getAsBoolean()) {
+                return;
+            }
+            sleep(WAIT_FOR_CONDITION_INCREMENT_MS);
+        }
+
+        if (failIfTimedOut && !condition.getAsBoolean()) {
+            fail("Test timed out waiting for condition to be met.");
         }
     }
 }

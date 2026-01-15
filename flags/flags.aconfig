@@ -154,3 +154,14 @@ flag {
         purpose: PURPOSE_BUGFIX
      }
 }
+
+flag {
+     name: "old_files_cleanup"
+     namespace: "system_performance"
+     is_exported: false
+     description: "Cleanup old delivered profiling files."
+     bug: "473875114"
+     metadata {
+        purpose: PURPOSE_BUGFIX
+     }
+}

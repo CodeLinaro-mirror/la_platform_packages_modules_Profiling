@@ -17,6 +17,7 @@
 package android.os.profiling;
 
 import static android.os.Process.SYSTEM_UID;
+import static android.os.ProfilingManager.OUTPUT_FILE_RELATIVE_PATH;
 import static android.os.profiling.DeviceConfigHelper.updateBoolean;
 import static android.os.profiling.DeviceConfigHelper.updateInt;
 
@@ -85,7 +86,6 @@ public class ProfilingService extends IProfilingService.Stub {
     private static final boolean DEBUG = false;
 
     private static final String TEMP_TRACE_PATH = "/data/misc/perfetto-traces/profiling/";
-    private static final String OUTPUT_FILE_RELATIVE_PATH = "/profiling/";
     private static final String OUTPUT_FILE_SECTION_SEPARATOR = "_";
     private static final String OUTPUT_FILE_FIELD_SEPARATOR = "-";
     private static final String OUTPUT_FILE_PREFIX = "profile";
