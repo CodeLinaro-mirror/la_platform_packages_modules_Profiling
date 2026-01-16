@@ -29,6 +29,7 @@ import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 
 import java.io.File;
+import java.io.FileFilter;
 import java.io.IOException;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -112,6 +113,15 @@ import java.util.function.Consumer;
 public final class ProfilingManager {
     private static final String TAG = ProfilingManager.class.getSimpleName();
     private static final boolean DEBUG = false;
+
+    /** Cleanup old files 5 days after delivery. */
+    private static final long OLD_FILE_CLEANUP_AFTER_TIME_MS = 5 * 24 * 60 * 60 * 1_000;
+
+    /**
+     * Perform the cleanup at most once per day. This is tied to object lifecycle and not persisted,
+     * meaning if a new instance is instantiated there will be another cleanup.
+     */
+    private static final long CLEANUP_PERIOD_MS = 24 * 60 * 60 * 1000;
 
     /** Profiling type for {@link #requestProfiling} to request a java heap dump. */
     public static final int PROFILING_TYPE_JAVA_HEAP_DUMP = 1;
@@ -205,6 +215,13 @@ public final class ProfilingManager {
      */
     public static final String KEY_COLLECT_STACK_SAMPLING = "KEY_COLLECT_STACK_SAMPLING";
 
+    /**
+     * Relative path from app files dir to location of profiling output files.
+     *
+     * @hide
+     */
+    public static final String OUTPUT_FILE_RELATIVE_PATH = "/profiling/";
+
     /* End not-public API defined keys/values. */
 
     /**
@@ -223,6 +240,8 @@ public final class ProfilingManager {
 
     private final Object mLock = new Object();
     private final Context mContext;
+
+    private long mLastCleanupMs = 0L;
 
     /** @hide */
     @VisibleForTesting
@@ -392,6 +411,9 @@ public final class ProfilingManager {
      * while a trace is in progress) re-delivery may be attempted using a listener added via this
      * method.
      *
+     * <p>The provided executor may also be used to perform a cleanup of old delivered profiles, if
+     * necessary.
+     *
      * @param executor The executor to call back with.
      * @param listener Listener to be triggered with result.
      */
@@ -436,6 +458,74 @@ public final class ProfilingManager {
                 }
             }
         }
+
+        maybeCleanupOldFiles(executor);
+    }
+
+    private void maybeCleanupOldFiles(final Executor executor) {
+        if (Flags.oldFilesCleanup()) {
+            if (System.currentTimeMillis() > mLastCleanupMs + CLEANUP_PERIOD_MS) {
+                mLastCleanupMs = System.currentTimeMillis();
+
+                executor.execute(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                cleanupOldFiles();
+                            }
+                        });
+            }
+        }
+    }
+
+    private void cleanupOldFiles() {
+        Trace.beginSection("ProfilingManager:maybeCleanupOldFiles");
+        try {
+            File dir = new File(getAppFileDir() + OUTPUT_FILE_RELATIVE_PATH);
+            if (!dir.exists() || !dir.isDirectory()) {
+                if (DEBUG) Log.d(TAG, "Directory does not exist, nothing to cleanup.");
+                return;
+            }
+
+            // Delete files which were last updated more than specified time ago.
+            final long deleteOlderThanMs =
+                    System.currentTimeMillis() - OLD_FILE_CLEANUP_AFTER_TIME_MS;
+
+            File[] oldFiles =
+                    dir.listFiles(
+                            new FileFilter() {
+                                @Override
+                                public boolean accept(File pathname) {
+                                    // Include in list if last modified before the range we defined.
+                                    return pathname.lastModified() < deleteOlderThanMs;
+                                }
+                            });
+
+            if (oldFiles == null || oldFiles.length == 0) {
+                if (DEBUG) {
+                    Log.d(
+                            TAG,
+                            "No files returned, directory is either empty or all files are newer"
+                                    + " than expire time range.");
+                }
+                return;
+            }
+
+            for (int i = 0; i < oldFiles.length; i++) {
+                boolean success = oldFiles[i].delete();
+                if (DEBUG) {
+                    Log.d(
+                            TAG,
+                            String.format(
+                                    "Cleanup old profiling file %s %s.",
+                                    oldFiles[i].getName(), (success ? "succeeded" : "failed")));
+                }
+            }
+        } catch (SecurityException e) {
+            // Ignore and exit.
+            Log.e(TAG, "Failed to cleanup profiling files.", e);
+        }
+        Trace.endSection();
     }
 
     /**
@@ -928,10 +1018,6 @@ public final class ProfilingManager {
                                 if (DEBUG) Log.e(TAG, "Failed to delete file.", exception);
                             }
                         }
-
-                        private String getAppFileDir() {
-                            return mContext.getFilesDir().getPath();
-                        }
                     });
         } catch (RemoteException e) {
             if (DEBUG) Log.d(TAG, "Exception registering service callback", e);
@@ -940,6 +1026,10 @@ public final class ProfilingManager {
                             + " All Profiling requests will fail.");
         }
         return mProfilingService;
+    }
+
+    private String getAppFileDir() {
+        return mContext.getFilesDir().getPath();
     }
 
     private static final class ProfilingRequestCallbackWrapper {
@@ -968,3 +1058,4 @@ public final class ProfilingManager {
         }
     }
 }
+
