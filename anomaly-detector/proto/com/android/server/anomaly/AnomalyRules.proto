@@ -24,6 +24,9 @@ message RuleProto {
   // parameter name, and the value is the parameter value, corresponding to an
   // Android Bundle.
   map<string, BundleValue> rule_condition = 3;
+
+  // The name of the rule.
+  optional string name = 4;
 }
 
 // Represents a single value in an Android Bundle.

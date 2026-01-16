@@ -87,6 +87,7 @@ public final class AnomalyDetectorManager {
         rules.forEach(
                 rule -> {
                     RuleParcel ruleParcel = new RuleParcel();
+                    ruleParcel.name = rule.getName();
                     ruleParcel.anomalyActions = convertListToIntArray(rule.getAnomalyActions());
                     ruleParcel.conditionType = rule.getConditionType();
                     ruleParcel.ruleCondition = rule.getRuleCondition();

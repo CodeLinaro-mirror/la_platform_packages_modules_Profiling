@@ -189,6 +189,7 @@ public final class AnomalyDetectorService extends SystemService {
             for (RuleParcel ruleParcel : ruleParcelList) {
                 RuleInternal.Builder ruleBuilder =
                         new RuleInternal.Builder()
+                                .setName(ruleParcel.name)
                                 .setConditionType(ruleParcel.conditionType)
                                 .setRuleCondition(ruleParcel.ruleCondition);
                 for (@AnomalyActionType int action : ruleParcel.anomalyActions) {

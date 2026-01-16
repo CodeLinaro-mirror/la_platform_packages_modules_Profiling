@@ -87,12 +87,14 @@ public final class AnomalyDetectorControllerImplTests {
                         executor);
         mTestConditionRule =
                 new RuleInternal.Builder()
+                        .setName("test_rule")
                         .setConditionType(TEST_CONDITION_TYPE)
                         .setRuleCondition(new Bundle())
                         .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
                         .build();
         mUnregisteredConditionRule =
                 new RuleInternal.Builder()
+                        .setName("unregistered_test_rule")
                         .setConditionType(UNREGISTERED_CONDITION_TYPE)
                         .setRuleCondition(new Bundle())
                         .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
