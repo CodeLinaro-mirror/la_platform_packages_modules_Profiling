@@ -82,6 +82,7 @@ public final class AnomalyDetectorRegistryImplTests {
 
         RuleInternal rule =
                 new RuleInternal.Builder()
+                        .setName("test_rule")
                         .setConditionType(TEST_CONDITION_TYPE)
                         .setRuleCondition(new Bundle())
                         .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
@@ -98,6 +99,7 @@ public final class AnomalyDetectorRegistryImplTests {
     public void createDetectorForRule_unregistered_returnsNull() {
         RuleInternal rule =
                 new RuleInternal.Builder()
+                        .setName("test_rule")
                         .setConditionType(UNREGISTERED_CONDITION_TYPE)
                         .setRuleCondition(new Bundle())
                         .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)

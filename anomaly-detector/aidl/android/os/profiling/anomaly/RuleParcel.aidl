@@ -25,6 +25,12 @@ import android.os.Bundle;
  */
 parcelable RuleParcel {
    /**
+    * The name of the rule.
+    * {@see android.os.profiling.anomaly.Rule#mName}
+    */
+   String name;
+
+   /**
     * The actions to take when the anomaly condition is met.
     * {@see android.os.profiling.anomaly.Rule#mAnomalyActions}
     */
