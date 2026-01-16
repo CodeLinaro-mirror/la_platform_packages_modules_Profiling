@@ -285,6 +285,9 @@ public final class ProfilingManager {
      * that the section you want profiled is captured. For heap dumps, we recommend testing locally
      * to ensure that the heap dump is collected at the proper time.
      *
+     * <p>The provided executor may also be used to perform a cleanup of old delivered profiles, if
+     * necessary.
+     *
      * @param profilingType Type of profiling to collect.
      * @param parameters Bundle of request related parameters. If the bundle contains any
      *     unrecognized parameters, the request will be fail with {@link
@@ -837,6 +840,18 @@ public final class ProfilingManager {
                                 boolean resultDelivered = false;
                                 for (int i = 0; i < mCallbacks.size(); i++) {
                                     ProfilingRequestCallbackWrapper wrapper = mCallbacks.get(i);
+                                    /*
+                                    We want to proceed with the callback in 2 cases:
+                                    1 - A request specific listener with the same key as the result,
+                                        meaning this listener was provided with the request which
+                                        resulted in this result.
+                                    2 - A global listener, which is identified as a listener with
+                                        null key.
+                                    We only skip the callback if the listener key is non-null
+                                    (meaning it belongs to a specific request) and the key does not
+                                    match the one provided with the result (meaning it belongs to a
+                                    different request).
+                                    */
                                     if (key.equals(wrapper.mKey)) {
                                         // At most 1 listener can have a key matching this result:
                                         // the one registered with the request, remove that one
@@ -874,6 +889,15 @@ public final class ProfilingManager {
                                                                     error,
                                                                     triggerType)));
                                     resultDelivered = true;
+
+                                    if (removeListenerPos == i) {
+                                        // removeListenerPos is set to i if we are in the iteration
+                                        // belonging to a request specific listener which belongs to
+                                        // this result. In this case, try to trigger the cleanup so
+                                        // that the explicit request profiling case gets cleaned up
+                                        // too.
+                                        maybeCleanupOldFiles(wrapper.mExecutor);
+                                    }
                                 }
 
                                 // Remove the single listener that was tied to the request, if

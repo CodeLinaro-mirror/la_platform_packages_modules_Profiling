@@ -2533,6 +2533,70 @@ public final class ProfilingFrameworkTests {
         expect.that(newFile2.exists()).isTrue();
     }
 
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_OLD_FILES_CLEANUP)
+    public void testOldFilesCleanup_requestProfiling() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        disableRateLimiter();
+
+        overrideStackSamplingDeviceConfigValues(
+                false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
+
+        // Add some files to app profiling files directory.
+        File dir =
+                new File(
+                        mContext.getFilesDir().getPath()
+                                + ProfilingManager.OUTPUT_FILE_RELATIVE_PATH);
+        dir.mkdir();
+        assertTrue(dir.exists());
+        assertTrue(dir.isDirectory());
+
+        File newFile1 = new File(dir, "new_file_1" + OUTPUT_FILE_HEAP_PROFILE_SUFFIX);
+        newFile1.createNewFile();
+        assertTrue(newFile1.exists());
+        assertTrue(newFile1.setLastModified(System.currentTimeMillis()));
+
+        File newFile2 = new File(dir, "new_file_2" + OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX);
+        newFile2.createNewFile();
+        assertTrue(newFile2.exists());
+        assertTrue(newFile2.setLastModified(System.currentTimeMillis() - DAY_IN_MS));
+
+        File oldFile1 = new File(dir, "old_file_1" + OUTPUT_FILE_STACK_SAMPLING_SUFFIX);
+        oldFile1.createNewFile();
+        assertTrue(oldFile1.exists());
+        assertTrue(oldFile1.setLastModified(System.currentTimeMillis() - DAY_IN_MS * 6));
+
+        File oldFile2 = new File(dir, "old_file_2" + OUTPUT_FILE_TRACE_SUFFIX);
+        oldFile2.createNewFile();
+        assertTrue(oldFile2.exists());
+        assertTrue(oldFile2.setLastModified(System.currentTimeMillis() - DAY_IN_MS * 14));
+
+        // Request profiling with a request specific listener to trigger cleanup.
+        AppCallback callback = new AppCallback();
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
+                getOneSecondDurationParamBundle(),
+                null,
+                null,
+                new ImmediateExecutor(),
+                callback);
+
+        // Wait for the result.
+        waitForCallback(callback);
+
+        // Wait a bit more for cleanup to finish.
+        waitForCondition(() -> !oldFile2.exists(), ONE_SECOND_MS, false /* failIfTimedOut */);
+
+        // Confirm that old files were deleted.
+        expect.that(oldFile1.exists()).isFalse();
+        expect.that(oldFile2.exists()).isFalse();
+
+        // Confirm that the not too old files remained.
+        expect.that(newFile1.exists()).isTrue();
+        expect.that(newFile2.exists()).isTrue();
+    }
+
     /** Disable the rate limiter and wait long enough for the update to be picked up. */
     private void disableRateLimiter() throws Exception {
         overrideRateLimiter(true);
