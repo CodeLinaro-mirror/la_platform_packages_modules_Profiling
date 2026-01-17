@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 The Android Open Source Project
+ * Copyright (C) 2026 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,36 +14,22 @@
  * limitations under the License.
  */
 
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
-}
-
 filegroup {
-    name: "service-profiling-sources",
+    name: "util-profiling-sources",
     srcs: [
-        "java/**/*.java",
-        ":statslog-profiling-java-gen",
+        "src/**/*.java",
     ],
 }
 
 java_library {
-    name: "service-profiling",
-    defaults: ["standalone-system-server-module-optimize-defaults"],
-    srcs: [":service-profiling-sources"],
+    name: "util-profiling",
+    srcs: [":util-profiling-sources"],
     sdk_version: "system_server_current",
     libs: [
         "framework-annotations-lib",
-        "framework-profiling.impl",
-        "framework-configinfrastructure.stubs.module_lib",
-        "framework-statsd.stubs.module_lib",
     ],
     static_libs: [
-        "modules-utils-build",
-        "profiling_flags_not_exported_lib",
-        "service-profiling-proto",
-        "perfetto_config_java_protos_system_server_current",
-        "anomaly-detector-aconfig-flags-lib",
-        "util-profiling",
+        "util-profiling-proto",
     ],
     lint: {
         strict_updatability_linting: true,
@@ -51,13 +37,12 @@ java_library {
     apex_available: [
         "com.android.profiling",
     ],
-    jarjar_rules: "jarjar-rules.txt",
     min_sdk_version: "35",
     installable: true,
 }
 
 java_library {
-    name: "service-profiling-proto",
+    name: "util-profiling-proto",
     proto: {
         type: "lite",
         canonical_path_from_root: false,
@@ -78,13 +63,4 @@ java_library {
     apex_available: [
         "com.android.profiling",
     ],
-}
-
-genrule {
-    name: "statslog-profiling-java-gen",
-    tools: ["stats-log-api-gen"],
-    cmd: "$(location stats-log-api-gen) --java $(out) --module profiling " +
-        "--javaPackage android.os.profiling --javaClass ProfilingStatsLog " +
-        "--minApiLevel 35",
-    out: ["android/os/profiling/ProfilingStatsLog.java"],
 }
