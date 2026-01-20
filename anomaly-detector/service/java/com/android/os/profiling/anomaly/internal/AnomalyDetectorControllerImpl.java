@@ -25,7 +25,6 @@ import android.util.ArraySet;
 import android.util.Slog;
 
 import com.android.internal.annotations.GuardedBy;
-import com.android.os.profiling.anomaly.collector.SignalCollector;
 import com.android.os.profiling.anomaly.core.AnomalyDetector;
 import com.android.os.profiling.anomaly.core.AnomalyDetectorController;
 import com.android.os.profiling.anomaly.core.AnomalyDetectorRegistry;
@@ -34,6 +33,7 @@ import com.android.os.profiling.anomaly.core.AnomalyHandlerRegistry;
 import com.android.os.profiling.anomaly.core.AnomalyReport;
 import com.android.os.profiling.anomaly.core.RuleStorage;
 import com.android.os.profiling.anomaly.core.SignalCollectorRegistry;
+import com.android.os.profiling.anomaly.core.SignalTypeId;
 
 import java.util.Map;
 import java.util.Objects;
@@ -87,6 +87,8 @@ public class AnomalyDetectorControllerImpl
         mExecutor = executor;
         mSignalCollectorRegistry.addCollectorRegisteredCallback(
                 mExecutor, this::onSignalCollectorRegistered);
+        mSignalCollectorRegistry.addCollectorUnregisteredCallback(
+                mExecutor, this::onSignalCollectorUnregistered);
     }
 
     /** {@inheritDoc} */
@@ -204,15 +206,13 @@ public class AnomalyDetectorControllerImpl
      * <p>This triggers a re-evaluation of all current rules to see if any that were previously
      * inactive can now be activated with this new collector.
      *
-     * @param collector The newly registered collector.
+     * @param signalTypeId The type ID of the newly registered collector.
      */
-    private void onSignalCollectorRegistered(SignalCollector<?, ?> collector) {
+    private void onSignalCollectorRegistered(SignalTypeId signalTypeId) {
         synchronized (mLock) {
             Slog.i(
                     TAG,
-                    "New SignalCollector registered: "
-                            + collector.getClass().getSimpleName()
-                            + ". Re-evaluating rules.");
+                    "New SignalCollector registered: " + signalTypeId + ". Re-evaluating rules.");
 
             for (RuleInternal rule : mRules) {
                 if (!mActiveDetectors.containsKey(rule)) {
@@ -221,5 +221,62 @@ public class AnomalyDetectorControllerImpl
                 }
             }
         }
+    }
+
+    /**
+     * Called when a SignalCollector is unregistered from the system.
+     *
+     * <p>This method iterates through the active detectors and notifies any detector that depends
+     * on the unregistered collector. The affected detectors are then removed.
+     *
+     * @param signalTypeId The type of the collector that was unregistered.
+     */
+    private void onSignalCollectorUnregistered(SignalTypeId signalTypeId) {
+        synchronized (mLock) {
+            Slog.i(
+                    TAG,
+                    "SignalCollector for " + signalTypeId + " unregistered. Re-evaluating rules.");
+
+            mActiveDetectors
+                    .entrySet()
+                    .removeIf(entry -> handleUnregisteredCollectorLocked(entry, signalTypeId));
+        }
+    }
+
+    /**
+     * Handles the logic for a signal collector being unregistered.
+     *
+     * <p>This method is called for each active detector and determines if the detector depends on
+     * the unregistered collector. If it does, it notifies the detector and returns {@code true} to
+     * indicate that the detector should be removed.
+     *
+     * @param entry A map entry containing the rule and its active detector.
+     * @param signalTypeId The type ID of the unregistered collector.
+     * @return {@code true} if the detector was affected and should be removed, {@code false}
+     *     otherwise.
+     */
+    @GuardedBy("mLock")
+    private boolean handleUnregisteredCollectorLocked(
+            Map.Entry<RuleInternal, AnomalyDetector> entry, SignalTypeId signalTypeId) {
+        RuleInternal rule = entry.getKey();
+        AnomalyDetector detector = entry.getValue();
+        AnomalyDetector.AnomalyDetectorFactory factory =
+                mAnomalyDetectorRegistry.getFactory(rule.getConditionType());
+
+        if (factory != null) {
+            Set<SignalTypeId> requiredTypes = factory.getRequiredSignalCollectorTypes();
+            if (requiredTypes.contains(signalTypeId)) {
+                Slog.i(
+                        TAG,
+                        "Detector for rule "
+                                + rule
+                                + " depends on the unregistered collector "
+                                + signalTypeId);
+                detector.onSignalCollectorUnregistered(signalTypeId);
+                Slog.i(TAG, "Removed detector for rule: " + rule);
+                return true;
+            }
+        }
+        return false;
     }
 }

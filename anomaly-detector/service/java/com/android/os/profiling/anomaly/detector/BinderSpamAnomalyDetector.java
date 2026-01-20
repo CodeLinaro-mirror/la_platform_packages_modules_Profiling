@@ -216,4 +216,17 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
             }
         }
     }
+
+    /** {@inheritDoc} */
+    @Override
+    public void onSignalCollectorUnregistered(SignalTypeId signalTypeId) {
+        synchronized (mLock) {
+            Slog.i(TAG, "Signal collector unregistered: " + signalTypeId);
+            // If the unregistered collector is the one we are using, clear the rule.
+            if (mCollector != null
+                    && FACTORY.getRequiredSignalCollectorTypes().contains(signalTypeId)) {
+                setRule(null);
+            }
+        }
+    }
 }
