@@ -241,7 +241,10 @@ public final class ProfilingManager {
     private final Object mLock = new Object();
     private final Context mContext;
 
-    private long mLastCleanupMs = 0L;
+    /** @hide **/
+    @VisibleForTesting
+    @GuardedBy("mLock")
+    public long mLastCleanupMs = 0L;
 
     /** @hide */
     @VisibleForTesting

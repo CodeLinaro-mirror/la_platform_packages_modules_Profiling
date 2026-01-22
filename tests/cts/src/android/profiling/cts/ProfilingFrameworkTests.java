@@ -167,6 +167,10 @@ public final class ProfilingFrameworkTests {
                         android.Manifest.permission.INTERACT_ACROSS_USERS_FULL);
 
         mProfilingManager.clearProfilingTriggers();
+
+        // Ensure there is no lingering profiling files from previous tests.
+        assertFalse(Files.exists(Paths.get(mContext.getFilesDir().getPath().toString(),
+                ProfilingManager.OUTPUT_FILE_RELATIVE_PATH)));
     }
 
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager.mProfilingService lock.
@@ -179,7 +183,24 @@ public final class ProfilingFrameworkTests {
                 new File(
                         mContext.getFilesDir().getPath()
                                 + ProfilingManager.OUTPUT_FILE_RELATIVE_PATH);
-        profilingDir.delete();
+        if (profilingDir.exists()) {
+                deleteFileRecursive(profilingDir.getAbsolutePath());
+        }
+        // Reset last cleanup time to allow old file cleanup on next test.
+        mProfilingManager.mLastCleanupMs = 0;
+    }
+
+    private void deleteFileRecursive(String path) {
+        File file = new File(path);
+        if (file.isDirectory()) {
+                File[] children = file.listFiles();
+                if (children != null) {
+                for (File child : children) {
+                        deleteFileRecursive(child.getAbsolutePath());
+                }
+            }
+        }
+        file.delete();
     }
 
     /** Check and see if we can get a reference to the ProfilingManager service. */
@@ -2508,7 +2529,8 @@ public final class ProfilingFrameworkTests {
         mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
         // Wait a bit for cleanup to finish.
-        waitForCondition(() -> !oldFile2.exists(), ONE_SECOND_MS, false /* failIfTimedOut */);
+        waitForCondition(() -> !oldFile2.exists() && !oldFile1.exists(),
+                ONE_SECOND_MS, true /* failIfTimedOut */);
 
         // Confirm that old files were deleted.
         expect.that(oldFile1.exists()).isFalse();
@@ -2586,7 +2608,9 @@ public final class ProfilingFrameworkTests {
         waitForCallback(callback);
 
         // Wait a bit more for cleanup to finish.
-        waitForCondition(() -> !oldFile2.exists(), ONE_SECOND_MS, false /* failIfTimedOut */);
+        waitForCondition(()
+                             -> !oldFile2.exists() && !oldFile1.exists(),
+            ONE_SECOND_MS, true /* failIfTimedOut */);
 
         // Confirm that old files were deleted.
         expect.that(oldFile1.exists()).isFalse();
