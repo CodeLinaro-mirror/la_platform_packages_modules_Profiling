@@ -38,6 +38,7 @@ android_test {
         "testng",
         "anomaly-detector-aconfig-flags-lib",
         "frameworks-base-testutils",
+        "util-profiling",
     ],
     libs: [
         "android.test.runner.stubs.system",
