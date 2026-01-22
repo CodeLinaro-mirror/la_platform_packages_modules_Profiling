@@ -17,6 +17,7 @@
 package android.os.profiling;
 
 import static android.os.Process.SYSTEM_UID;
+import static android.os.ProfilingManager.OUTPUT_FILE_RELATIVE_PATH;
 import static android.os.profiling.DeviceConfigHelper.updateBoolean;
 import static android.os.profiling.DeviceConfigHelper.updateInt;
 
@@ -47,6 +48,7 @@ import android.os.ProfilingTriggerValueParcel;
 import android.os.ProfilingTriggersWrapper;
 import android.os.QueuedResultsWrapper;
 import android.os.RemoteException;
+import android.profiling.utils.RateLimiterBase;
 import android.provider.DeviceConfig;
 import android.text.TextUtils;
 import android.util.ArrayMap;
@@ -85,7 +87,6 @@ public class ProfilingService extends IProfilingService.Stub {
     private static final boolean DEBUG = false;
 
     private static final String TEMP_TRACE_PATH = "/data/misc/perfetto-traces/profiling/";
-    private static final String OUTPUT_FILE_RELATIVE_PATH = "/profiling/";
     private static final String OUTPUT_FILE_SECTION_SEPARATOR = "_";
     private static final String OUTPUT_FILE_FIELD_SEPARATOR = "-";
     private static final String OUTPUT_FILE_PREFIX = "profile";
@@ -114,6 +115,8 @@ public class ProfilingService extends IProfilingService.Stub {
 
     private static final String RATE_LIMITER_DISABLED_ERROR_MESSAGE =
             "Rate limiter disabled manually via adb.";
+
+    private static final String ANOMALY_MEMORY_LIMIT_TAG = "MEMORY_LIMIT";
 
     private static final int TAG_MAX_CHARS_FOR_FILENAME = 20;
 
@@ -151,6 +154,9 @@ public class ProfilingService extends IProfilingService.Stub {
 
     /** Do not access directly, use {@link #getRateLimiter}. */
     @VisibleForTesting @Nullable public RateLimiter mRateLimiter = null;
+
+    /** Do not access directly, use {@link #getMemoryAnomalyRateLimiter()}. */
+    @VisibleForTesting @Nullable public MemoryAnomalyRateLimiter mMemoryAnomalyRateLimiter = null;
 
     // Timeout for Perfetto process to successfully stop after we try to stop it.
     private int mPerfettoDestroyTimeoutMs;
@@ -1382,7 +1388,7 @@ public class ProfilingService extends IProfilingService.Stub {
                     uid,
                     keyMostSigBits,
                     keyLeastSigBits,
-                    RateLimiter.statusToResult(status),
+                    statusToResult(status),
                     null,
                     tag,
                     null,
@@ -2267,6 +2273,14 @@ public class ProfilingService extends IProfilingService.Stub {
                     false, /* returnToAnomalyDetectorOnly */
                     callback);
         } else {
+            if (android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()
+                    && triggerType == ProfilingTrigger.TRIGGER_TYPE_ANOMALY) {
+                // The only supported caller of this method with the anomaly trigger is the memory
+                // limit anomaly case, set the tag to this so that it can be identified as such both
+                // in this class and by the app developer.
+                tag = ANOMALY_MEMORY_LIMIT_TAG;
+            }
+
             processTriggerInternalNewProfiling(
                     uid,
                     packageName,
@@ -2300,21 +2314,24 @@ public class ProfilingService extends IProfilingService.Stub {
         // All exits from this method which do not result from approving profiling should call both
         // performTriggerCallback and sendToAnomalyDetectorIfAnomalyTrigger.
         if (!performTriggerRegistrationCheckAndRateLimiting(
-                uid, packageName, triggerType, profilingType, callback)) {
+                uid, packageName, triggerType, profilingType, tag, callback)) {
             performTriggerCallback(callback);
 
-            // If we fall into this case, then either rate limiting was denied or the trigger wasn't
-            // registered for the provided process. In the case of anomaly triggers, which bypass
-            // rate limiting, this means the trigger was not registered, so send the result with not
-            // registered error code to anomaly detector if this is for an anomaly trigger.
-            sendToAnomalyDetectorIfAnomalyTrigger(
-                    keyMostSigBits,
-                    keyLeastSigBits,
-                    uid,
-                    null,
-                    AnomalyRequestResult.ERROR_FAILED_TRIGGER_NOT_REGISTERED,
-                    tag,
-                    triggerType);
+            if (!ANOMALY_MEMORY_LIMIT_TAG.equals(tag)) {
+                // If we fall into this case, then either rate limiting was denied or the trigger
+                // wasn't registered for the provided process. Since anomaly triggers except for
+                // memory limit bypass rate limiting, this means the trigger was not registered,
+                // so send the result with not registered error code to anomaly detector if this is
+                // for an anomaly trigger.
+                sendToAnomalyDetectorIfAnomalyTrigger(
+                        keyMostSigBits,
+                        keyLeastSigBits,
+                        uid,
+                        null,
+                        AnomalyRequestResult.ERROR_FAILED_TRIGGER_NOT_REGISTERED,
+                        tag,
+                        triggerType);
+            }
             return;
         }
 
@@ -2461,6 +2478,7 @@ public class ProfilingService extends IProfilingService.Stub {
                 packageName,
                 triggerType,
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
+                tag,
                 callback)) {
 
             performTriggerCallback(callback);
@@ -2652,6 +2670,7 @@ public class ProfilingService extends IProfilingService.Stub {
             @NonNull String packageName,
             int triggerType,
             int profilingType,
+            @Nullable String tag,
             @Nullable IProfilingTriggerCallback callback) {
         ProfilingTriggerData trigger = getTriggerDataObject(uid, packageName, triggerType);
 
@@ -2675,7 +2694,14 @@ public class ProfilingService extends IProfilingService.Stub {
         }
 
         if (ProfilingTrigger.isAnomalyTriggerType(trigger.getTriggerType())) {
-            // Anomaly trigger are not rate limited.
+            // Anomaly trigger are not rate limited, except for memory limit, which has its own rate
+            // limiter. Check whether this anomaly is rate limiter using the tag, if it is then
+            // apply the dedicated rate limiting, if not just return true to bypass rate limiting
+            // entirely.
+            if (ANOMALY_MEMORY_LIMIT_TAG.equals(tag)) {
+                return getMemoryAnomalyRateLimiter().isProfilingRequestAllowed(uid)
+                        == RateLimiter.RATE_LIMIT_RESULT_ALLOWED;
+            }
             return true;
         }
 
@@ -3237,7 +3263,6 @@ public class ProfilingService extends IProfilingService.Stub {
         if (perUidCallbacks == null || perUidCallbacks.isEmpty()) {
             // No callback so no way to obtain a file to populate with result.
             if (DEBUG) Log.d(TAG, "No callback to ProfilingManager, callback dropped.");
-            // TODO: b/333456916 run a cleanup of old results based on a max size and time.
             return;
         }
 
@@ -3708,17 +3733,48 @@ public class ProfilingService extends IProfilingService.Stub {
     }
 
     private RateLimiter getRateLimiter() {
-        if (mRateLimiter == null) {
-            mRateLimiter =
-                    new RateLimiter(
-                            new RateLimiter.HandlerCallback() {
-                                @Override
-                                public Handler obtainHandler() {
-                                    return getHandler();
-                                }
-                            });
+        if (mRateLimiter != null) {
+            return mRateLimiter;
+        }
+        synchronized (mLock) {
+            // Check null again before proceeding in case it was instantiated while waiting for
+            // the lock.
+            if (mRateLimiter == null) {
+                mRateLimiter =
+                        new RateLimiter(
+                                new RateLimiterBase.HandlerCallback() {
+                                    @Override
+                                    public Handler obtainHandler() {
+                                        return getHandler();
+                                    }
+                                });
+                mRateLimiter.initialize();
+            }
         }
         return mRateLimiter;
+    }
+
+    private MemoryAnomalyRateLimiter getMemoryAnomalyRateLimiter() {
+        if (mMemoryAnomalyRateLimiter != null) {
+            return mMemoryAnomalyRateLimiter;
+        }
+
+        synchronized (mLock) {
+            // Check null again before proceeding in case it was instantiated while waiting for
+            // the lock.
+            if (mMemoryAnomalyRateLimiter == null) {
+                mMemoryAnomalyRateLimiter =
+                        new MemoryAnomalyRateLimiter(
+                                new RateLimiterBase.HandlerCallback() {
+                                    @Override
+                                    public Handler obtainHandler() {
+                                        return getHandler();
+                                    }
+                                });
+                mMemoryAnomalyRateLimiter.initialize();
+            }
+        }
+        return mMemoryAnomalyRateLimiter;
     }
 
     private String getFormattedDate() {
@@ -3783,6 +3839,16 @@ public class ProfilingService extends IProfilingService.Stub {
             return true;
         }
         return false;
+    }
+
+    private static int statusToResult(@RateLimiterBase.RateLimitResult int resultStatus) {
+        return switch (resultStatus) {
+            case RateLimiterBase.RATE_LIMIT_RESULT_BLOCKED_PROCESS ->
+                    ProfilingResult.ERROR_FAILED_RATE_LIMIT_PROCESS;
+            case RateLimiterBase.RATE_LIMIT_RESULT_BLOCKED_SYSTEM ->
+                    ProfilingResult.ERROR_FAILED_RATE_LIMIT_SYSTEM;
+            default -> ProfilingResult.ERROR_UNKNOWN;
+        };
     }
 
     /**
