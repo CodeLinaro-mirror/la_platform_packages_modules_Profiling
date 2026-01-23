@@ -72,6 +72,13 @@ public abstract class AnomalyDetector {
     public abstract void setRule(RuleInternal rule);
 
     /**
+     * Called when a signal collector that this detector depends on has been unregistered.
+     *
+     * @param signalTypeId The type of the signal collector that was unregistered.
+     */
+    public abstract void onSignalCollectorUnregistered(SignalTypeId signalTypeId);
+
+    /**
      * Sets the listener to be notified when an anomaly is detected.
      *
      * @param listener The listener to notify, or {@code null} to clear the existing listener.

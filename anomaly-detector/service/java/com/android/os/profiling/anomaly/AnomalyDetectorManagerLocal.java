@@ -55,4 +55,15 @@ public interface AnomalyDetectorManagerLocal {
             @NonNull Class<T> configType,
             @NonNull Class<U> dataType,
             @NonNull SignalCollector<T, U> collector);
+
+    /**
+     * Unregisters a {@link SignalCollector} from the AnomalyDetector service.
+     *
+     * @param <T> The specific type of {@link SignalCollectorConfig} that the collector handles.
+     * @param <U> The specific type of {@link SignalCollectorData} that the collector produces.
+     * @param configType The {@link Class} of the configuration object.
+     * @param dataType The {@link Class} of the data object.
+     */
+    <T extends SignalCollectorConfig, U extends SignalCollectorData> void unregisterSignalCollector(
+            @NonNull Class<T> configType, @NonNull Class<U> dataType);
 }

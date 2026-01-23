@@ -20,6 +20,7 @@ import android.annotation.Nullable;
 import android.util.ArrayMap;
 import android.util.Slog;
 
+import com.android.internal.annotations.GuardedBy;
 import com.android.os.profiling.anomaly.collector.SignalCollector;
 import com.android.os.profiling.anomaly.collector.SignalCollectorConfig;
 import com.android.os.profiling.anomaly.collector.SignalCollectorData;
@@ -42,10 +43,18 @@ public final class SignalCollectorRegistryImpl implements SignalCollectorRegistr
     private static final String TAG = "SignalCollectorRegistry";
 
     /** Map from signal type ID to the registered collector. */
-    private final Map<SignalTypeId, SignalCollector<?, ?>> mRegisteredCollectors = new ArrayMap<>();
+    @GuardedBy("mRegisteredCollectors")
+    private final ArrayMap<SignalTypeId, SignalCollector<?, ?>> mRegisteredCollectors =
+            new ArrayMap<>();
 
     /** Map from callback to the executor it should be invoked on. */
-    private final Map<Consumer<SignalCollector<?, ?>>, Executor> mCollectorRegisteredCallbacks =
+    @GuardedBy("mRegisteredCollectors")
+    private final ArrayMap<Consumer<SignalTypeId>, Executor> mCollectorRegisteredCallbacks =
+            new ArrayMap<>();
+
+    /** Map from callback to the executor it should be invoked on for unregistration events. */
+    @GuardedBy("mRegisteredCollectors")
+    private final ArrayMap<Consumer<SignalTypeId>, Executor> mCollectorUnregisteredCallbacks =
             new ArrayMap<>();
 
     /** {@inheritDoc} */
@@ -57,7 +66,7 @@ public final class SignalCollectorRegistryImpl implements SignalCollectorRegistr
         Objects.requireNonNull(dataType, "Data type cannot be null");
         Objects.requireNonNull(collector, "SignalCollector cannot be null");
 
-        final Map<Consumer<SignalCollector<?, ?>>, Executor> callbacksToExecute;
+        final Map<Consumer<SignalTypeId>, Executor> callbacksToExecute;
         final SignalTypeId signalTypeId = new SignalTypeId(configType, dataType);
         synchronized (mRegisteredCollectors) {
             if (mRegisteredCollectors.containsKey(signalTypeId)) {
@@ -65,13 +74,11 @@ public final class SignalCollectorRegistryImpl implements SignalCollectorRegistr
                         "Collector for " + signalTypeId + " is already registered.");
             }
             mRegisteredCollectors.put(signalTypeId, collector);
-            callbacksToExecute = new ArrayMap<>();
-            callbacksToExecute.putAll(mCollectorRegisteredCallbacks);
+            callbacksToExecute = new ArrayMap<>(mCollectorRegisteredCallbacks);
         }
 
-        for (Map.Entry<Consumer<SignalCollector<?, ?>>, Executor> entry :
-                callbacksToExecute.entrySet()) {
-            entry.getValue().execute(() -> entry.getKey().accept(collector));
+        for (Map.Entry<Consumer<SignalTypeId>, Executor> entry : callbacksToExecute.entrySet()) {
+            entry.getValue().execute(() -> entry.getKey().accept(signalTypeId));
         }
 
         Slog.i(TAG, "Registered SignalCollector for " + signalTypeId);
@@ -79,26 +86,73 @@ public final class SignalCollectorRegistryImpl implements SignalCollectorRegistr
 
     /** {@inheritDoc} */
     @Override
-    public void addCollectorRegisteredCallback(
-            Executor executor, Consumer<SignalCollector<?, ?>> callback) {
-        Objects.requireNonNull(executor, "Executor cannot be null");
-        Objects.requireNonNull(callback, "Callback cannot be null");
-        List<SignalCollector<?, ?>> existingCollectors;
+    public <T extends SignalCollectorConfig, U extends SignalCollectorData>
+            void unregisterSignalCollector(Class<T> configType, Class<U> dataType) {
+        Objects.requireNonNull(configType, "Config type cannot be null");
+        Objects.requireNonNull(dataType, "Data type cannot be null");
+
+        SignalTypeId signalTypeId = new SignalTypeId(configType, dataType);
+        SignalCollector<?, ?> removedCollector;
         synchronized (mRegisteredCollectors) {
-            mCollectorRegisteredCallbacks.put(callback, executor);
-            existingCollectors = new ArrayList<>(mRegisteredCollectors.values());
+            removedCollector = mRegisteredCollectors.remove(signalTypeId);
         }
-        for (SignalCollector<?, ?> collector : existingCollectors) {
-            executor.execute(() -> callback.accept(collector));
+
+        if (removedCollector != null) {
+            final Map<Consumer<SignalTypeId>, Executor> callbacksToExecute;
+            synchronized (mRegisteredCollectors) {
+                callbacksToExecute = new ArrayMap<>(mCollectorUnregisteredCallbacks);
+            }
+            Slog.i(TAG, "Unregistered SignalCollector for " + signalTypeId);
+            for (Map.Entry<Consumer<SignalTypeId>, Executor> entry :
+                    callbacksToExecute.entrySet()) {
+                entry.getValue().execute(() -> entry.getKey().accept(signalTypeId));
+            }
+        } else {
+            Slog.w(TAG, "No SignalCollector found for unregistration: " + signalTypeId);
         }
     }
 
     /** {@inheritDoc} */
     @Override
-    public void removeCollectorRegisteredCallback(Consumer<SignalCollector<?, ?>> callback) {
+    public void addCollectorRegisteredCallback(Executor executor, Consumer<SignalTypeId> callback) {
+        Objects.requireNonNull(executor, "Executor cannot be null");
+        Objects.requireNonNull(callback, "Callback cannot be null");
+        List<SignalTypeId> existingCollectorTypes;
+        synchronized (mRegisteredCollectors) {
+            mCollectorRegisteredCallbacks.put(callback, executor);
+            existingCollectorTypes = new ArrayList<>(mRegisteredCollectors.keySet());
+        }
+        for (SignalTypeId signalTypeId : existingCollectorTypes) {
+            executor.execute(() -> callback.accept(signalTypeId));
+        }
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public void removeCollectorRegisteredCallback(Consumer<SignalTypeId> callback) {
         Objects.requireNonNull(callback, "Callback cannot be null");
         synchronized (mRegisteredCollectors) {
             mCollectorRegisteredCallbacks.remove(callback);
+        }
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public void addCollectorUnregisteredCallback(
+            Executor executor, Consumer<SignalTypeId> callback) {
+        Objects.requireNonNull(executor, "Executor cannot be null");
+        Objects.requireNonNull(callback, "Callback cannot be null");
+        synchronized (mRegisteredCollectors) {
+            mCollectorUnregisteredCallbacks.put(callback, executor);
+        }
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public void removeCollectorUnregisteredCallback(Consumer<SignalTypeId> callback) {
+        Objects.requireNonNull(callback, "Callback cannot be null");
+        synchronized (mRegisteredCollectors) {
+            mCollectorUnregisteredCallbacks.remove(callback);
         }
     }
 
