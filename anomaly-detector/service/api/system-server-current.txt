@@ -30,27 +30,40 @@ package com.android.os.profiling.anomaly.collector {
 
 package com.android.os.profiling.anomaly.collector.binder {
 
-  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public final class BinderSpamConfig implements com.android.os.profiling.anomaly.collector.SignalCollectorConfig {
+  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public final class BinderSpamConfig {
+    method public int getCallCountThreshold();
+    method @NonNull public int[] getCallerImportanceList();
     method @NonNull public String getInterfaceName();
     method @NonNull public String getMethodName();
+    method @NonNull public int[] getUids();
+    method @NonNull public java.time.Duration getWindowSize();
+  }
+
+  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public final class BinderSpamConfigList implements com.android.os.profiling.anomaly.collector.SignalCollectorConfig {
+    ctor public BinderSpamConfigList(@NonNull java.util.List<com.android.os.profiling.anomaly.collector.binder.BinderSpamConfig>);
+    method @NonNull public java.util.List<com.android.os.profiling.anomaly.collector.binder.BinderSpamConfig> getConfigs();
   }
 
   @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public final class BinderSpamData implements com.android.os.profiling.anomaly.collector.SignalCollectorData {
     method public int getCallCount();
+    method public int getCallerImportance();
     method public int getCallingUid();
     method @NonNull public String getInterfaceName();
     method @NonNull public String getMethodName();
-    method public long getTimespanMillis();
+    method public int getServerUid();
+    method @NonNull public java.time.Duration getTimespan();
   }
 
   public static final class BinderSpamData.Builder {
     ctor public BinderSpamData.Builder();
     method @NonNull public com.android.os.profiling.anomaly.collector.binder.BinderSpamData build();
     method @NonNull public com.android.os.profiling.anomaly.collector.binder.BinderSpamData.Builder setCallCount(int);
+    method @NonNull public com.android.os.profiling.anomaly.collector.binder.BinderSpamData.Builder setCallerImportance(int);
     method @NonNull public com.android.os.profiling.anomaly.collector.binder.BinderSpamData.Builder setCallingUid(int);
     method @NonNull public com.android.os.profiling.anomaly.collector.binder.BinderSpamData.Builder setInterfaceName(@NonNull String);
     method @NonNull public com.android.os.profiling.anomaly.collector.binder.BinderSpamData.Builder setMethodName(@NonNull String);
-    method @NonNull public com.android.os.profiling.anomaly.collector.binder.BinderSpamData.Builder setTimespanMillis(long);
+    method @NonNull public com.android.os.profiling.anomaly.collector.binder.BinderSpamData.Builder setServerUid(int);
+    method @NonNull public com.android.os.profiling.anomaly.collector.binder.BinderSpamData.Builder setTimespan(@NonNull java.time.Duration);
   }
 
 }

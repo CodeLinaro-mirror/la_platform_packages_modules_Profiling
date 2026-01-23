@@ -23,7 +23,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import android.os.Bundle;
-import android.os.profiling.anomaly.Rule;
+import android.os.profiling.anomaly.RuleInternal;
 
 import androidx.test.runner.AndroidJUnit4;
 
@@ -80,11 +80,11 @@ public final class AnomalyDetectorRegistryImplTests {
     public void createDetectorForRule_success() {
         when(mMockFactory.create(any(SignalCollectorRegistry.class))).thenReturn(mMockDetector);
 
-        Rule rule =
-                new Rule.Builder()
+        RuleInternal rule =
+                new RuleInternal.Builder()
                         .setConditionType(TEST_CONDITION_TYPE)
                         .setRuleCondition(new Bundle())
-                        .addAnomalyAction(Rule.ACTION_TYPE_LOG)
+                        .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
                         .build();
         AnomalyDetector detector =
                 mRegistry.createDetectorForRule(rule, mMockSignalCollectorRegistry);
@@ -96,11 +96,11 @@ public final class AnomalyDetectorRegistryImplTests {
 
     @Test
     public void createDetectorForRule_unregistered_returnsNull() {
-        Rule rule =
-                new Rule.Builder()
+        RuleInternal rule =
+                new RuleInternal.Builder()
                         .setConditionType(UNREGISTERED_CONDITION_TYPE)
                         .setRuleCondition(new Bundle())
-                        .addAnomalyAction(Rule.ACTION_TYPE_LOG)
+                        .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
                         .build();
         AnomalyDetector detector =
                 mRegistry.createDetectorForRule(rule, mMockSignalCollectorRegistry);
