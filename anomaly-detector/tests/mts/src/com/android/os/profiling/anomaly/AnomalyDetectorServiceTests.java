@@ -59,6 +59,8 @@ public final class AnomalyDetectorServiceTests {
 
     private static class TestData implements SignalCollectorData {}
 
+    private static class AnotherConfig implements SignalCollectorConfig {}
+
     private static class AnotherData implements SignalCollectorData {}
 
     @Before
@@ -81,13 +83,74 @@ public final class AnomalyDetectorServiceTests {
     public void registerSignalCollector_nullArgs_throwsException() {
         assertThrows(
                 NullPointerException.class,
-                () -> registerCollector(null, TestData.class, mTestCollector));
+                () -> registerCollector(/* configType= */ null, TestData.class, mTestCollector));
         assertThrows(
                 NullPointerException.class,
-                () -> registerCollector(TestConfig.class, null, mTestCollector));
+                () -> registerCollector(TestConfig.class, /* dataType= */ null, mTestCollector));
         assertThrows(
                 NullPointerException.class,
-                () -> registerCollector(TestConfig.class, TestData.class, null));
+                () -> registerCollector(TestConfig.class, TestData.class, /* collector= */ null));
+    }
+
+    @Test
+    public void unregisterSignalCollector_removesCollector() {
+        registerCollector(TestConfig.class, TestData.class, mTestCollector);
+        // Unregister the collector.
+        mLocalManager.unregisterSignalCollector(TestConfig.class, TestData.class);
+        // Try to register again, it should not throw.
+        registerCollector(TestConfig.class, TestData.class, mAnotherTestCollector);
+    }
+
+    @Test
+    public void unregisterSignalCollector_withDifferentDataType_doesNotRemoveCollector() {
+        registerCollector(TestConfig.class, TestData.class, mTestCollector);
+
+        // Attempt to unregister with a different data type. This should not affect the
+        // originally registered collector.
+        mLocalManager.unregisterSignalCollector(TestConfig.class, AnotherData.class);
+
+        // Verify that the original collector is still registered by trying to register a new
+        // collector with the same types, which should fail.
+        assertThrows(
+                "A collector with the same config and data type should still be registered.",
+                IllegalArgumentException.class,
+                () -> registerCollector(TestConfig.class, TestData.class, mAnotherTestCollector));
+    }
+
+    @Test
+    public void unregisterSignalCollector_withDifferentConfigType_doesNotRemoveCollector() {
+        registerCollector(TestConfig.class, TestData.class, mTestCollector);
+
+        // Attempt to unregister with a different config type. This should not affect the
+        // originally registered collector.
+        mLocalManager.unregisterSignalCollector(AnotherConfig.class, TestData.class);
+
+        // Verify that the original collector is still registered by trying to register a new
+        // collector with the same types, which should fail.
+        assertThrows(
+                "A collector with the same config and data type should still be registered.",
+                IllegalArgumentException.class,
+                () -> registerCollector(TestConfig.class, TestData.class, mAnotherTestCollector));
+    }
+
+    @Test
+    public void unregisterSignalCollector_notFound_doesNotThrow() {
+        // Unregistering a non-existent collector should not throw an exception.
+        mLocalManager.unregisterSignalCollector(TestConfig.class, TestData.class);
+    }
+
+    @Test
+    public void unregisterSignalCollector_nullArgs_throwsException() {
+        assertThrows(
+                NullPointerException.class,
+                () ->
+                        mLocalManager.unregisterSignalCollector(
+                                /* configType= */ null, TestData.class));
+        assertThrows(
+                NullPointerException.class,
+                () ->
+                        mLocalManager.unregisterSignalCollector(
+                                TestConfig.class, /* dataType= */ null));
     }
 
     /**

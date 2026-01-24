@@ -213,5 +213,12 @@ public final class AnomalyDetectorService extends SystemService {
                         Class<T> configType, Class<U> dataType, SignalCollector<T, U> collector) {
             mSignalCollectorRegistry.registerSignalCollector(configType, dataType, collector);
         }
+
+        /** {@inheritDoc} */
+        @Override
+        public <T extends SignalCollectorConfig, U extends SignalCollectorData>
+                void unregisterSignalCollector(Class<T> configType, Class<U> dataType) {
+            mSignalCollectorRegistry.unregisterSignalCollector(configType, dataType);
+        }
     }
 }

@@ -40,6 +40,7 @@ import com.android.os.profiling.anomaly.collector.binder.BinderSpamData;
 import com.android.os.profiling.anomaly.core.AnomalyDetector;
 import com.android.os.profiling.anomaly.core.AnomalyReport;
 import com.android.os.profiling.anomaly.core.SignalCollectorRegistry;
+import com.android.os.profiling.anomaly.core.SignalTypeId;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -58,8 +59,13 @@ public final class BinderSpamAnomalyDetectorTests {
 
     private static final String TEST_INTERFACE = "com.android.test.ITest";
     private static final String TEST_METHOD = "testMethod";
+    private static final String TEST_WRONG_INTERFACE = "com.android.test.WRONG_INTERFACE";
+    private static final String TEST_WRONG_METHOD = "wrong_method";
     private static final int TEST_CALLER_UID = 10001;
     private static final int TEST_SERVER_UID = 10002;
+    private static final String TEST_RULE_NAME = "test_rule";
+    private static final int TEST_CALL_LIMIT = 100;
+    private static final long TEST_BINDER_CALL_INTERVAL_MILLIS = 1000L;
 
     @org.junit.Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
 
@@ -87,12 +93,13 @@ public final class BinderSpamAnomalyDetectorTests {
         condition.putString(
                 RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME, TEST_INTERFACE);
         condition.putString(RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME, TEST_METHOD);
-        condition.putInt(RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT, 100);
+        condition.putInt(RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT, TEST_CALL_LIMIT);
         condition.putLong(
-                RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS, 1000);
+                RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS,
+                TEST_BINDER_CALL_INTERVAL_MILLIS);
         RuleInternal rule =
                 new RuleInternal.Builder()
-                        .setName("test_rule")
+                        .setName(TEST_RULE_NAME)
                         .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
                         .setRuleCondition(condition)
                         .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
@@ -162,7 +169,7 @@ public final class BinderSpamAnomalyDetectorTests {
                         .setServerUid(TEST_SERVER_UID)
                         .setCallerImportance(IMPORTANCE_FOREGROUND)
                         .setCallCount(200) // 200 calls/sec
-                        .setInterfaceName("com.android.test.WRONG_INTERFACE")
+                        .setInterfaceName(TEST_WRONG_INTERFACE)
                         .setMethodName(TEST_METHOD)
                         .setTimespan(Duration.ofSeconds(1))
                         .build();
@@ -180,7 +187,7 @@ public final class BinderSpamAnomalyDetectorTests {
                         .setCallerImportance(IMPORTANCE_FOREGROUND)
                         .setCallCount(200) // 200 calls/sec
                         .setInterfaceName(TEST_INTERFACE)
-                        .setMethodName("wrong_method")
+                        .setMethodName(TEST_WRONG_METHOD)
                         .setTimespan(Duration.ofSeconds(1))
                         .build();
         mReceiver.onResult(data);
@@ -219,5 +226,34 @@ public final class BinderSpamAnomalyDetectorTests {
         assertThat(summary).contains(data.getInterfaceName());
         assertThat(summary).contains(data.getMethodName());
         assertThat(summary).contains(String.format("%ds", data.getTimespan().toSeconds()));
+    }
+
+    @Test
+    public void onSignalCollectorUnregistered_unsubscribesFromCollector() {
+        BinderSpamAnomalyDetector detector = new BinderSpamAnomalyDetector(mMockRegistry);
+        SubscriptionId subscriptionId = SubscriptionId.generateNew();
+        when(mMockCollector.subscribe(any(), any())).thenReturn(subscriptionId);
+
+        Bundle condition = new Bundle();
+        condition.putString(
+                RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME, TEST_INTERFACE);
+        condition.putString(RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME, TEST_METHOD);
+        condition.putInt(RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT, TEST_CALL_LIMIT);
+        condition.putLong(
+                RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS,
+                TEST_BINDER_CALL_INTERVAL_MILLIS);
+        RuleInternal rule =
+                new RuleInternal.Builder()
+                        .setName("test_rule")
+                        .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
+                        .setRuleCondition(condition)
+                        .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
+                        .build();
+        detector.setRule(rule);
+
+        detector.onSignalCollectorUnregistered(
+                new SignalTypeId(BinderSpamConfigList.class, BinderSpamData.class));
+
+        verify(mMockCollector).unsubscribe(subscriptionId);
     }
 }
