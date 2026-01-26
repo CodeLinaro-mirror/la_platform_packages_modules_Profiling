@@ -48,20 +48,47 @@ public interface SignalCollectorRegistry {
             Class<T> configType, Class<U> dataType, SignalCollector<T, U> collector);
 
     /**
+     * Unregisters a {@link SignalCollector} from the anomaly detector.
+     *
+     * @param <T> The specific type of {@link SignalCollectorConfig} that the collector handles.
+     * @param <U> The specific type of {@link SignalCollectorData} that the collector produces.
+     * @param configType The Class object representing the type of SignalCollectorConfig this
+     *     collector handles.
+     * @param dataType The Class object representing the type of SignalCollectorData this collector
+     *     produces.
+     */
+    <T extends SignalCollectorConfig, U extends SignalCollectorData> void unregisterSignalCollector(
+            Class<T> configType, Class<U> dataType);
+
+    /**
      * Adds a callback to be invoked when a new {@link SignalCollector} is registered.
      *
      * @param executor The executor on which to invoke the callback.
      * @param callback The callback to be invoked.
      */
-    void addCollectorRegisteredCallback(
-            Executor executor, Consumer<SignalCollector<?, ?>> callback);
+    void addCollectorRegisteredCallback(Executor executor, Consumer<SignalTypeId> callback);
 
     /**
      * Removes a callback that was previously added.
      *
      * @param callback The callback to be removed.
      */
-    void removeCollectorRegisteredCallback(Consumer<SignalCollector<?, ?>> callback);
+    void removeCollectorRegisteredCallback(Consumer<SignalTypeId> callback);
+
+    /**
+     * Adds a callback to be invoked when a {@link SignalCollector} is unregistered.
+     *
+     * @param executor The executor on which to invoke the callback.
+     * @param callback The callback to be invoked.
+     */
+    void addCollectorUnregisteredCallback(Executor executor, Consumer<SignalTypeId> callback);
+
+    /**
+     * Removes a callback that was previously added for unregistration events.
+     *
+     * @param callback The callback to be removed.
+     */
+    void removeCollectorUnregisteredCallback(Consumer<SignalTypeId> callback);
 
     /**
      * Retrieves a registered SignalCollector by its config type and verifies the expected data
