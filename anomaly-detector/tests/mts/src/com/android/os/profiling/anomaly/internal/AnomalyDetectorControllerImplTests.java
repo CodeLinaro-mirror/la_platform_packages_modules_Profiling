@@ -35,6 +35,7 @@ import com.android.os.profiling.anomaly.core.AnomalyDetectorRegistry;
 import com.android.os.profiling.anomaly.core.AnomalyHandlerRegistry;
 import com.android.os.profiling.anomaly.core.RuleStorage;
 import com.android.os.profiling.anomaly.core.SignalCollectorRegistry;
+import com.android.os.profiling.anomaly.core.SignalTypeId;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -42,6 +43,7 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 
@@ -62,7 +64,7 @@ public final class AnomalyDetectorControllerImplTests {
     @Mock private AnomalyDetector mMockDetector;
     @Mock private SignalCollector<TestConfig, TestData> mMockCollector;
 
-    @Captor private ArgumentCaptor<Consumer<SignalCollector<?, ?>>> mCallbackCaptor;
+    @Captor private ArgumentCaptor<Consumer<SignalTypeId>> mCallbackCaptor;
 
     private AnomalyDetectorControllerImpl mController;
     private RuleInternal mTestConditionRule;
@@ -135,9 +137,11 @@ public final class AnomalyDetectorControllerImplTests {
     @Test
     public void onSignalCollectorRegistered_activatesPendingRule() {
         // Capture the callback that the controller registers.
+        ArgumentCaptor<Consumer<SignalTypeId>> callbackCaptor =
+                ArgumentCaptor.forClass(Consumer.class);
         verify(mMockSignalCollectorRegistry)
-                .addCollectorRegisteredCallback(any(), mCallbackCaptor.capture());
-        Consumer<SignalCollector<?, ?>> callback = mCallbackCaptor.getValue();
+                .addCollectorRegisteredCallback(any(), callbackCaptor.capture());
+        Consumer<SignalTypeId> callback = callbackCaptor.getValue();
 
         // Set up a rule for which the detector cannot be created initially.
         when(mMockAnomalyDetectorRegistry.getFactory(any(String.class)))
@@ -156,7 +160,7 @@ public final class AnomalyDetectorControllerImplTests {
                 .thenAnswer(i -> mMockDetector);
 
         // Trigger the callback, simulating a new collector being registered.
-        callback.accept(mMockCollector);
+        callback.accept(new SignalTypeId(TestConfig.class, TestData.class));
 
         // Verify the controller re-evaluated the rule and activated the detector this time.
         verify(mMockAnomalyDetectorRegistry, times(2))
@@ -172,5 +176,55 @@ public final class AnomalyDetectorControllerImplTests {
 
         verify(mMockAnomalyDetectorRegistry).getFactory(UNREGISTERED_CONDITION_TYPE);
         verify(mMockAnomalyDetectorRegistry, never()).createDetectorForRule(any(), any());
+    }
+
+    @Test
+    public void onSignalCollectorUnregistered_removesAffectedDetector() {
+        // Capture the unregistration callback.
+        verify(mMockSignalCollectorRegistry)
+                .addCollectorUnregisteredCallback(any(), mCallbackCaptor.capture());
+        Consumer<SignalTypeId> callback = mCallbackCaptor.getValue();
+
+        // Set up a rule and detector.
+        when(mMockAnomalyDetectorRegistry.getFactory(any(String.class)))
+                .thenAnswer(i -> mMockFactory);
+        when(mMockAnomalyDetectorRegistry.createDetectorForRule(any(), any()))
+                .thenAnswer(i -> mMockDetector);
+        SignalTypeId signalTypeId = new SignalTypeId(TestConfig.class, TestData.class);
+        when(mMockFactory.getRequiredSignalCollectorTypes())
+                .thenReturn(Collections.singleton(signalTypeId));
+
+        mController.setRules(Collections.singleton(mTestConditionRule));
+        verify(mMockDetector).setOnAnomalyDetectedListener(mController);
+
+        // Reset the mock to ensure we are only verifying behavior from this point forward.
+        Mockito.reset(mMockAnomalyDetectorRegistry);
+        when(mMockAnomalyDetectorRegistry.getFactory(any(String.class)))
+                .thenAnswer(i -> mMockFactory);
+        when(mMockFactory.getRequiredSignalCollectorTypes())
+                .thenReturn(Collections.singleton(signalTypeId));
+
+        // Simulate the collector being unregistered.
+        callback.accept(signalTypeId);
+
+        // Verify the detector was notified.
+        verify(mMockDetector).onSignalCollectorUnregistered(signalTypeId);
+        verify(mMockAnomalyDetectorRegistry, never()).createDetectorForRule(any(), any());
+    }
+
+    @Test
+    public void onSignalCollectorUnregistered_noActiveRule_doesNothing() {
+        // Capture the unregistration callback.
+        verify(mMockSignalCollectorRegistry)
+                .addCollectorUnregisteredCallback(any(), mCallbackCaptor.capture());
+        Consumer<SignalTypeId> callback = mCallbackCaptor.getValue();
+
+        // No rules are set, so no detectors are active.
+
+        // Simulate a collector being unregistered.
+        callback.accept(new SignalTypeId(TestConfig.class, TestData.class));
+
+        // Verify that no detectors were told about it (because there are none).
+        verify(mMockDetector, never()).onSignalCollectorUnregistered(any());
     }
 }
