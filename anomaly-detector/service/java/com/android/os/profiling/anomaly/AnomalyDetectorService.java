@@ -25,7 +25,7 @@ import android.os.Environment;
 import android.os.OutcomeReceiver;
 import android.os.profiling.anomaly.IAnomalyDetectorService;
 import android.os.profiling.anomaly.RuleInternal;
-import android.os.profiling.anomaly.RuleInternal.AnomalyActionType;
+import android.os.profiling.anomaly.RuleInternal.AnomalyActionTypeInternal;
 import android.os.profiling.anomaly.RuleParcel;
 import android.os.profiling.anomaly.flags.Flags;
 import android.util.ArraySet;
@@ -192,7 +192,7 @@ public final class AnomalyDetectorService extends SystemService {
                                 .setName(ruleParcel.name)
                                 .setConditionType(ruleParcel.conditionType)
                                 .setRuleCondition(ruleParcel.ruleCondition);
-                for (@AnomalyActionType int action : ruleParcel.anomalyActions) {
+                for (@AnomalyActionTypeInternal int action : ruleParcel.anomalyActions) {
                     ruleBuilder.addAnomalyAction(action);
                 }
                 rules.add(ruleBuilder.build());

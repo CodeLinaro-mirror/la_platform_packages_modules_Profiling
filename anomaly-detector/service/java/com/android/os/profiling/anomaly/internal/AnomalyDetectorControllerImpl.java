@@ -18,8 +18,8 @@ package com.android.os.profiling.anomaly.internal;
 
 import android.os.OutcomeReceiver;
 import android.os.profiling.anomaly.RuleInternal;
-import android.os.profiling.anomaly.RuleInternal.AnomalyActionType;
-import android.os.profiling.anomaly.RuleInternal.ConditionType;
+import android.os.profiling.anomaly.RuleInternal.AnomalyActionTypeInternal;
+import android.os.profiling.anomaly.RuleInternal.ConditionTypeInternal;
 import android.util.ArrayMap;
 import android.util.ArraySet;
 import android.util.Slog;
@@ -164,7 +164,7 @@ public class AnomalyDetectorControllerImpl
      */
     @GuardedBy("mLock")
     private void tryToActivateRule(RuleInternal rule) {
-        @ConditionType String conditionType = rule.getConditionType();
+        @ConditionTypeInternal String conditionType = rule.getConditionType();
         AnomalyDetector.AnomalyDetectorFactory factory =
                 mAnomalyDetectorRegistry.getFactory(conditionType);
 
@@ -190,7 +190,7 @@ public class AnomalyDetectorControllerImpl
     public void onAnomalyDetected(AnomalyReport report) {
         Slog.i(TAG, "Anomaly detected");
 
-        for (@AnomalyActionType int action : report.getRule().getAnomalyActions()) {
+        for (@AnomalyActionTypeInternal int action : report.getRule().getAnomalyActions()) {
             AnomalyHandler handler = mAnomalyHandlerRegistry.getHandler(action);
             if (handler != null) {
                 handler.execute(report);

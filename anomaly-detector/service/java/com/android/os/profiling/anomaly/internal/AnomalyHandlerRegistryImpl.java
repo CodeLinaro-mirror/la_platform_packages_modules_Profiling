@@ -17,7 +17,7 @@
 package com.android.os.profiling.anomaly.internal;
 
 import android.os.profiling.anomaly.RuleInternal;
-import android.os.profiling.anomaly.RuleInternal.AnomalyActionType;
+import android.os.profiling.anomaly.RuleInternal.AnomalyActionTypeInternal;
 import android.util.SparseArray;
 
 import com.android.os.profiling.anomaly.core.AnomalyHandler;
@@ -37,13 +37,13 @@ public final class AnomalyHandlerRegistryImpl implements AnomalyHandlerRegistry 
     }
 
     /** Registers a handler for a given action type. */
-    private void register(@AnomalyActionType int action, AnomalyHandler handler) {
+    private void register(@AnomalyActionTypeInternal int action, AnomalyHandler handler) {
         mHandlers.put(action, handler);
     }
 
     /** Returns the handler for a given action type. */
     @Override
-    public AnomalyHandler getHandler(@AnomalyActionType int action) {
+    public AnomalyHandler getHandler(@AnomalyActionTypeInternal int action) {
         return mHandlers.get(action);
     }
 }

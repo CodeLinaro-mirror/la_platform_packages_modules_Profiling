@@ -17,14 +17,18 @@
 package android.os.profiling.anomaly;
 
 import android.annotation.FlaggedApi;
+import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.RequiresApi;
+import android.annotation.StringDef;
 import android.annotation.SystemApi;
 import android.os.Bundle;
-import android.os.profiling.anomaly.RuleInternal.AnomalyActionType;
-import android.os.profiling.anomaly.RuleInternal.ConditionType;
 import android.os.profiling.anomaly.flags.Flags;
 
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 import java.util.List;
 
 /**
@@ -42,6 +46,32 @@ import java.util.List;
 @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
 @FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE)
 public final class Rule extends RuleInternal {
+    /**
+     * Defines the types of actions to be executed by the {@code
+     * com.android.os.profiling.anomaly.AnomalyDetectorService} when an anomaly is detected based on
+     * the {@link Rule}.
+     *
+     * @hide
+     */
+    @Target(ElementType.TYPE_USE)
+    @Retention(RetentionPolicy.SOURCE)
+    @IntDef({
+        ACTION_TYPE_LOG,
+    })
+    // TODO(b/416804300): Add default and other action once finalized.
+    public @interface AnomalyActionType {}
+
+    /**
+     * Defines the possible types of conditions a {@link Rule} can represent.
+     *
+     * @hide
+     */
+    @Retention(RetentionPolicy.SOURCE)
+    @StringDef({
+        CONDITION_TYPE_BINDER_SPAM,
+    })
+    public @interface ConditionType {}
+
     /**
      * Action to write a detailed report of the anomaly to the system log.
      *

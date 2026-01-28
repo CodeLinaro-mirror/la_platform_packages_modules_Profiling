@@ -110,12 +110,14 @@ public class RuleInternal {
 
     /**
      * The list of actions to execute when the rule's condition (see {@link #getConditionType()}) is
-     * met. Each element must be a value from {@link AnomalyActionType}.
+     * met. Each element must be a value from {@link AnomalyActionTypeInternal}.
      */
-    private final List<@AnomalyActionType Integer> mAnomalyActions;
+    private final List<@AnomalyActionTypeInternal Integer> mAnomalyActions;
 
-    /** The type of condition this rule monitors. Must be a value from {@link ConditionType}. */
-    private final @ConditionType String mConditionType;
+    /**
+     * The type of condition this rule monitors. Must be a value from {@link ConditionTypeInternal}.
+     */
+    private final @ConditionTypeInternal String mConditionType;
 
     /**
      * A {@link Bundle} containing the specific parameters for the rule's condition.
@@ -147,13 +149,13 @@ public class RuleInternal {
      * Returns the list of actions to be executed by the anomaly detection service when the {@code
      * mRuleCondition} defined by this rule is met.
      *
-     * <p>Each integer in the list corresponds to a constant defined in {@link AnomalyActionType},
-     * representing a specific action.
+     * <p>Each integer in the list corresponds to a constant defined in {@link
+     * AnomalyActionTypeInternal}, representing a specific action.
      *
-     * @return A non-null list of {@link AnomalyActionType} integers.
+     * @return A non-null list of {@link AnomalyActionTypeInternal} integers.
      */
     @NonNull
-    public List<@AnomalyActionType Integer> getAnomalyActions() {
+    public List<@AnomalyActionTypeInternal Integer> getAnomalyActions() {
         return new ArrayList<>(mAnomalyActions);
     }
 
@@ -163,11 +165,11 @@ public class RuleInternal {
      * <p>The condition type determines how the parameters in the {@link #getRuleCondition()} Bundle
      * are interpreted and what system behavior is being observed.
      *
-     * @return One of the string constants defined in {@link ConditionType}, for example, {@link
-     *     #CONDITION_TYPE_BINDER_SPAM}.
+     * @return One of the string constants defined in {@link ConditionTypeInternal}, for example,
+     *     {@link #CONDITION_TYPE_BINDER_SPAM}.
      */
     @NonNull
-    public @ConditionType String getConditionType() {
+    public @ConditionTypeInternal String getConditionType() {
         return mConditionType;
     }
 
@@ -176,8 +178,8 @@ public class RuleInternal {
      * this rule.
      *
      * <p>The expected keys and value types within this Bundle are strictly dependent on the {@link
-     * ConditionType} returned by {@link #getConditionType()}. For instance, if the type is {@link
-     * #CONDITION_TYPE_BINDER_SPAM}, the Bundle should contain the following keys: {@link
+     * ConditionTypeInternal} returned by {@link #getConditionType()}. For instance, if the type is
+     * {@link #CONDITION_TYPE_BINDER_SPAM}, the Bundle should contain the following keys: {@link
      * #BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME}, {@link
      * #BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME}, {@link
      * #BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT}, and {@link
@@ -268,7 +270,7 @@ public class RuleInternal {
         ACTION_TYPE_LOG,
     })
     // TODO(b/416804300): Add default and other action once finalized.
-    public @interface AnomalyActionType {}
+    public @interface AnomalyActionTypeInternal {}
 
     /**
      * Defines the possible types of conditions a {@link Rule} can represent.
@@ -279,22 +281,7 @@ public class RuleInternal {
     @StringDef({
         CONDITION_TYPE_BINDER_SPAM,
     })
-    public @interface ConditionType {}
-
-    /**
-     * Defines the valid {@link Bundle} keys for the {@link #CONDITION_TYPE_BINDER_SPAM} condition
-     * type.
-     *
-     * @hide
-     */
-    @Retention(RetentionPolicy.SOURCE)
-    @StringDef({
-        BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME,
-        BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME,
-        BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT,
-        BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS
-    })
-    public @interface ConditionTypeBinderSpamBundleParams {}
+    public @interface ConditionTypeInternal {}
 
     /**
      * Builder class for creating {@link RuleInternal} instances.
@@ -303,8 +290,8 @@ public class RuleInternal {
      */
     public static class Builder {
         private String mName = "";
-        private final Set<@AnomalyActionType Integer> mAnomalyActions = new ArraySet<>();
-        private @ConditionType String mConditionType;
+        private final Set<@AnomalyActionTypeInternal Integer> mAnomalyActions = new ArraySet<>();
+        private @ConditionTypeInternal String mConditionType;
         private Bundle mRuleCondition;
 
         /**
@@ -328,11 +315,11 @@ public class RuleInternal {
          * ignored.
          *
          * @param anomalyAction An integer representing one of the constants defined in {@link
-         *     AnomalyActionType}.
+         *     AnomalyActionTypeInternal}.
          * @return This Builder instance for chaining.
          */
         @NonNull
-        public Builder addAnomalyAction(@AnomalyActionType int anomalyAction) {
+        public Builder addAnomalyAction(@AnomalyActionTypeInternal int anomalyAction) {
             mAnomalyActions.add(anomalyAction);
             return this;
         }
@@ -340,11 +327,12 @@ public class RuleInternal {
         /**
          * Sets the type of condition this rule monitors.
          *
-         * @param conditionType One of the string constants defined in {@link ConditionType}.
+         * @param conditionType One of the string constants defined in {@link
+         *     ConditionTypeInternal}.
          * @return This Builder instance for chaining.
          */
         @NonNull
-        public Builder setConditionType(@NonNull @ConditionType String conditionType) {
+        public Builder setConditionType(@NonNull @ConditionTypeInternal String conditionType) {
             Objects.requireNonNull(conditionType, "conditionType cannot be null");
             mConditionType = conditionType;
             return this;

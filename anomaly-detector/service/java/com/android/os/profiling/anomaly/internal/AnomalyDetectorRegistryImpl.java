@@ -18,7 +18,7 @@ package com.android.os.profiling.anomaly.internal;
 
 import android.annotation.Nullable;
 import android.os.profiling.anomaly.RuleInternal;
-import android.os.profiling.anomaly.RuleInternal.ConditionType;
+import android.os.profiling.anomaly.RuleInternal.ConditionTypeInternal;
 import android.util.ArrayMap;
 import android.util.Log;
 
@@ -55,7 +55,8 @@ public final class AnomalyDetectorRegistryImpl implements AnomalyDetectorRegistr
     /** {@inheritDoc} */
     @Override
     @Nullable
-    public AnomalyDetector.AnomalyDetectorFactory getFactory(@ConditionType String conditionType) {
+    public AnomalyDetector.AnomalyDetectorFactory getFactory(
+            @ConditionTypeInternal String conditionType) {
         return mFactories.get(conditionType);
     }
 
@@ -63,7 +64,7 @@ public final class AnomalyDetectorRegistryImpl implements AnomalyDetectorRegistr
     @Override
     public AnomalyDetector createDetectorForRule(
             RuleInternal rule, SignalCollectorRegistry registry) {
-        @ConditionType String conditionType = rule.getConditionType();
+        @ConditionTypeInternal String conditionType = rule.getConditionType();
         AnomalyDetector.AnomalyDetectorFactory factory = getFactory(conditionType);
 
         if (factory == null) {
