@@ -22,7 +22,6 @@ import android.os.profiling.anomaly.RuleInternal.AnomalyActionTypeInternal;
 import android.os.profiling.anomaly.RuleInternal.ConditionTypeInternal;
 import android.util.ArrayMap;
 import android.util.ArraySet;
-import android.util.Slog;
 
 import com.android.internal.annotations.GuardedBy;
 import com.android.os.profiling.anomaly.core.AnomalyDetector;
@@ -34,6 +33,7 @@ import com.android.os.profiling.anomaly.core.AnomalyReport;
 import com.android.os.profiling.anomaly.core.RuleStorage;
 import com.android.os.profiling.anomaly.core.SignalCollectorRegistry;
 import com.android.os.profiling.anomaly.core.SignalTypeId;
+import com.android.os.profiling.anomaly.util.LogUtil;
 
 import java.util.Collections;
 import java.util.Map;
@@ -51,6 +51,7 @@ public class AnomalyDetectorControllerImpl
         implements AnomalyDetectorController, AnomalyDetector.OnAnomalyDetectedListener {
 
     private static final String TAG = "AnomalyDetectorController";
+    private static final LogUtil sLog = new LogUtil(TAG);
 
     private final RuleStorage mRuleStorage;
     private final SignalCollectorRegistry mSignalCollectorRegistry;
@@ -134,12 +135,12 @@ public class AnomalyDetectorControllerImpl
                 new OutcomeReceiver<>() {
                     @Override
                     public void onResult(Void result) {
-                        Slog.i(TAG, "Rules saved to storage.");
+                        sLog.i("Rules saved to storage.");
                     }
 
                     @Override
                     public void onError(Throwable error) {
-                        Slog.e(TAG, "Failed to save rules to storage", error);
+                        sLog.e("Failed to save rules to storage", error);
                     }
                 });
     }
@@ -152,13 +153,13 @@ public class AnomalyDetectorControllerImpl
                 new OutcomeReceiver<Set<RuleInternal>, Throwable>() {
                     @Override
                     public void onResult(Set<RuleInternal> rules) {
-                        Slog.i(TAG, "Rules loaded from storage.");
+                        sLog.i("Rules loaded from storage.");
                         setRulesInternal(rules);
                     }
 
                     @Override
                     public void onError(Throwable error) {
-                        Slog.e(TAG, "Failed to load rules from storage", error);
+                        sLog.e("Failed to load rules from storage", error);
                     }
                 });
     }
@@ -178,7 +179,7 @@ public class AnomalyDetectorControllerImpl
                 mAnomalyDetectorRegistry.getFactory(conditionType);
 
         if (factory == null) {
-            Slog.w(TAG, "No AnomalyDetectorFactory for condition: " + conditionType);
+            sLog.w("No AnomalyDetectorFactory for condition: " + conditionType);
             return;
         }
 
@@ -186,25 +187,25 @@ public class AnomalyDetectorControllerImpl
                 mAnomalyDetectorRegistry.createDetectorForRule(rule, mSignalCollectorRegistry);
 
         if (detector != null) {
-            Slog.i(TAG, "Created detector for rule: " + rule);
+            sLog.i("Created detector for rule: " + rule);
             detector.setOnAnomalyDetectedListener(this);
             mActiveDetectors.put(rule, detector);
         } else {
-            Slog.w(TAG, "Failed to create detector for rule: " + rule);
+            sLog.w("Failed to create detector for rule: " + rule);
         }
     }
 
     /** {@inheritDoc} */
     @Override
     public void onAnomalyDetected(AnomalyReport report) {
-        Slog.i(TAG, "Anomaly detected");
+        sLog.i("Anomaly detected");
 
         for (@AnomalyActionTypeInternal int action : report.getRule().getAnomalyActions()) {
             AnomalyHandler handler = mAnomalyHandlerRegistry.getHandler(action);
             if (handler != null) {
                 handler.execute(report);
             } else {
-                Slog.w(TAG, "No handler registered for action: " + action);
+                sLog.w("No handler registered for action: " + action);
             }
         }
     }
@@ -219,13 +220,11 @@ public class AnomalyDetectorControllerImpl
      */
     private void onSignalCollectorRegistered(SignalTypeId signalTypeId) {
         synchronized (mLock) {
-            Slog.i(
-                    TAG,
-                    "New SignalCollector registered: " + signalTypeId + ". Re-evaluating rules.");
+            sLog.i("New SignalCollector registered: " + signalTypeId + ". Re-evaluating rules.");
 
             for (RuleInternal rule : mRules) {
                 if (!mActiveDetectors.containsKey(rule)) {
-                    Slog.i(TAG, "Re-evaluating rule that was not previously activated: " + rule);
+                    sLog.i("Re-evaluating rule that was not previously activated: " + rule);
                     tryToActivateRule(rule);
                 }
             }
@@ -242,9 +241,7 @@ public class AnomalyDetectorControllerImpl
      */
     private void onSignalCollectorUnregistered(SignalTypeId signalTypeId) {
         synchronized (mLock) {
-            Slog.i(
-                    TAG,
-                    "SignalCollector for " + signalTypeId + " unregistered. Re-evaluating rules.");
+            sLog.i("SignalCollector for " + signalTypeId + " unregistered. Re-evaluating rules.");
 
             mActiveDetectors
                     .entrySet()
@@ -275,14 +272,13 @@ public class AnomalyDetectorControllerImpl
         if (factory != null) {
             Set<SignalTypeId> requiredTypes = factory.getRequiredSignalCollectorTypes();
             if (requiredTypes.contains(signalTypeId)) {
-                Slog.i(
-                        TAG,
+                sLog.i(
                         "Detector for rule "
                                 + rule
                                 + " depends on the unregistered collector "
                                 + signalTypeId);
                 detector.onSignalCollectorUnregistered(signalTypeId);
-                Slog.i(TAG, "Removed detector for rule: " + rule);
+                sLog.i("Removed detector for rule: " + rule);
                 return true;
             }
         }
