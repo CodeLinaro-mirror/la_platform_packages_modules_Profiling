@@ -22,6 +22,7 @@ import android.os.profiling.anomaly.RuleInternal;
 import android.util.Slog;
 
 import com.android.internal.annotations.GuardedBy;
+import com.android.os.profiling.anomaly.attribute.BinderSpamDetailsAttribute;
 import com.android.os.profiling.anomaly.attribute.SummaryAttribute;
 import com.android.os.profiling.anomaly.attribute.UidAttribute;
 import com.android.os.profiling.anomaly.collector.SignalCollector;
@@ -210,6 +211,12 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
                         new AnomalyReportImpl.Builder(mRule)
                                 .addAttribute(new UidAttribute(binderData.getCallingUid()))
                                 .addAttribute(new SummaryAttribute(summary))
+                                .addAttribute(
+                                        new BinderSpamDetailsAttribute(
+                                                binderData.getInterfaceName(),
+                                                binderData.getMethodName(),
+                                                binderData.getCallCount(),
+                                                timespan))
                                 .build();
 
                 reportAnomaly(report);

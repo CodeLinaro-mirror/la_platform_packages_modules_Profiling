@@ -31,6 +31,7 @@ import android.os.profiling.anomaly.RuleInternal;
 
 import androidx.test.runner.AndroidJUnit4;
 
+import com.android.os.profiling.anomaly.attribute.BinderSpamDetailsAttribute;
 import com.android.os.profiling.anomaly.attribute.SummaryAttribute;
 import com.android.os.profiling.anomaly.attribute.UidAttribute;
 import com.android.os.profiling.anomaly.collector.SignalCollector;
@@ -226,6 +227,15 @@ public final class BinderSpamAnomalyDetectorTests {
         assertThat(summary).contains(data.getInterfaceName());
         assertThat(summary).contains(data.getMethodName());
         assertThat(summary).contains(String.format("%ds", data.getTimespan().toSeconds()));
+
+        BinderSpamDetailsAttribute binderSpamDetailsAttribute =
+                report.get(BinderSpamDetailsAttribute.class);
+        assertThat(binderSpamDetailsAttribute).isNotNull();
+        assertThat(binderSpamDetailsAttribute.interfaceName()).isEqualTo(data.getInterfaceName());
+        assertThat(binderSpamDetailsAttribute.methodName()).isEqualTo(data.getMethodName());
+        assertThat(binderSpamDetailsAttribute.callCount()).isEqualTo(data.getCallCount());
+        assertThat(binderSpamDetailsAttribute.timespan())
+                .isEqualTo(data.getTimespan());
     }
 
     @Test
