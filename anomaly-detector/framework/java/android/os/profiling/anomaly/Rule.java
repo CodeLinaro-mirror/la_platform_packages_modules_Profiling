@@ -30,6 +30,7 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Defines a rule for detecting system anomalies.
@@ -250,6 +251,10 @@ public final class Rule extends RuleInternal {
         @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
         @Override
         public Builder setName(@NonNull String name) {
+            Objects.requireNonNull(name, "name cannot be null");
+            if (name.trim().isEmpty()) {
+                throw new IllegalArgumentException("name cannot be empty or blank");
+            }
             super.setName(name);
             return this;
         }
