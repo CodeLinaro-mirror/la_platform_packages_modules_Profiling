@@ -16,7 +16,9 @@
 
 package com.android.os.profiling.anomaly;
 
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
 import android.content.Context;
 
@@ -34,6 +36,10 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+
+import java.io.FileDescriptor;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 
 /**
  * Tests for {@link AnomalyDetectorService}.
@@ -151,6 +157,22 @@ public final class AnomalyDetectorServiceTests {
                 () ->
                         mLocalManager.unregisterSignalCollector(
                                 TestConfig.class, /* dataType= */ null));
+    }
+
+    @Test
+    public void dumpsys_succeeds() {
+        final StringWriter stringWriter = new StringWriter();
+        registerCollector(TestConfig.class, TestData.class, mTestCollector);
+
+        mService.mBinderService.dump(
+                new FileDescriptor(), new PrintWriter(stringWriter), new String[0]);
+        final String dumpOutput = stringWriter.toString();
+        assertFalse(dumpOutput.isEmpty());
+        // Verify that the registered collector's config and data types appear in the dumpsys
+        // output.
+        assertTrue(dumpOutput.contains(TestConfig.class.getSimpleName()));
+        assertTrue(dumpOutput.contains(TestData.class.getSimpleName()));
+        assertTrue(dumpOutput.contains(mTestCollector.getClass().getSimpleName()));
     }
 
     /**

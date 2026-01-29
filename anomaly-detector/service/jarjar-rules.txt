@@ -13,3 +13,4 @@
 # limitations under the License.
 
 rule com.google.protobuf.** com.android.os.profiling.anomaly.jarjar.protobuf.@0
+rule com.android.modules.utils.** com.android.os.profiling.anomaly.jarjar.modules.@0

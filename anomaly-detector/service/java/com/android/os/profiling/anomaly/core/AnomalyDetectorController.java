@@ -34,6 +34,13 @@ public interface AnomalyDetectorController {
     void setRules(Set<RuleInternal> rules);
 
     /**
+     * Return the current set of rules, for dumpsys and testing.
+     *
+     * @return the current rules.
+     */
+    Set<RuleInternal> getRules();
+
+    /**
      * Called when the system services are ready.
      *
      * <p>This triggers the initial loading of rules from storage.
