@@ -303,9 +303,6 @@ public class RuleInternal {
         @NonNull
         public Builder setName(@NonNull String name) {
             Objects.requireNonNull(name, "name cannot be null");
-            if (name.trim().isEmpty()) {
-                throw new IllegalArgumentException("name cannot be empty or blank");
-            }
             mName = name;
             return this;
         }
