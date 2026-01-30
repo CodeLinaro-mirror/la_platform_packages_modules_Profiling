@@ -192,6 +192,11 @@ public final class AnomalyDetectorService extends SystemService {
                     != PackageManager.PERMISSION_GRANTED) {
                 return;
             }
+            dump(pw, args);
+        }
+
+        @VisibleForTesting
+        void dump(PrintWriter pw, String[] args) {
             Set<RuleInternal> rules = mController.getRules();
             if (rules != null) {
                 pw.println("Rules:");
