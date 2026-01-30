@@ -26,5 +26,7 @@ import java.time.Duration;
  */
 public record BinderSpamDetailsAttribute(String interfaceName,
                                          String methodName,
-                                         int callCount,
-                                         Duration timespan) implements AnomalyAttribute {}
+                                         int observedCallCount,
+                                         Duration observedInterval,
+                                         int thresholdCallCount,
+                                         Duration thresholdInterval) implements AnomalyAttribute {}

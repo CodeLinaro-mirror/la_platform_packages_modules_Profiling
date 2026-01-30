@@ -233,9 +233,12 @@ public final class BinderSpamAnomalyDetectorTests {
         assertThat(binderSpamDetailsAttribute).isNotNull();
         assertThat(binderSpamDetailsAttribute.interfaceName()).isEqualTo(data.getInterfaceName());
         assertThat(binderSpamDetailsAttribute.methodName()).isEqualTo(data.getMethodName());
-        assertThat(binderSpamDetailsAttribute.callCount()).isEqualTo(data.getCallCount());
-        assertThat(binderSpamDetailsAttribute.timespan())
+        assertThat(binderSpamDetailsAttribute.observedCallCount()).isEqualTo(data.getCallCount());
+        assertThat(binderSpamDetailsAttribute.observedInterval())
                 .isEqualTo(data.getTimespan());
+        assertThat(binderSpamDetailsAttribute.thresholdCallCount()).isEqualTo(TEST_CALL_LIMIT);
+        assertThat(binderSpamDetailsAttribute.thresholdInterval())
+                .isEqualTo(Duration.ofMillis(TEST_BINDER_CALL_INTERVAL_MILLIS));
     }
 
     @Test

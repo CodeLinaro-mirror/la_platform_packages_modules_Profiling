@@ -216,7 +216,9 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
                                                 binderData.getInterfaceName(),
                                                 binderData.getMethodName(),
                                                 binderData.getCallCount(),
-                                                timespan))
+                                                timespan,
+                                                (int) threshold,
+                                                Duration.ofMillis(intervalMillis)))
                                 .build();
 
                 reportAnomaly(report);
