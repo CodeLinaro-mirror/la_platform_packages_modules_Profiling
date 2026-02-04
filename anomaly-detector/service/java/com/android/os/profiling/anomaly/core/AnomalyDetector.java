@@ -18,7 +18,7 @@ package com.android.os.profiling.anomaly.core;
 
 import android.annotation.Nullable;
 import android.os.profiling.anomaly.RuleInternal;
-import android.os.profiling.anomaly.RuleInternal.ConditionType;
+import android.os.profiling.anomaly.RuleInternal.ConditionTypeInternal;
 
 import java.util.Set;
 
@@ -57,7 +57,7 @@ public abstract class AnomalyDetector {
         Set<SignalTypeId> getRequiredSignalCollectorTypes();
 
         /** Returns the condition type that this factory's detectors handle. */
-        @ConditionType
+        @ConditionTypeInternal
         String getConditionType();
     }
 

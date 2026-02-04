@@ -19,7 +19,7 @@ package com.android.os.profiling.anomaly.handler;
 import static com.google.common.truth.Truth.assertThat;
 
 import android.os.profiling.anomaly.RuleInternal;
-import android.os.profiling.anomaly.RuleInternal.AnomalyActionType;
+import android.os.profiling.anomaly.RuleInternal.AnomalyActionTypeInternal;
 
 import androidx.test.runner.AndroidJUnit4;
 
@@ -32,7 +32,7 @@ import org.junit.runner.RunWith;
 /** Tests for {@link AnomalyHandlerRegistryImpl}. */
 @RunWith(AndroidJUnit4.class)
 public final class AnomalyHandlerRegistryImplTests {
-    @AnomalyActionType private static final int UNREGISTERED_ACTION = 999;
+    @AnomalyActionTypeInternal private static final int UNREGISTERED_ACTION = 999;
 
     private AnomalyHandlerRegistryImpl mRegistry;
 

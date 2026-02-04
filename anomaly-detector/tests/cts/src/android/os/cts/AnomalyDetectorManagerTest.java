@@ -16,10 +16,14 @@
 
 package android.os.cts;
 
+import static com.google.common.truth.Truth.assertThat;
+
 import static org.junit.Assert.assertThrows;
 
 import android.content.Context;
+import android.os.Bundle;
 import android.os.profiling.anomaly.AnomalyDetectorManager;
+import android.os.profiling.anomaly.Rule;
 import android.os.profiling.anomaly.flags.Flags;
 import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
@@ -49,10 +53,26 @@ public final class AnomalyDetectorManagerTest {
 
     private AnomalyDetectorManager mManager;
 
+    private static final int TEST_BINDER_CALL_LIMIT = 100;
+    private static final long TEST_BINDER_CALL_INTERVAL_MILLIS = 60000L;
+
     @Before
     public void setUp() {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         mManager = context.getSystemService(AnomalyDetectorManager.class);
+    }
+
+    private Bundle createBinderSpamBundle() {
+        Bundle bundle = new Bundle();
+        bundle.putString(
+                Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME,
+                "android.app.IActivityManager");
+        bundle.putString(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME, "startService");
+        bundle.putInt(Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT, TEST_BINDER_CALL_LIMIT);
+        bundle.putLong(
+                Rule.BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS,
+                TEST_BINDER_CALL_INTERVAL_MILLIS);
+        return bundle;
     }
 
     @Test
@@ -80,6 +100,30 @@ public final class AnomalyDetectorManagerTest {
 
         try {
             mManager.setAnomalyDetectorRules(Collections.emptySet());
+        } finally {
+            InstrumentationRegistry.getInstrumentation()
+                    .getUiAutomation()
+                    .dropShellPermissionIdentity();
+        }
+    }
+
+    @Test
+    @ApiTest(apis = "android.os.profiling.anomaly.AnomalyDetectorManager#setAnomalyDetectorRules")
+    public void setAnomalyDetectorRules_ruleWithoutName_doesNotThrow() {
+        InstrumentationRegistry.getInstrumentation()
+                .getUiAutomation()
+                .adoptShellPermissionIdentity();
+        try {
+            Rule rule =
+                    new Rule.Builder()
+                            .setConditionType(Rule.CONDITION_TYPE_BINDER_SPAM)
+                            .setRuleCondition(createBinderSpamBundle())
+                            .addAnomalyAction(Rule.ACTION_TYPE_LOG)
+                            .build();
+            assertThat(rule.getName()).isEmpty();
+
+            // This should not throw an exception.
+            mManager.setAnomalyDetectorRules(Collections.singleton(rule));
         } finally {
             InstrumentationRegistry.getInstrumentation()
                     .getUiAutomation()

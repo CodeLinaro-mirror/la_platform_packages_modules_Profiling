@@ -16,9 +16,13 @@
 
 package com.android.os.profiling.anomaly;
 
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
 import android.content.Context;
+import android.os.Bundle;
+import android.os.profiling.anomaly.RuleInternal;
 
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.runner.AndroidJUnit4;
@@ -34,6 +38,11 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+
+import java.io.FileDescriptor;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.util.Collections;
 
 /**
  * Tests for {@link AnomalyDetectorService}.
@@ -151,6 +160,46 @@ public final class AnomalyDetectorServiceTests {
                 () ->
                         mLocalManager.unregisterSignalCollector(
                                 TestConfig.class, /* dataType= */ null));
+    }
+
+    private Bundle createBinderSpamBundle() {
+        Bundle bundle = new Bundle();
+        bundle.putString(
+                RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME,
+                "android.app.IActivityManager");
+        bundle.putString(RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME, "startService");
+        bundle.putInt(RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT, 100);
+        bundle.putLong(
+                RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS, 60000L);
+        return bundle;
+    }
+
+    @Test
+    public void dumpsys_succeeds() {
+        Bundle bundle = createBinderSpamBundle();
+        bundle.putString(
+                RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME,
+                "android.app.IActivityManager");
+        RuleInternal rule =
+                new RuleInternal.Builder()
+                        .setName("test_dumpsys")
+                        .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
+                        .setRuleCondition(bundle)
+                        .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
+                        .build();
+        mService.mController.setRules(Collections.singleton(rule));
+        final StringWriter stringWriter = new StringWriter();
+        final PrintWriter pw = new PrintWriter(stringWriter);
+
+        assertTrue(mService.mController.getRules().size() == 1);
+
+        // The dump method checks DUMP permissions - which the test dosn't have.
+        mService.mBinderService.dump(pw, new String[0]);
+        pw.flush();
+        final String dumpOutput = stringWriter.toString();
+
+        assertFalse(dumpOutput.isEmpty());
+        assertTrue(dumpOutput.contains("android.app.IActivityManager"));
     }
 
     /**
