@@ -277,6 +277,7 @@ public class RuleInternal {
      *
      * @hide
      */
+    @Target(ElementType.TYPE_USE)
     @Retention(RetentionPolicy.SOURCE)
     @StringDef({
         CONDITION_TYPE_BINDER_SPAM,

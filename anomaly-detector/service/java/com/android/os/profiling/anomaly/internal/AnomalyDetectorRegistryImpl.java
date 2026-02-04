@@ -63,9 +63,8 @@ public final class AnomalyDetectorRegistryImpl implements AnomalyDetectorRegistr
 
     /** {@inheritDoc} */
     @Override
-    public AnomalyDetector createDetectorForRule(
-            RuleInternal rule, SignalCollectorRegistry registry) {
-        @ConditionTypeInternal String conditionType = rule.getConditionType();
+    public AnomalyDetector createDetectorForCondition(
+            @ConditionTypeInternal String conditionType, SignalCollectorRegistry registry) {
         AnomalyDetector.AnomalyDetectorFactory factory = getFactory(conditionType);
 
         if (factory == null) {
@@ -73,8 +72,6 @@ public final class AnomalyDetectorRegistryImpl implements AnomalyDetectorRegistr
             return null;
         }
 
-        AnomalyDetector detector = factory.create(registry);
-        detector.setRule(rule);
-        return detector;
+        return factory.create(registry);
     }
 }

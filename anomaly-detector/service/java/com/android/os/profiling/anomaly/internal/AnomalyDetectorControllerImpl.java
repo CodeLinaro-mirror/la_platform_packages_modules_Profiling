@@ -62,7 +62,8 @@ public class AnomalyDetectorControllerImpl
     private final Object mLock = new Object();
 
     @GuardedBy("mLock")
-    private final Map<RuleInternal, AnomalyDetector> mActiveDetectors = new ArrayMap<>();
+    private final Map<@ConditionTypeInternal String, AnomalyDetector> mActiveDetectors =
+            new ArrayMap<>();
 
     @GuardedBy("mLock")
     private Set<RuleInternal> mRules = new ArraySet<>();
@@ -114,17 +115,8 @@ public class AnomalyDetectorControllerImpl
 
     private void setRulesInternal(Set<RuleInternal> rules) {
         synchronized (mLock) {
-            // Flush old rules and detectors
-            for (AnomalyDetector detector : mActiveDetectors.values()) {
-                detector.setRule(null);
-            }
-            mActiveDetectors.clear();
-
             mRules = rules;
-
-            for (RuleInternal rule : mRules) {
-                tryToActivateRule(rule);
-            }
+            updateDetectors();
         }
     }
 
@@ -165,34 +157,57 @@ public class AnomalyDetectorControllerImpl
     }
 
     /**
-     * Attempts to create and activate a detector for the given rule.
+     * Updates the active detectors based on the current set of rules.
      *
-     * <p>This method will do nothing if a factory for the rule's condition is not registered or if
-     * the detector cannot be created (e.g., due to missing dependencies).
+     * <p>This method groups the rules by their condition type and updates the corresponding {@link
+     * AnomalyDetector}. If a detector for a specific condition type does not exist, it attempts to
+     * create one using the {@link AnomalyDetectorRegistry}. Detectors that no longer have any
+     * associated rules are deactivated and removed.
      *
-     * @param rule The rule to be activated.
+     * <p>If a detector cannot be created (e.g., due to missing dependencies), the rules for that
+     * condition type will remain inactive until the necessary dependencies become available.
      */
     @GuardedBy("mLock")
-    private void tryToActivateRule(RuleInternal rule) {
-        @ConditionTypeInternal String conditionType = rule.getConditionType();
-        AnomalyDetector.AnomalyDetectorFactory factory =
-                mAnomalyDetectorRegistry.getFactory(conditionType);
-
-        if (factory == null) {
-            sLog.w("No AnomalyDetectorFactory for condition: " + conditionType);
-            return;
+    private void updateDetectors() {
+        // Group rules by condition type
+        Map<@ConditionTypeInternal String, Set<RuleInternal>> rulesByType = new ArrayMap<>();
+        for (RuleInternal rule : mRules) {
+            rulesByType.computeIfAbsent(rule.getConditionType(), k -> new ArraySet<>()).add(rule);
         }
 
-        AnomalyDetector detector =
-                mAnomalyDetectorRegistry.createDetectorForRule(rule, mSignalCollectorRegistry);
+        // For each type, get/create detector and set rules
+        for (Map.Entry<@ConditionTypeInternal String, Set<RuleInternal>> entry :
+                rulesByType.entrySet()) {
+            @ConditionTypeInternal String conditionType = entry.getKey();
+            Set<RuleInternal> rules = entry.getValue();
 
-        if (detector != null) {
-            sLog.i("Created detector for rule: " + rule);
-            detector.setOnAnomalyDetectedListener(this);
-            mActiveDetectors.put(rule, detector);
-        } else {
-            sLog.w("Failed to create detector for rule: " + rule);
+            AnomalyDetector detector = mActiveDetectors.get(conditionType);
+            if (detector == null) {
+                detector =
+                        mAnomalyDetectorRegistry.createDetectorForCondition(
+                                conditionType, mSignalCollectorRegistry);
+                if (detector != null) {
+                    detector.setOnAnomalyDetectedListener(this);
+                    mActiveDetectors.put(conditionType, detector);
+                } else {
+                    sLog.w("Failed to create detector for condition: " + conditionType);
+                    continue;
+                }
+            }
+            detector.setRules(rules);
         }
+
+        // Cleanup detectors for types that no longer have rules.
+        mActiveDetectors
+                .entrySet()
+                .removeIf(
+                        entry -> {
+                            if (!rulesByType.containsKey(entry.getKey())) {
+                                entry.getValue().setRules(Collections.emptySet());
+                                return true;
+                            }
+                            return false;
+                        });
     }
 
     /** {@inheritDoc} */
@@ -221,13 +236,7 @@ public class AnomalyDetectorControllerImpl
     private void onSignalCollectorRegistered(SignalTypeId signalTypeId) {
         synchronized (mLock) {
             sLog.i("New SignalCollector registered: " + signalTypeId + ". Re-evaluating rules.");
-
-            for (RuleInternal rule : mRules) {
-                if (!mActiveDetectors.containsKey(rule)) {
-                    sLog.i("Re-evaluating rule that was not previously activated: " + rule);
-                    tryToActivateRule(rule);
-                }
-            }
+            updateDetectors();
         }
     }
 
@@ -256,29 +265,30 @@ public class AnomalyDetectorControllerImpl
      * the unregistered collector. If it does, it notifies the detector and returns {@code true} to
      * indicate that the detector should be removed.
      *
-     * @param entry A map entry containing the rule and its active detector.
+     * @param entry A map entry containing the condition type and its active detector.
      * @param signalTypeId The type ID of the unregistered collector.
      * @return {@code true} if the detector was affected and should be removed, {@code false}
      *     otherwise.
      */
     @GuardedBy("mLock")
     private boolean handleUnregisteredCollectorLocked(
-            Map.Entry<RuleInternal, AnomalyDetector> entry, SignalTypeId signalTypeId) {
-        RuleInternal rule = entry.getKey();
+            Map.Entry<@ConditionTypeInternal String, AnomalyDetector> entry,
+            SignalTypeId signalTypeId) {
+        @ConditionTypeInternal String conditionType = entry.getKey();
         AnomalyDetector detector = entry.getValue();
         AnomalyDetector.AnomalyDetectorFactory factory =
-                mAnomalyDetectorRegistry.getFactory(rule.getConditionType());
+                mAnomalyDetectorRegistry.getFactory(conditionType);
 
         if (factory != null) {
             Set<SignalTypeId> requiredTypes = factory.getRequiredSignalCollectorTypes();
             if (requiredTypes.contains(signalTypeId)) {
                 sLog.i(
-                        "Detector for rule "
-                                + rule
+                        "Detector for condition "
+                                + conditionType
                                 + " depends on the unregistered collector "
                                 + signalTypeId);
                 detector.onSignalCollectorUnregistered(signalTypeId);
-                sLog.i("Removed detector for rule: " + rule);
+                sLog.i("Removed detector for condition: " + conditionType);
                 return true;
             }
         }
