@@ -17,7 +17,6 @@
 package com.android.os.profiling.anomaly.internal;
 
 import android.annotation.Nullable;
-import android.os.profiling.anomaly.RuleInternal;
 import android.os.profiling.anomaly.RuleInternal.ConditionTypeInternal;
 import android.util.ArrayMap;
 

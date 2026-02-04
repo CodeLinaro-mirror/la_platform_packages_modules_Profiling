@@ -19,7 +19,6 @@ package com.android.os.profiling.anomaly.detector;
 import android.os.Bundle;
 import android.os.OutcomeReceiver;
 import android.os.profiling.anomaly.RuleInternal;
-import android.util.ArrayMap;
 import android.util.ArraySet;
 
 import com.android.internal.annotations.GuardedBy;
@@ -42,7 +41,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
