@@ -20,12 +20,12 @@ import android.annotation.Nullable;
 import android.os.profiling.anomaly.RuleInternal;
 import android.os.profiling.anomaly.RuleInternal.ConditionTypeInternal;
 import android.util.ArrayMap;
-import android.util.Log;
 
 import com.android.os.profiling.anomaly.core.AnomalyDetector;
 import com.android.os.profiling.anomaly.core.AnomalyDetector.AnomalyDetectorFactory;
 import com.android.os.profiling.anomaly.core.AnomalyDetectorRegistry;
 import com.android.os.profiling.anomaly.core.SignalCollectorRegistry;
+import com.android.os.profiling.anomaly.util.LogUtil;
 
 import java.util.Map;
 import java.util.Set;
@@ -37,6 +37,7 @@ import java.util.Set;
  */
 public final class AnomalyDetectorRegistryImpl implements AnomalyDetectorRegistry {
     private static final String TAG = "AnomalyDetectorRegistry";
+    private static final LogUtil sLog = new LogUtil(TAG);
 
     private final Map<String, AnomalyDetectorFactory> mFactories;
 
@@ -68,7 +69,7 @@ public final class AnomalyDetectorRegistryImpl implements AnomalyDetectorRegistr
         AnomalyDetector.AnomalyDetectorFactory factory = getFactory(conditionType);
 
         if (factory == null) {
-            Log.w(TAG, "No AnomalyDetectorFactory found for condition: " + conditionType);
+            sLog.w("No AnomalyDetectorFactory found for condition: " + conditionType);
             return null;
         }
 

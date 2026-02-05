@@ -19,7 +19,6 @@ package com.android.os.profiling.anomaly.detector;
 import android.os.Bundle;
 import android.os.OutcomeReceiver;
 import android.os.profiling.anomaly.RuleInternal;
-import android.util.Slog;
 
 import com.android.internal.annotations.GuardedBy;
 import com.android.os.profiling.anomaly.attribute.BinderSpamDetailsAttribute;
@@ -35,6 +34,7 @@ import com.android.os.profiling.anomaly.core.AnomalyReport;
 import com.android.os.profiling.anomaly.core.SignalCollectorRegistry;
 import com.android.os.profiling.anomaly.core.SignalTypeId;
 import com.android.os.profiling.anomaly.internal.AnomalyReportImpl;
+import com.android.os.profiling.anomaly.util.LogUtil;
 
 import java.time.Duration;
 import java.util.List;
@@ -47,6 +47,7 @@ import java.util.Set;
  */
 public final class BinderSpamAnomalyDetector extends AnomalyDetector {
     private static final String TAG = "BinderSpamAnomalyDetector";
+    private static final LogUtil sLog = new LogUtil(TAG);
 
     private static final long MILLIS_PER_SECOND = 1000L;
     private static final Duration MINIMUM_TIME_SPAN_ONE_SECOND = Duration.ofSeconds(1);
@@ -145,11 +146,11 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
 
                                     @Override
                                     public void onError(Throwable error) {
-                                        Slog.e(TAG, "Error receiving BinderSpamData", error);
+                                        sLog.e("Error receiving BinderSpamData", error);
                                     }
                                 });
             } else {
-                Slog.w(TAG, "BinderSpam collector not available.");
+                sLog.w("BinderSpam collector not available.");
             }
         }
     }
@@ -176,7 +177,7 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
                                     .BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS);
 
             if (timespan.compareTo(MINIMUM_TIME_SPAN_ONE_SECOND) < 0) {
-                Slog.w(TAG, "Timespan is too short, cannot calculate rate. Ignoring data.");
+                sLog.w("Timespan is too short, cannot calculate rate. Ignoring data.");
                 return;
             }
 
@@ -230,7 +231,7 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
     @Override
     public void onSignalCollectorUnregistered(SignalTypeId signalTypeId) {
         synchronized (mLock) {
-            Slog.i(TAG, "Signal collector unregistered: " + signalTypeId);
+            sLog.i("Signal collector unregistered: " + signalTypeId);
             // If the unregistered collector is the one we are using, clear the rule.
             if (mCollector != null
                     && FACTORY.getRequiredSignalCollectorTypes().contains(signalTypeId)) {
