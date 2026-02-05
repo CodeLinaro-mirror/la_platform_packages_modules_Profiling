@@ -21,7 +21,7 @@ import android.annotation.WorkerThread;
 import android.os.Bundle;
 import android.os.OutcomeReceiver;
 import android.os.profiling.anomaly.RuleInternal;
-import android.os.profiling.anomaly.RuleInternal.AnomalyActionType;
+import android.os.profiling.anomaly.RuleInternal.AnomalyActionTypeInternal;
 import android.util.AtomicFile;
 import android.util.Slog;
 
@@ -248,7 +248,7 @@ public final class RuleStorageImpl implements RuleStorage {
                         .setConditionType(proto.getConditionType())
                         .setRuleCondition(bundle);
 
-        for (@AnomalyActionType int action : proto.getAnomalyActionsList()) {
+        for (@AnomalyActionTypeInternal int action : proto.getAnomalyActionsList()) {
             builder.addAnomalyAction(action);
         }
 

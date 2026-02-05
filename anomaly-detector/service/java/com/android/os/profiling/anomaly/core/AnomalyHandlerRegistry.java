@@ -16,7 +16,7 @@
 
 package com.android.os.profiling.anomaly.core;
 
-import android.os.profiling.anomaly.RuleInternal.AnomalyActionType;
+import android.os.profiling.anomaly.RuleInternal.AnomalyActionTypeInternal;
 
 /**
  * A registry for mapping action types to their handlers.
@@ -25,5 +25,5 @@ import android.os.profiling.anomaly.RuleInternal.AnomalyActionType;
  */
 public interface AnomalyHandlerRegistry {
     /** Returns the handler for a given action type. */
-    AnomalyHandler getHandler(@AnomalyActionType int action);
+    AnomalyHandler getHandler(@AnomalyActionTypeInternal int action);
 }
