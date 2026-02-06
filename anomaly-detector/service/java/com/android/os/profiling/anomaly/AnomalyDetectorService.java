@@ -30,7 +30,6 @@ import android.os.profiling.anomaly.RuleInternal.AnomalyActionTypeInternal;
 import android.os.profiling.anomaly.RuleParcel;
 import android.os.profiling.anomaly.flags.Flags;
 import android.util.ArraySet;
-import android.util.Slog;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.os.profiling.anomaly.collector.SignalCollector;
@@ -48,6 +47,7 @@ import com.android.os.profiling.anomaly.internal.AnomalyDetectorRegistryImpl;
 import com.android.os.profiling.anomaly.internal.AnomalyHandlerRegistryImpl;
 import com.android.os.profiling.anomaly.internal.RuleStorageImpl;
 import com.android.os.profiling.anomaly.internal.SignalCollectorRegistryImpl;
+import com.android.os.profiling.anomaly.util.LogUtil;
 import com.android.server.LocalManagerRegistry;
 import com.android.server.SystemService;
 
@@ -72,11 +72,11 @@ import java.util.concurrent.Executors;
 @FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE)
 public final class AnomalyDetectorService extends SystemService {
     private static final String TAG = "AnomalyDetectorService";
+    private static final LogUtil sLog = new LogUtil(TAG);
 
     @VisibleForTesting final BinderService mBinderService;
 
     @VisibleForTesting final AnomalyDetectorManagerLocal mLocalManager;
-
     private final SignalCollectorRegistry mSignalCollectorRegistry;
 
     @VisibleForTesting final AnomalyDetectorControllerImpl mController;
@@ -103,7 +103,7 @@ public final class AnomalyDetectorService extends SystemService {
             File rulesFile = new File(anomalyServiceDir, "rules.pb");
             ruleStorage = new RuleStorageImpl(rulesFile, ioExecutor);
         } else {
-            Slog.e(TAG, "Failed to create directory: " + anomalyServiceDir.getPath());
+            sLog.e("Failed to create directory: " + anomalyServiceDir.getPath());
             // Create a no-op storage if the directory cannot be created.
             ruleStorage =
                     new RuleStorage() {
@@ -149,7 +149,7 @@ public final class AnomalyDetectorService extends SystemService {
     /** {@inheritDoc} */
     @Override
     public void onStart() {
-        Slog.i(TAG, "onStart()");
+        sLog.i("onStart()");
 
         LocalManagerRegistry.addManager(AnomalyDetectorManagerLocal.class, mLocalManager);
 
