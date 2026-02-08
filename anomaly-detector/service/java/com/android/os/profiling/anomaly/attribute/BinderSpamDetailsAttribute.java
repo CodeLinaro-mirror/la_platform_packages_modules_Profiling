@@ -17,6 +17,7 @@
 package com.android.os.profiling.anomaly.attribute;
 
 import com.android.os.profiling.anomaly.core.AnomalyAttribute;
+
 import java.time.Duration;
 
 /**
@@ -24,9 +25,11 @@ import java.time.Duration;
  *
  * @hide
  */
-public record BinderSpamDetailsAttribute(String interfaceName,
-                                         String methodName,
-                                         int observedCallCount,
-                                         Duration observedInterval,
-                                         int thresholdCallCount,
-                                         Duration thresholdInterval) implements AnomalyAttribute {}
+public record BinderSpamDetailsAttribute(
+        String interfaceName,
+        String methodName,
+        int observedCallCount,
+        Duration observedInterval,
+        int thresholdCallCount,
+        Duration thresholdInterval)
+        implements AnomalyAttribute {}

@@ -16,11 +16,10 @@
 
 package com.android.os.profiling.anomaly.handler;
 
-import android.util.Slog;
-
 import com.android.os.profiling.anomaly.attribute.SummaryAttribute;
 import com.android.os.profiling.anomaly.core.AnomalyHandler;
 import com.android.os.profiling.anomaly.core.AnomalyReport;
+import com.android.os.profiling.anomaly.util.LogUtil;
 
 /**
  * Logs a report of the anomaly to logcat.
@@ -29,19 +28,19 @@ import com.android.os.profiling.anomaly.core.AnomalyReport;
  */
 public final class LogAnomalyHandler implements AnomalyHandler {
     private static final String TAG = "LogAnomalyHandler";
+    private static final LogUtil sLog = new LogUtil(TAG);
 
     @Override
     public void execute(AnomalyReport report) {
         SummaryAttribute summaryAttribute = report.get(SummaryAttribute.class);
         if (summaryAttribute == null) {
-            Slog.w(
-                    TAG,
+            sLog.w(
                     "Cannot log summary: "
                             + "AnomalyReport does not contain a SummaryAttribute component.");
             return;
         }
 
         String summary = summaryAttribute.summary();
-        Slog.w(TAG, "ANOMALY DETECTED: " + summary);
+        sLog.w("ANOMALY DETECTED: " + summary);
     }
 }
