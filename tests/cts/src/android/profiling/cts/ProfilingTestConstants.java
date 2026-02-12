@@ -25,6 +25,8 @@ public final class ProfilingTestConstants {
     public static final String ACTION_KEY = "action";
     public static final int ACTION_INIT_AND_ADD_APP_FULLY_DRAWN_TRIGGER = 1;
     public static final int ACTION_REGISTER_AND_REPORT_FULLY_DRAWN = 2;
+    public static final int ACTION_INIT_AND_ADD_ANOMALY_TRIGGER = 3;
+    public static final int ACTION_REGISTER_AND_ALLOCATE_MEMORY = 4;
 
     public static final int FILE_VALIDATION_RESULT_NONE = -1;
     public static final int FILE_VALIDATION_RESULT_SUCCESS = 0;

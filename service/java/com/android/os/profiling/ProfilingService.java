@@ -2699,6 +2699,9 @@ public class ProfilingService extends IProfilingService.Stub {
             // apply the dedicated rate limiting, if not just return true to bypass rate limiting
             // entirely.
             if (ANOMALY_MEMORY_LIMIT_TAG.equals(tag)) {
+                if (trigger.getPackageName().equals(mDebugPackageName)) {
+                    return true;
+                }
                 return getMemoryAnomalyRateLimiter().isProfilingRequestAllowed(uid)
                         == RateLimiter.RATE_LIMIT_RESULT_ALLOWED;
             }
