@@ -110,6 +110,8 @@ public final class ProfilingServiceTests {
 
     private static final String PERSIST_TEST_DIR = "testdir";
     private static final String PERSIST_TEST_FILE = "testfile";
+    private static final String PERSIST_MEMORY_RATE_LIMITER_TEST_FILE =
+            "testfile-memory-ratelimiter";
 
     // Key most and least significant bits are used to generate a unique key specific to each
     // request. Key is used to pair request back to caller and callbacks so test to keep consistent.
@@ -197,6 +199,11 @@ public final class ProfilingServiceTests {
         mRateLimiter.mPersistFile = new File(mRateLimiter.mPersistStoreDir, PERSIST_TEST_FILE);
 
         doReturn(true).when(mMemoryAnomalyRateLimiter).setupPersistDir();
+        mMemoryAnomalyRateLimiter.mPersistStoreDir = mRateLimiter.mPersistStoreDir;
+        mMemoryAnomalyRateLimiter.mPersistFile =
+                new File(
+                        mMemoryAnomalyRateLimiter.mPersistStoreDir,
+                        PERSIST_MEMORY_RATE_LIMITER_TEST_FILE);
 
         doReturn(true).when(mProfilingService).setupPersistQueueFiles();
         mProfilingService.mPersistStoreDir = new File(mContext.getFilesDir(), PERSIST_TEST_DIR);
@@ -221,6 +228,9 @@ public final class ProfilingServiceTests {
         // Delete any local persist files.
         if (mRateLimiter != null && mRateLimiter.mPersistFile != null) {
             mRateLimiter.mPersistFile.delete();
+        }
+        if (mMemoryAnomalyRateLimiter != null && mMemoryAnomalyRateLimiter.mPersistFile != null) {
+            mMemoryAnomalyRateLimiter.mPersistFile.delete();
         }
         if (mRateLimiter != null && mProfilingService.mPersistQueueFile != null) {
             // This doesn't really do anything as the 2 file objects point to the same actual file
