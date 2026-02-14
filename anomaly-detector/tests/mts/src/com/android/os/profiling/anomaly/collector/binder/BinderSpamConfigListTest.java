@@ -24,7 +24,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -38,15 +37,11 @@ public final class BinderSpamConfigListTest {
                 new BinderSpamConfig.Builder()
                         .setInterfaceName("test.interface1")
                         .setMethodName("testMethod1")
-                        .setCallCountThreshold(10)
-                        .setWindowSize(Duration.ofSeconds(5))
                         .build();
         BinderSpamConfig config2 =
                 new BinderSpamConfig.Builder()
                         .setInterfaceName("test.interface2")
                         .setMethodName("testMethod2")
-                        .setCallCountThreshold(20)
-                        .setWindowSize(Duration.ofSeconds(10))
                         .build();
         List<BinderSpamConfig> configs = Arrays.asList(config1, config2);
         BinderSpamConfigList configList = new BinderSpamConfigList(configs);
