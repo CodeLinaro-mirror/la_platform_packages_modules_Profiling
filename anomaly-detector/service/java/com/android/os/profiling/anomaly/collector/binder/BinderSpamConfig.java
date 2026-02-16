@@ -48,12 +48,6 @@ public final class BinderSpamConfig {
     /** The name of the AIDL method (e.g. startService). */
     private final String mMethodName;
 
-    /** The threshold of call count that should trigger a report if exceeded. */
-    private final int mCallCountThreshold;
-
-    /** The window size of calculating the total count over. */
-    private final Duration mWindowSize;
-
     /** The list of UIDs to apply this config to. */
     private final int[] mUids;
 
@@ -66,8 +60,6 @@ public final class BinderSpamConfig {
     private BinderSpamConfig(Builder builder) {
         mInterfaceName = builder.mInterfaceName;
         mMethodName = builder.mMethodName;
-        mCallCountThreshold = builder.mCallCountThreshold;
-        mWindowSize = builder.mWindowSize;
         mUids = builder.mUids;
         mCallerImportanceList = builder.mCallerImportanceList;
     }
@@ -90,25 +82,6 @@ public final class BinderSpamConfig {
     @NonNull
     public String getMethodName() {
         return mMethodName;
-    }
-
-    /**
-     * Get the threshold of call count that should trigger a report if exceeded.
-     *
-     * @return The threshold of call count.
-     */
-    public int getCallCountThreshold() {
-        return mCallCountThreshold;
-    }
-
-    /**
-     * Get the window size of calculating the total count over.
-     *
-     * @return The window size.
-     */
-    @NonNull
-    public Duration getWindowSize() {
-        return mWindowSize;
     }
 
     /**
@@ -137,8 +110,6 @@ public final class BinderSpamConfig {
         @VisibleForTesting static final Duration MINIMUM_WINDOW_SIZE = Duration.ofSeconds(1);
         private String mInterfaceName;
         private String mMethodName;
-        private int mCallCountThreshold;
-        private Duration mWindowSize;
         // Default to empty list, meaning no filtering.
         private int[] mUids = new int[0];
         // Default to empty list, meaning no filtering.
@@ -172,39 +143,6 @@ public final class BinderSpamConfig {
                 throw new IllegalArgumentException("Method name must not be empty!");
             }
             mMethodName = methodName;
-            return this;
-        }
-
-        /**
-         * Set the threshold of call count that should trigger a report if exceeded.
-         *
-         * @param callCountThreshold The threshold of call count.
-         * @return The builder itself.
-         */
-        @NonNull
-        public Builder setCallCountThreshold(int callCountThreshold) {
-            if (callCountThreshold <= 0) {
-                throw new IllegalArgumentException("Call count threshold must be greater than 0!");
-            }
-            mCallCountThreshold = callCountThreshold;
-            return this;
-        }
-
-        /**
-         * Set the window size of calculating the total count over. The actual window size may be
-         * lower-bounded due to implementation details at a lower level.
-         *
-         * @param windowSize The window size.
-         * @return The builder itself.
-         * @throws IllegalArgumentException When the input window size is less than one second.
-         */
-        @NonNull
-        public Builder setWindowSize(@NonNull Duration windowSize) {
-            if (Objects.requireNonNull(windowSize).compareTo(MINIMUM_WINDOW_SIZE) < 0) {
-                throw new IllegalArgumentException(
-                        "Window size must not be less than " + MINIMUM_WINDOW_SIZE);
-            }
-            mWindowSize = windowSize;
             return this;
         }
 
@@ -245,10 +183,6 @@ public final class BinderSpamConfig {
         public BinderSpamConfig build() {
             Objects.requireNonNull(mInterfaceName);
             Objects.requireNonNull(mMethodName);
-            Objects.requireNonNull(mWindowSize);
-            if (mCallCountThreshold == 0) {
-                throw new IllegalArgumentException("Call count threshold must be set!");
-            }
             return new BinderSpamConfig(this);
         }
     }
