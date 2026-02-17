@@ -132,3 +132,36 @@ flag {
        purpose: PURPOSE_BUGFIX
     }
 }
+
+flag {
+    name: "notify_result_delivered"
+    namespace: "system_performance"
+    is_exported: false
+    description: "Enables notifying the service when the profiling trigger result is delivered."
+    bug: "450568699"
+    metadata {
+       purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+     name: "memory_limit_anomaly_trigger_experiment_do_not_release"
+     namespace: "system_performance"
+     is_exported: false
+     description: "Bypass trigger registration to collect profiling. Experiment only."
+     bug: "475266351"
+     metadata {
+        purpose: PURPOSE_BUGFIX
+     }
+}
+
+flag {
+     name: "old_files_cleanup"
+     namespace: "system_performance"
+     is_exported: false
+     description: "Cleanup old delivered profiling files."
+     bug: "473875114"
+     metadata {
+        purpose: PURPOSE_BUGFIX
+     }
+}

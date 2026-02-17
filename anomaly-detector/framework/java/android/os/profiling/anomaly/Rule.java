@@ -17,15 +17,20 @@
 package android.os.profiling.anomaly;
 
 import android.annotation.FlaggedApi;
+import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.RequiresApi;
+import android.annotation.StringDef;
 import android.annotation.SystemApi;
 import android.os.Bundle;
-import android.os.profiling.anomaly.RuleInternal.AnomalyActionType;
-import android.os.profiling.anomaly.RuleInternal.ConditionType;
 import android.os.profiling.anomaly.flags.Flags;
 
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Defines a rule for detecting system anomalies.
@@ -42,6 +47,32 @@ import java.util.List;
 @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
 @FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE)
 public final class Rule extends RuleInternal {
+    /**
+     * Defines the types of actions to be executed by the {@code
+     * com.android.os.profiling.anomaly.AnomalyDetectorService} when an anomaly is detected based on
+     * the {@link Rule}.
+     *
+     * @hide
+     */
+    @Target(ElementType.TYPE_USE)
+    @Retention(RetentionPolicy.SOURCE)
+    @IntDef({
+        ACTION_TYPE_LOG,
+    })
+    // TODO(b/416804300): Add default and other action once finalized.
+    public @interface AnomalyActionType {}
+
+    /**
+     * Defines the possible types of conditions a {@link Rule} can represent.
+     *
+     * @hide
+     */
+    @Retention(RetentionPolicy.SOURCE)
+    @StringDef({
+        CONDITION_TYPE_BINDER_SPAM,
+    })
+    public @interface ConditionType {}
+
     /**
      * Action to write a detailed report of the anomaly to the system log.
      *
@@ -127,6 +158,19 @@ public final class Rule extends RuleInternal {
     }
 
     /**
+     * Returns the name of the rule.
+     *
+     * @return The name of the rule.
+     * @hide
+     */
+    @NonNull
+    @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
+    @Override
+    public String getName() {
+        return super.getName();
+    }
+
+    /**
      * Returns the list of actions to be executed by the anomaly detection service when the {@code
      * mRuleCondition} defined by this rule is met.
      *
@@ -190,6 +234,31 @@ public final class Rule extends RuleInternal {
      */
     @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
     public static final class Builder extends RuleInternal.Builder {
+        /**
+         * Sets the name of the rule.
+         *
+         * <p>Rule names are displayed in logs and system dumps for debugging purposes and are
+         * intended only for human consumption.
+         *
+         * <p>The name must be a non-empty string. There are no other restrictions on the format. If
+         * a name is not explicitly set using this method, it will default to an empty string.
+         *
+         * @param name The name of the rule.
+         * @return This Builder instance for chaining.
+         * @hide
+         */
+        @NonNull
+        @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
+        @Override
+        public Builder setName(@NonNull String name) {
+            Objects.requireNonNull(name, "name cannot be null");
+            if (name.trim().isEmpty()) {
+                throw new IllegalArgumentException("name cannot be empty or blank");
+            }
+            super.setName(name);
+            return this;
+        }
+
         /**
          * Adds a action to be taken when the rule's condition is met. Duplicate actions will be
          * ignored.

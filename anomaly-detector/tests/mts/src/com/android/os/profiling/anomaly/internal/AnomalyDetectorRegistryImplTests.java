@@ -22,9 +22,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import android.os.Bundle;
-import android.os.profiling.anomaly.RuleInternal;
-
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.os.profiling.anomaly.core.AnomalyDetector;
@@ -77,33 +74,22 @@ public final class AnomalyDetectorRegistryImplTests {
     }
 
     @Test
-    public void createDetectorForRule_success() {
+    public void createDetector_success() {
         when(mMockFactory.create(any(SignalCollectorRegistry.class))).thenReturn(mMockDetector);
 
-        RuleInternal rule =
-                new RuleInternal.Builder()
-                        .setConditionType(TEST_CONDITION_TYPE)
-                        .setRuleCondition(new Bundle())
-                        .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
-                        .build();
         AnomalyDetector detector =
-                mRegistry.createDetectorForRule(rule, mMockSignalCollectorRegistry);
+                mRegistry.createDetectorForCondition(
+                        TEST_CONDITION_TYPE, mMockSignalCollectorRegistry);
 
         assertThat(detector).isEqualTo(mMockDetector);
         verify(mMockFactory).create(mMockSignalCollectorRegistry);
-        verify(mMockDetector).setRule(rule);
     }
 
     @Test
-    public void createDetectorForRule_unregistered_returnsNull() {
-        RuleInternal rule =
-                new RuleInternal.Builder()
-                        .setConditionType(UNREGISTERED_CONDITION_TYPE)
-                        .setRuleCondition(new Bundle())
-                        .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
-                        .build();
+    public void createDetector_unregistered_returnsNull() {
         AnomalyDetector detector =
-                mRegistry.createDetectorForRule(rule, mMockSignalCollectorRegistry);
+                mRegistry.createDetectorForCondition(
+                        UNREGISTERED_CONDITION_TYPE, mMockSignalCollectorRegistry);
         assertThat(detector).isNull();
     }
 }

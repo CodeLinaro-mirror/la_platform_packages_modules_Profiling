@@ -33,6 +33,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -58,7 +59,9 @@ import android.os.ProfilingTrigger;
 import android.os.ProfilingTriggerValueParcel;
 import android.os.TestLooperManager;
 import android.os.profiling.DeviceConfigHelper;
+import android.os.profiling.Flags;
 import android.os.profiling.LoggingHelper;
+import android.os.profiling.MemoryAnomalyRateLimiter;
 import android.os.profiling.ProfilingService;
 import android.os.profiling.ProfilingService.TracingState;
 import android.os.profiling.ProfilingTriggerData;
@@ -67,6 +70,7 @@ import android.os.profiling.TracingSession;
 import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
+import android.profiling.utils.RateLimiterBase;
 import android.util.SparseArray;
 
 import androidx.test.core.app.ApplicationProvider;
@@ -114,6 +118,7 @@ public final class ProfilingServiceTests {
 
     private static final int FAKE_UID = 12345;
     private static final int FAKE_UID_2 = 12346;
+    private static final int FAKE_UID_3 = 12347;
 
     // Stub value for tests when system triggered api is not guaranteed to be enabled so
     // {@link ProfilingTrigger#TRIGGER_TYPE_NONE} cannot be accessed. Value is the same as trigger
@@ -146,6 +151,7 @@ public final class ProfilingServiceTests {
     private Instrumentation mInstrumentation;
     private ProfilingService mProfilingService;
     private RateLimiter mRateLimiter;
+    private MemoryAnomalyRateLimiter mMemoryAnomalyRateLimiter;
     private TestLooperManager mLooperManager;
 
     @Before
@@ -168,15 +174,29 @@ public final class ProfilingServiceTests {
                                         return null;
                                     }
                                 }));
+        mRateLimiter.initialize();
         mProfilingService.mRateLimiter = mRateLimiter;
+        mMemoryAnomalyRateLimiter =
+                spy(
+                        new MemoryAnomalyRateLimiter(
+                                new RateLimiterBase.HandlerCallback() {
+                                    @Override
+                                    public Handler obtainHandler() {
+                                        return mProfilingService.getHandler();
+                                    }
+                                }));
+        mMemoryAnomalyRateLimiter.initialize();
+        mProfilingService.mMemoryAnomalyRateLimiter = mMemoryAnomalyRateLimiter;
 
         // Override the persist file/directory, for both queue and rate limiter, and instead point
         // to our own file/directory in app storage, since the test app context can't access
         // /data/system
-        doReturn(true).when(mRateLimiter).setupPersistFiles();
+        doReturn(true).when(mRateLimiter).setupPersistDir();
         mRateLimiter.mPersistStoreDir = new File(mContext.getFilesDir(), PERSIST_TEST_DIR);
         mRateLimiter.mPersistStoreDir.mkdir();
         mRateLimiter.mPersistFile = new File(mRateLimiter.mPersistStoreDir, PERSIST_TEST_FILE);
+
+        doReturn(true).when(mMemoryAnomalyRateLimiter).setupPersistDir();
 
         doReturn(true).when(mProfilingService).setupPersistQueueFiles();
         mProfilingService.mPersistStoreDir = new File(mContext.getFilesDir(), PERSIST_TEST_DIR);
@@ -191,6 +211,7 @@ public final class ProfilingServiceTests {
         // Since we use mock files we can't rely on the setup call that would typically come from
         // initialization of rate limiter, so trigger setup manually.
         mRateLimiter.setupFromPersistedData();
+        mMemoryAnomalyRateLimiter.setupFromPersistedData();
 
         doReturn(true).when(mProfilingService).tempProfileExists(any());
     }
@@ -790,26 +811,26 @@ public final class ProfilingServiceTests {
 
         // Remove all records
         long currentTimeMillis = System.currentTimeMillis();
-        mRateLimiter.mPastRunsHour.removeOlderThan(currentTimeMillis);
-        mRateLimiter.mPastRunsDay.removeOlderThan(currentTimeMillis);
-        mRateLimiter.mPastRunsWeek.removeOlderThan(currentTimeMillis);
+        getRateLimiterPastRunsHour().removeOlderThan(currentTimeMillis);
+        getRateLimiterPastRunsDay().removeOlderThan(currentTimeMillis);
+        getRateLimiterPastRunsWeek().removeOlderThan(currentTimeMillis);
 
         // Add some records. Since records are being added directly rather than through normal
         // request flow, this will not trigger a persist regardless of persist frequency.
-        mRateLimiter.mPastRunsHour.add(1, 1, currentTimeMillis - 1000);
-        mRateLimiter.mPastRunsDay.add(1, 1, currentTimeMillis - 1000);
-        mRateLimiter.mPastRunsWeek.add(1, 1, currentTimeMillis - 1000);
-        mRateLimiter.mPastRunsDay.add(2, 1, currentTimeMillis - (60 * 60 * 1000) - 1000);
-        mRateLimiter.mPastRunsWeek.add(2, 1, currentTimeMillis - (60 * 60 * 1000) - 1000);
-        mRateLimiter.mPastRunsWeek.add(2, 1, currentTimeMillis - (24 * 60 * 60 * 1000) - 1000);
+        getRateLimiterPastRunsHour().add(1, 1, currentTimeMillis - 1000);
+        getRateLimiterPastRunsDay().add(1, 1, currentTimeMillis - 1000);
+        getRateLimiterPastRunsWeek().add(1, 1, currentTimeMillis - 1000);
+        getRateLimiterPastRunsDay().add(2, 1, currentTimeMillis - (60 * 60 * 1000) - 1000);
+        getRateLimiterPastRunsWeek().add(2, 1, currentTimeMillis - (60 * 60 * 1000) - 1000);
+        getRateLimiterPastRunsWeek().add(2, 1, currentTimeMillis - (24 * 60 * 60 * 1000) - 1000);
 
         // Store a copy of the backing data for each type
-        RateLimiter.CollectionEntry[] hourEntriesOriginal =
-                mRateLimiter.mPastRunsHour.getEntriesCopy();
-        RateLimiter.CollectionEntry[] dayEntriesOriginal =
-                mRateLimiter.mPastRunsDay.getEntriesCopy();
-        RateLimiter.CollectionEntry[] weekEntriesOriginal =
-                mRateLimiter.mPastRunsWeek.getEntriesCopy();
+        RateLimiterBase.CollectionEntry[] hourEntriesOriginal =
+                getRateLimiterPastRunsHour().getEntriesCopy();
+        RateLimiterBase.CollectionEntry[] dayEntriesOriginal =
+                getRateLimiterPastRunsDay().getEntriesCopy();
+        RateLimiterBase.CollectionEntry[] weekEntriesOriginal =
+                getRateLimiterPastRunsWeek().getEntriesCopy();
 
         // Confirm collections are correct size.
         assertEquals(1, hourEntriesOriginal.length);
@@ -821,25 +842,25 @@ public final class ProfilingServiceTests {
 
         // Remove all records again
         currentTimeMillis = System.currentTimeMillis();
-        mRateLimiter.mPastRunsHour.removeOlderThan(currentTimeMillis);
-        mRateLimiter.mPastRunsDay.removeOlderThan(currentTimeMillis);
-        mRateLimiter.mPastRunsWeek.removeOlderThan(currentTimeMillis);
+        getRateLimiterPastRunsHour().removeOlderThan(currentTimeMillis);
+        getRateLimiterPastRunsDay().removeOlderThan(currentTimeMillis);
+        getRateLimiterPastRunsWeek().removeOlderThan(currentTimeMillis);
 
         // Confirm records have been removed
-        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
-        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
-        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+        assertEquals(0, getRateLimiterPastRunsHour().getEntriesCopy().length);
+        assertEquals(0, getRateLimiterPastRunsDay().getEntriesCopy().length);
+        assertEquals(0, getRateLimiterPastRunsWeek().getEntriesCopy().length);
 
         // Now load the persisted records from disk using the overridden files we set up earlier.
         mRateLimiter.setupFromPersistedData();
 
         // Finally, verify the records.
         confirmRateLimiterEntriesEqual(
-                hourEntriesOriginal, mRateLimiter.mPastRunsHour.getEntriesCopy());
+                hourEntriesOriginal, getRateLimiterPastRunsHour().getEntriesCopy());
         confirmRateLimiterEntriesEqual(
-                dayEntriesOriginal, mRateLimiter.mPastRunsDay.getEntriesCopy());
+                dayEntriesOriginal, getRateLimiterPastRunsDay().getEntriesCopy());
         confirmRateLimiterEntriesEqual(
-                weekEntriesOriginal, mRateLimiter.mPastRunsWeek.getEntriesCopy());
+                weekEntriesOriginal, getRateLimiterPastRunsWeek().getEntriesCopy());
     }
 
     /**
@@ -858,14 +879,14 @@ public final class ProfilingServiceTests {
 
         // Remove all records
         long currentTimeMillis = System.currentTimeMillis();
-        mRateLimiter.mPastRunsHour.removeOlderThan(currentTimeMillis);
-        mRateLimiter.mPastRunsDay.removeOlderThan(currentTimeMillis);
-        mRateLimiter.mPastRunsWeek.removeOlderThan(currentTimeMillis);
+        getRateLimiterPastRunsHour().removeOlderThan(currentTimeMillis);
+        getRateLimiterPastRunsDay().removeOlderThan(currentTimeMillis);
+        getRateLimiterPastRunsWeek().removeOlderThan(currentTimeMillis);
 
         // Confirm records have been removed
-        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
-        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
-        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+        assertEquals(0, getRateLimiterPastRunsHour().getEntriesCopy().length);
+        assertEquals(0, getRateLimiterPastRunsDay().getEntriesCopy().length);
+        assertEquals(0, getRateLimiterPastRunsWeek().getEntriesCopy().length);
 
         // Now load the persisted records from disk using the overridden files we set up earlier.
         mRateLimiter.setupFromPersistedData();
@@ -874,9 +895,9 @@ public final class ProfilingServiceTests {
         assertTrue(mRateLimiter.mDataLoaded.get());
 
         // Confirm records are still empty
-        expect.that(mRateLimiter.mPastRunsHour.getEntriesCopy().length).isEqualTo(0);
-        expect.that(mRateLimiter.mPastRunsDay.getEntriesCopy().length).isEqualTo(0);
-        expect.that(mRateLimiter.mPastRunsWeek.getEntriesCopy().length).isEqualTo(0);
+        expect.that(getRateLimiterPastRunsHour().getEntriesCopy().length).isEqualTo(0);
+        expect.that(getRateLimiterPastRunsDay().getEntriesCopy().length).isEqualTo(0);
+        expect.that(getRateLimiterPastRunsWeek().getEntriesCopy().length).isEqualTo(0);
     }
 
     /**
@@ -899,14 +920,14 @@ public final class ProfilingServiceTests {
 
         // Remove all records
         long currentTimeMillis = System.currentTimeMillis();
-        mRateLimiter.mPastRunsHour.removeOlderThan(currentTimeMillis);
-        mRateLimiter.mPastRunsDay.removeOlderThan(currentTimeMillis);
-        mRateLimiter.mPastRunsWeek.removeOlderThan(currentTimeMillis);
+        getRateLimiterPastRunsHour().removeOlderThan(currentTimeMillis);
+        getRateLimiterPastRunsDay().removeOlderThan(currentTimeMillis);
+        getRateLimiterPastRunsWeek().removeOlderThan(currentTimeMillis);
 
         // Confirm records have been removed
-        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
-        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
-        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+        assertEquals(0, getRateLimiterPastRunsHour().getEntriesCopy().length);
+        assertEquals(0, getRateLimiterPastRunsDay().getEntriesCopy().length);
+        assertEquals(0, getRateLimiterPastRunsWeek().getEntriesCopy().length);
 
         // Now load the persisted records from disk using the overridden files we set up earlier.
         mRateLimiter.setupFromPersistedData();
@@ -915,9 +936,9 @@ public final class ProfilingServiceTests {
         assertTrue(mRateLimiter.mDataLoaded.get());
 
         // Confirm records are still empty
-        expect.that(mRateLimiter.mPastRunsHour.getEntriesCopy().length).isEqualTo(0);
-        expect.that(mRateLimiter.mPastRunsDay.getEntriesCopy().length).isEqualTo(0);
-        expect.that(mRateLimiter.mPastRunsWeek.getEntriesCopy().length).isEqualTo(0);
+        expect.that(getRateLimiterPastRunsHour().getEntriesCopy().length).isEqualTo(0);
+        expect.that(getRateLimiterPastRunsDay().getEntriesCopy().length).isEqualTo(0);
+        expect.that(getRateLimiterPastRunsWeek().getEntriesCopy().length).isEqualTo(0);
     }
 
     /**
@@ -944,14 +965,14 @@ public final class ProfilingServiceTests {
 
         // Remove all records
         long currentTimeMillis = System.currentTimeMillis();
-        mRateLimiter.mPastRunsHour.removeOlderThan(currentTimeMillis);
-        mRateLimiter.mPastRunsDay.removeOlderThan(currentTimeMillis);
-        mRateLimiter.mPastRunsWeek.removeOlderThan(currentTimeMillis);
+        getRateLimiterPastRunsHour().removeOlderThan(currentTimeMillis);
+        getRateLimiterPastRunsDay().removeOlderThan(currentTimeMillis);
+        getRateLimiterPastRunsWeek().removeOlderThan(currentTimeMillis);
 
         // Confirm records have been removed
-        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
-        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
-        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+        assertEquals(0, getRateLimiterPastRunsHour().getEntriesCopy().length);
+        assertEquals(0, getRateLimiterPastRunsDay().getEntriesCopy().length);
+        assertEquals(0, getRateLimiterPastRunsWeek().getEntriesCopy().length);
 
         // Now load the persisted records from disk using the overridden files we set up earlier.
         mRateLimiter.setupFromPersistedData();
@@ -960,14 +981,14 @@ public final class ProfilingServiceTests {
         assertTrue(mRateLimiter.mDataLoaded.get());
 
         // Confirm fake records have been added
-        expect.that(mRateLimiter.mPastRunsHour.getEntriesCopy().length).isEqualTo(1);
-        expect.that(mRateLimiter.mPastRunsHour.getEntriesCopy()[0].mCost)
+        expect.that(getRateLimiterPastRunsHour().getEntriesCopy().length).isEqualTo(1);
+        expect.that(getRateLimiterPastRunsHour().getEntriesCopy()[0].mCost)
                 .isEqualTo(Integer.MAX_VALUE);
-        expect.that(mRateLimiter.mPastRunsDay.getEntriesCopy().length).isEqualTo(1);
-        expect.that(mRateLimiter.mPastRunsDay.getEntriesCopy()[0].mCost)
+        expect.that(getRateLimiterPastRunsDay().getEntriesCopy().length).isEqualTo(1);
+        expect.that(getRateLimiterPastRunsDay().getEntriesCopy()[0].mCost)
                 .isEqualTo(Integer.MAX_VALUE);
-        expect.that(mRateLimiter.mPastRunsWeek.getEntriesCopy().length).isEqualTo(1);
-        expect.that(mRateLimiter.mPastRunsWeek.getEntriesCopy()[0].mCost)
+        expect.that(getRateLimiterPastRunsWeek().getEntriesCopy().length).isEqualTo(1);
+        expect.that(getRateLimiterPastRunsWeek().getEntriesCopy()[0].mCost)
                 .isEqualTo(Integer.MAX_VALUE);
     }
 
@@ -998,14 +1019,14 @@ public final class ProfilingServiceTests {
 
         // Remove all records
         long currentTimeMillis = System.currentTimeMillis();
-        mRateLimiter.mPastRunsHour.removeOlderThan(currentTimeMillis);
-        mRateLimiter.mPastRunsDay.removeOlderThan(currentTimeMillis);
-        mRateLimiter.mPastRunsWeek.removeOlderThan(currentTimeMillis);
+        getRateLimiterPastRunsHour().removeOlderThan(currentTimeMillis);
+        getRateLimiterPastRunsDay().removeOlderThan(currentTimeMillis);
+        getRateLimiterPastRunsWeek().removeOlderThan(currentTimeMillis);
 
         // Confirm records have been removed
-        assertEquals(0, mRateLimiter.mPastRunsHour.getEntriesCopy().length);
-        assertEquals(0, mRateLimiter.mPastRunsDay.getEntriesCopy().length);
-        assertEquals(0, mRateLimiter.mPastRunsWeek.getEntriesCopy().length);
+        assertEquals(0, getRateLimiterPastRunsHour().getEntriesCopy().length);
+        assertEquals(0, getRateLimiterPastRunsDay().getEntriesCopy().length);
+        assertEquals(0, getRateLimiterPastRunsWeek().getEntriesCopy().length);
 
         // Now load the persisted records from disk using the overridden files we set up earlier.
         mRateLimiter.setupFromPersistedData();
@@ -1014,9 +1035,9 @@ public final class ProfilingServiceTests {
         assertFalse(mRateLimiter.mDataLoaded.get());
 
         // Confirm records are still empty
-        expect.that(mRateLimiter.mPastRunsHour.getEntriesCopy().length).isEqualTo(0);
-        expect.that(mRateLimiter.mPastRunsDay.getEntriesCopy().length).isEqualTo(0);
-        expect.that(mRateLimiter.mPastRunsWeek.getEntriesCopy().length).isEqualTo(0);
+        expect.that(getRateLimiterPastRunsHour().getEntriesCopy().length).isEqualTo(0);
+        expect.that(getRateLimiterPastRunsDay().getEntriesCopy().length).isEqualTo(0);
+        expect.that(getRateLimiterPastRunsWeek().getEntriesCopy().length).isEqualTo(0);
     }
 
     /** Test that rate limiter check for request allows as expected. */
@@ -1031,6 +1052,9 @@ public final class ProfilingServiceTests {
 
         // Confirm request passes as allowed.
         assertEquals(RateLimiter.RATE_LIMIT_RESULT_ALLOWED, result);
+
+        // Confirm that persist to disk was attempted.
+        verify(mRateLimiter, times(1)).maybePersistToDisk();
     }
 
     /** Test that rate limiter check for request denies for process hour limit as expected. */
@@ -1040,8 +1064,8 @@ public final class ProfilingServiceTests {
 
         // Add a fake run to the same UID with a cost value equal to the process limit but lower
         // than system limit for this time bucket so that it passes system but fails process.
-        mRateLimiter.mPastRunsHour.add(
-                FAKE_UID, DEFAULT_LIMIT_PROCESS_HOUR, System.currentTimeMillis());
+        getRateLimiterPastRunsHour()
+                .add(FAKE_UID, DEFAULT_LIMIT_PROCESS_HOUR, System.currentTimeMillis());
 
         // Send a request for profiling.
         int result =
@@ -1059,8 +1083,8 @@ public final class ProfilingServiceTests {
 
         // Add a fake run to the same UID with a cost value equal to the process limit but lower
         // than system limit for this time bucket so that it passes system but fails process.
-        mRateLimiter.mPastRunsDay.add(
-                FAKE_UID, DEFAULT_LIMIT_PROCESS_DAY, System.currentTimeMillis());
+        getRateLimiterPastRunsDay()
+                .add(FAKE_UID, DEFAULT_LIMIT_PROCESS_DAY, System.currentTimeMillis());
 
         // Send a request for profiling.
         int result =
@@ -1078,8 +1102,8 @@ public final class ProfilingServiceTests {
 
         // Add a fake run to the same UID with a cost value equal to the process limit but lower
         // than system limit for this time bucket so that it passes system but fails process.
-        mRateLimiter.mPastRunsWeek.add(
-                FAKE_UID, DEFAULT_LIMIT_PROCESS_WEEK, System.currentTimeMillis());
+        getRateLimiterPastRunsWeek()
+                .add(FAKE_UID, DEFAULT_LIMIT_PROCESS_WEEK, System.currentTimeMillis());
 
         // Send a request for profiling.
         int result =
@@ -1097,8 +1121,8 @@ public final class ProfilingServiceTests {
 
         // Add a fake run to a different UID than will be used for the request, with a cost value
         // equal to the system limit for this time bucket.
-        mRateLimiter.mPastRunsHour.add(
-                FAKE_UID_2, DEFAULT_LIMIT_SYSTEM_HOUR, System.currentTimeMillis());
+        getRateLimiterPastRunsHour()
+                .add(FAKE_UID_2, DEFAULT_LIMIT_SYSTEM_HOUR, System.currentTimeMillis());
 
         // Send a request for profiling.
         int result =
@@ -1116,8 +1140,8 @@ public final class ProfilingServiceTests {
 
         // Add a fake run to a different UID than will be used for the request, with a cost value
         // equal to the system limit for this time bucket.
-        mRateLimiter.mPastRunsDay.add(
-                FAKE_UID_2, DEFAULT_LIMIT_SYSTEM_DAY, System.currentTimeMillis());
+        getRateLimiterPastRunsDay()
+                .add(FAKE_UID_2, DEFAULT_LIMIT_SYSTEM_DAY, System.currentTimeMillis());
 
         // Send a request for profiling.
         int result =
@@ -1135,8 +1159,8 @@ public final class ProfilingServiceTests {
 
         // Add a fake run to a different UID than will be used for the request, with a cost value
         // equal to the system limit for this time bucket.
-        mRateLimiter.mPastRunsWeek.add(
-                FAKE_UID_2, DEFAULT_LIMIT_SYSTEM_WEEK, System.currentTimeMillis());
+        getRateLimiterPastRunsWeek()
+                .add(FAKE_UID_2, DEFAULT_LIMIT_SYSTEM_WEEK, System.currentTimeMillis());
 
         // Send a request for profiling.
         int result =
@@ -1167,7 +1191,7 @@ public final class ProfilingServiceTests {
         overrideRateLimiterDefaults();
 
         // Add a fake run with a high cost value.
-        mRateLimiter.mPastRunsHour.add(FAKE_UID, 1000, System.currentTimeMillis());
+        getRateLimiterPastRunsHour().add(FAKE_UID, 1000, System.currentTimeMillis());
 
         // Send a request for a trigger.
         int result =
@@ -1197,8 +1221,9 @@ public final class ProfilingServiceTests {
         // Trigger an advance to a subsequent state.
         mProfilingService.advanceTracingSession(session, TracingState.ERROR_OCCURRED);
 
-        // Ensure it does try to advance.
-        verify(mProfilingService, times(1)).processTracingSessionResultCallback(any(), eq(true));
+        // Ensure it attempts to send a callback to the requester. Advancement depends on flag.
+        verify(mProfilingService, times(1))
+                .processTracingSessionResultCallback(any(), eq(!Flags.notifyResultDelivered()));
     }
 
     /** Test that advancing state in backwards direction does not work. */
@@ -2105,8 +2130,10 @@ public final class ProfilingServiceTests {
         // Trigger handle queued results
         mProfilingService.handleQueuedResults(FAKE_UID);
 
-        // Confirm that the correct path was called that a success callback was received.
-        verify(mProfilingService, times(1)).processTracingSessionResultCallback(any(), eq(true));
+        // Confirm that the correct path was called and a success callback was received.
+        // Advancement depends on flag.
+        verify(mProfilingService, times(1))
+                .processTracingSessionResultCallback(any(), eq(!Flags.notifyResultDelivered()));
         assertFalse(mProfilingService.mQueuedTracingResults.contains(FAKE_UID));
     }
 
@@ -2143,8 +2170,10 @@ public final class ProfilingServiceTests {
         // Trigger handle queued results
         mProfilingService.handleQueuedResults(FAKE_UID);
 
-        // Confirm that the correct path was called that an error callback was received.
-        verify(mProfilingService, times(1)).processTracingSessionResultCallback(any(), eq(true));
+        // Confirm that the correct path was called and an error callback was received.
+        // Advancement depends on flag.
+        verify(mProfilingService, times(1))
+                .processTracingSessionResultCallback(any(), eq(!Flags.notifyResultDelivered()));
         expect.that(callback.mResultSent).isTrue();
         expect.that(callback.mStatus).isEqualTo(ProfilingResult.ERROR_UNKNOWN);
     }
@@ -2609,7 +2638,7 @@ public final class ProfilingServiceTests {
         mProfilingService.mSystemTriggeredTraceProcess = mActiveTrace;
 
         // Add record with high cost to rate limiter so that it won't allow future runs.
-        mRateLimiter.mPastRunsHour.add(FAKE_UID, 1000, System.currentTimeMillis());
+        getRateLimiterPastRunsHour().add(FAKE_UID, 1000, System.currentTimeMillis());
 
         // Wait 1 ms to ensure time has ticked and avoid potential flake.
         sleep(1);
@@ -2952,6 +2981,57 @@ public final class ProfilingServiceTests {
         assertThat(throwable.getMessage()).isEqualTo(NOT_SYSTEM_CALLER_SECURITY_EXCEPTION);
     }
 
+    /**
+     * Test that the memory limit anomaly trigger path executes correctly, calling the right rate
+     * limiter and proceeding with the session.
+     */
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public void testMemoryLimiterAnomaly_execution() {
+        // Register for anomaly trigger.
+        mProfilingService.addTrigger(
+                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_ANOMALY, 0);
+
+        // Call processTriggerInternal with anomaly trigger type and null tag.
+        mProfilingService.processTriggerInternal(
+                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_ANOMALY, null, null);
+
+        // Verify that the correct rate limiter was called.
+        verify(mMemoryAnomalyRateLimiter, times(1)).isProfilingRequestAllowed(eq(FAKE_UID));
+        verify(mRateLimiter, never())
+                .isProfilingRequestAllowed(eq(FAKE_UID), anyInt(), anyBoolean(), any());
+
+        // The rate limiter instance is created for the test so it should pass with not overrides,
+        // verify that the session was approved for processing.
+        verify(mProfilingService, times(1)).advanceTracingSession(any(), eq(TracingState.APPROVED));
+    }
+
+    /** Test that the memory limit anomaly rate limiter works as expected. */
+    @Test
+    public void testMemoryLimiterAnomalyRateLimiter() {
+        // This rate limiter does not support any overrides, so nothing to override.
+
+        // Check that the first request for a given uid passes.
+        assertEquals(
+                MemoryAnomalyRateLimiter.RATE_LIMIT_RESULT_ALLOWED,
+                mMemoryAnomalyRateLimiter.isProfilingRequestAllowed(FAKE_UID));
+
+        // Check that the second request for that same uid fails process rate limiting.
+        assertEquals(
+                MemoryAnomalyRateLimiter.RATE_LIMIT_RESULT_BLOCKED_PROCESS,
+                mMemoryAnomalyRateLimiter.isProfilingRequestAllowed(FAKE_UID));
+
+        // Check that the first request for another uid passes.
+        assertEquals(
+                MemoryAnomalyRateLimiter.RATE_LIMIT_RESULT_ALLOWED,
+                mMemoryAnomalyRateLimiter.isProfilingRequestAllowed(FAKE_UID_2));
+
+        // Check that the first request for a third uid fails system rate limiting.
+        assertEquals(
+                MemoryAnomalyRateLimiter.RATE_LIMIT_RESULT_BLOCKED_SYSTEM,
+                mMemoryAnomalyRateLimiter.isProfilingRequestAllowed(FAKE_UID_3));
+    }
+
     private File createAndConfirmFileExists(File directory, String fileName) throws Exception {
         File file = new File(directory, fileName);
         file.createNewFile();
@@ -2998,9 +3078,9 @@ public final class ProfilingServiceTests {
             int costSystemTrace,
             int costSystemTriggeredSystemProfiling,
             int persistToDiskFrequency) {
-        mRateLimiter.mPastRunsHour.maybeUpdateMaxCosts(systemHour, processHour);
-        mRateLimiter.mPastRunsDay.maybeUpdateMaxCosts(systemDay, processDay);
-        mRateLimiter.mPastRunsWeek.maybeUpdateMaxCosts(systemWeek, processWeek);
+        getRateLimiterPastRunsHour().maybeUpdateMaxCosts(systemHour, processHour);
+        getRateLimiterPastRunsDay().maybeUpdateMaxCosts(systemDay, processDay);
+        getRateLimiterPastRunsWeek().maybeUpdateMaxCosts(systemWeek, processWeek);
         mRateLimiter.mCostJavaHeapDump = costHeapDump;
         mRateLimiter.mCostHeapProfile = costHeapProfile;
         mRateLimiter.mCostStackSampling = costStackSampling;
@@ -3010,8 +3090,8 @@ public final class ProfilingServiceTests {
     }
 
     private void confirmRateLimiterEntriesEqual(
-            RateLimiter.CollectionEntry[] collectionOne,
-            RateLimiter.CollectionEntry[] collectionTwo) {
+            RateLimiterBase.CollectionEntry[] collectionOne,
+            RateLimiterBase.CollectionEntry[] collectionTwo) {
         assertEquals(collectionOne.length, collectionTwo.length);
         for (int i = 0; i < collectionOne.length; i++) {
             expect.that(collectionOne[i].mUid).isEqualTo(collectionTwo[i].mUid);
@@ -3143,6 +3223,130 @@ public final class ProfilingServiceTests {
         }
     }
 
+    /**
+     * Test that notifyResultDelivered advances the state from COPIED_FILE to NOTIFIED_REQUESTER.
+     */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_NOTIFY_RESULT_DELIVERED)
+    public void testNotifyResultDelivered_CopiedFile_AdvancesState() {
+        TracingSession session =
+                new TracingSession(
+                        ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
+                        new Bundle(),
+                        FAKE_UID,
+                        APP_PACKAGE_NAME,
+                        REQUEST_TAG,
+                        KEY_MOST_SIG_BITS,
+                        KEY_LEAST_SIG_BITS,
+                        TRIGGER_TYPE_NONE);
+        session.setState(TracingState.COPIED_FILE);
+
+        int uid = Binder.getCallingUid();
+        List<TracingSession> sessions = new ArrayList<>();
+        sessions.add(session);
+        mProfilingService.mQueuedTracingResults.put(uid, sessions);
+
+        mProfilingService.notifyResultDelivered(KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+
+        // Verify state advanced
+        verify(mProfilingService).advanceTracingSession(session, TracingState.NOTIFIED_REQUESTER);
+    }
+
+    /**
+     * Test that notifyResultDelivered advances the state from ERROR_OCCURRED to NOTIFIED_REQUESTER.
+     */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_NOTIFY_RESULT_DELIVERED)
+    public void testNotifyResultDelivered_ErrorOccurred_AdvancesState() {
+        TracingSession session =
+                new TracingSession(
+                        ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
+                        new Bundle(),
+                        FAKE_UID,
+                        APP_PACKAGE_NAME,
+                        REQUEST_TAG,
+                        KEY_MOST_SIG_BITS,
+                        KEY_LEAST_SIG_BITS,
+                        TRIGGER_TYPE_NONE);
+        session.setState(TracingState.ERROR_OCCURRED);
+
+        int uid = Binder.getCallingUid();
+        List<TracingSession> sessions = new ArrayList<>();
+        sessions.add(session);
+        mProfilingService.mQueuedTracingResults.put(uid, sessions);
+
+        mProfilingService.notifyResultDelivered(KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+
+        // Verify state advanced
+        verify(mProfilingService).advanceTracingSession(session, TracingState.NOTIFIED_REQUESTER);
+    }
+
+    /** Test that notifyResultDelivered does NOT advance the state if not in correct state. */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_NOTIFY_RESULT_DELIVERED)
+    public void testNotifyResultDelivered_WrongState_DoesNotAdvance() {
+        TracingSession session =
+                new TracingSession(
+                        ProfilingManager.PROFILING_TYPE_HEAP_PROFILE,
+                        new Bundle(),
+                        FAKE_UID,
+                        APP_PACKAGE_NAME,
+                        REQUEST_TAG,
+                        KEY_MOST_SIG_BITS,
+                        KEY_LEAST_SIG_BITS,
+                        TRIGGER_TYPE_NONE);
+        session.setState(TracingState.REQUESTED);
+
+        int uid = Binder.getCallingUid();
+        List<TracingSession> sessions = new ArrayList<>();
+        sessions.add(session);
+        mProfilingService.mQueuedTracingResults.put(uid, sessions);
+
+        mProfilingService.notifyResultDelivered(KEY_MOST_SIG_BITS, KEY_LEAST_SIG_BITS);
+
+        // Verify state did NOT advance
+        verify(mProfilingService, never()).advanceTracingSession(any(), any());
+    }
+
+    @Test
+    @RequiresFlagsEnabled({Flags.FLAG_PROFILING_TRIGGER_OOM, Flags.FLAG_NOTIFY_RESULT_DELIVERED})
+    public void testProcessTrigger_GeneratesKey() {
+        // Setup rate limiter to allow.
+        doReturn(RateLimiter.RATE_LIMIT_RESULT_ALLOWED)
+                .when(mRateLimiter)
+                .isProfilingRequestAllowed(anyInt(), anyInt(), anyBoolean(), any());
+
+        // Mock startProfilingProcess to succeed.
+        doReturn(mActiveTrace).when(mProfilingService).startProfilingProcess(any(), anyString());
+        doReturn(true).when(mActiveTrace).isAlive();
+
+        mProfilingService.addTrigger(
+                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_OOM, 0);
+
+        mProfilingService.processTriggerInternal(
+                FAKE_UID, APP_PACKAGE_NAME, ProfilingTrigger.TRIGGER_TYPE_OOM, null, null);
+
+        // Verify session in active sessions.
+        assertThat(mProfilingService.mActiveTracingSessions.size()).isEqualTo(1);
+        TracingSession session = mProfilingService.mActiveTracingSessions.valueAt(0);
+
+        // Verify key is not 0L.
+        expect.that(session.getKeyMostSigBits()).isNotEqualTo(0L);
+        expect.that(session.getKeyLeastSigBits()).isNotEqualTo(0L);
+    }
+
+    private RateLimiter.EntryGroupWrapper getRateLimiterPastRunsHour() {
+        return mRateLimiter.mPastRuns.get(0);
+    }
+
+    private RateLimiter.EntryGroupWrapper getRateLimiterPastRunsDay() {
+        return mRateLimiter.mPastRuns.get(1);
+    }
+
+    private RateLimiter.EntryGroupWrapper getRateLimiterPastRunsWeek() {
+        return mRateLimiter.mPastRuns.get(2);
+    }
+
     public class ProfilingResultCallback extends IProfilingResultCallback.Stub {
         boolean mResultSent = false;
         boolean mFileRequested = false;
@@ -3171,6 +3375,8 @@ public final class ProfilingServiceTests {
             mTag = tag;
             mError = error;
             mTriggerType = triggerType;
+
+            mProfilingService.notifyResultDelivered(keyMostSigBits, keyLeastSigBits);
         }
 
         @Override

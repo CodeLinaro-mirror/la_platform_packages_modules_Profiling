@@ -27,6 +27,7 @@ import java.lang.annotation.RetentionPolicy;
 @FlaggedApi(Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
 public final class ProfilingTrigger {
 
+    // LINT.IfChange(trigger_types)
     /** No trigger. Used in {@link ProfilingResult} for non trigger caused results. */
     public static final int TRIGGER_TYPE_NONE = 0;
 
@@ -149,6 +150,7 @@ public final class ProfilingTrigger {
      */
     @FlaggedApi(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
     public static final int TRIGGER_TYPE_APP_COMPAT = 11;
+    // LINT.ThenChange(/service/java/com/android/os/profiling/LoggingHelper.java:trigger_types)
 
     /** @hide */
     @IntDef(

@@ -19,6 +19,7 @@ package com.android.os.profiling.anomaly.internal;
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.junit.Assert.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
@@ -28,6 +29,7 @@ import androidx.test.runner.AndroidJUnit4;
 import com.android.os.profiling.anomaly.collector.SignalCollector;
 import com.android.os.profiling.anomaly.collector.SignalCollectorConfig;
 import com.android.os.profiling.anomaly.collector.SignalCollectorData;
+import com.android.os.profiling.anomaly.core.SignalTypeId;
 
 import org.junit.Before;
 import org.junit.Rule;
@@ -43,11 +45,12 @@ import java.util.function.Consumer;
 /** Tests for {@link SignalCollectorRegistryImpl}. */
 @RunWith(AndroidJUnit4.class)
 public final class SignalCollectorRegistryImplTests {
+    private static final int TIMEOUT_MS = 1000;
     @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
 
     @Mock private SignalCollector<TestConfig, TestData> mTestCollector;
     @Mock private SignalCollector<AnotherConfig, AnotherData> mAnotherTestCollector;
-    @Mock private Consumer<SignalCollector<?, ?>> mCallback;
+    @Mock private Consumer<SignalTypeId> mCallback;
 
     private SignalCollectorRegistryImpl mRegistry;
     private Executor mExecutor;
@@ -99,6 +102,31 @@ public final class SignalCollectorRegistryImplTests {
     }
 
     @Test
+    public void unregisterSignalCollector_success() {
+        mRegistry.registerSignalCollector(TestConfig.class, TestData.class, mTestCollector);
+        mRegistry.unregisterSignalCollector(TestConfig.class, TestData.class);
+        SignalCollector<TestConfig, TestData> retrieved =
+                mRegistry.getSignalCollector(TestConfig.class, TestData.class);
+        assertThat(retrieved).isNull();
+    }
+
+    @Test
+    public void unregisterSignalCollector_notFound_doesNotThrow() {
+        // Unregistering a non-existent collector should not throw an exception.
+        mRegistry.unregisterSignalCollector(TestConfig.class, TestData.class);
+    }
+
+    @Test
+    public void unregisterSignalCollector_nullArgs_throwsException() {
+        assertThrows(
+                NullPointerException.class,
+                () -> mRegistry.unregisterSignalCollector(null, TestData.class));
+        assertThrows(
+                NullPointerException.class,
+                () -> mRegistry.unregisterSignalCollector(TestConfig.class, null));
+    }
+
+    @Test
     public void getSignalCollector_notFound_returnsNull() {
         SignalCollector<TestConfig, TestData> retrieved =
                 mRegistry.getSignalCollector(TestConfig.class, TestData.class);
@@ -122,8 +150,10 @@ public final class SignalCollectorRegistryImplTests {
 
         mRegistry.addCollectorRegisteredCallback(mExecutor, mCallback);
 
-        verify(mCallback, timeout(1000)).accept(mTestCollector);
-        verify(mCallback, timeout(1000)).accept(mAnotherTestCollector);
+        verify(mCallback, timeout(TIMEOUT_MS))
+                .accept(new SignalTypeId(TestConfig.class, TestData.class));
+        verify(mCallback, timeout(TIMEOUT_MS))
+                .accept(new SignalTypeId(AnotherConfig.class, AnotherData.class));
     }
 
     @Test
@@ -131,11 +161,13 @@ public final class SignalCollectorRegistryImplTests {
         mRegistry.addCollectorRegisteredCallback(mExecutor, mCallback);
 
         mRegistry.registerSignalCollector(TestConfig.class, TestData.class, mTestCollector);
-        verify(mCallback, timeout(1000)).accept(mTestCollector);
+        verify(mCallback, timeout(TIMEOUT_MS))
+                .accept(new SignalTypeId(TestConfig.class, TestData.class));
 
         mRegistry.registerSignalCollector(
                 AnotherConfig.class, AnotherData.class, mAnotherTestCollector);
-        verify(mCallback, timeout(1000)).accept(mAnotherTestCollector);
+        verify(mCallback, timeout(TIMEOUT_MS))
+                .accept(new SignalTypeId(AnotherConfig.class, AnotherData.class));
     }
 
     @Test
@@ -145,6 +177,37 @@ public final class SignalCollectorRegistryImplTests {
 
         mRegistry.registerSignalCollector(TestConfig.class, TestData.class, mTestCollector);
 
-        verify(mCallback, never()).accept(mTestCollector);
+        verify(mCallback, never()).accept(any(SignalTypeId.class));
+    }
+
+    @Test
+    public void addCollectorUnregisteredCallback_invoked() {
+        mRegistry.registerSignalCollector(TestConfig.class, TestData.class, mTestCollector);
+        mRegistry.addCollectorUnregisteredCallback(mExecutor, mCallback);
+
+        mRegistry.unregisterSignalCollector(TestConfig.class, TestData.class);
+        verify(mCallback, timeout(TIMEOUT_MS))
+                .accept(new SignalTypeId(TestConfig.class, TestData.class));
+    }
+
+    @Test
+    public void removeCollectorUnregisteredCallback_notInvoked() {
+        mRegistry.registerSignalCollector(TestConfig.class, TestData.class, mTestCollector);
+        mRegistry.addCollectorUnregisteredCallback(mExecutor, mCallback);
+        mRegistry.removeCollectorUnregisteredCallback(mCallback);
+
+        mRegistry.unregisterSignalCollector(TestConfig.class, TestData.class);
+        verify(mCallback, never()).accept(any());
+    }
+
+    @Test
+    public void removeCollectorUnregisteredCallback_twice_doesNotThrow() {
+        mRegistry.addCollectorUnregisteredCallback(mExecutor, mCallback);
+        mRegistry.removeCollectorUnregisteredCallback(mCallback);
+        mRegistry.removeCollectorUnregisteredCallback(mCallback); // Remove a second time
+        mRegistry.registerSignalCollector(TestConfig.class, TestData.class, mTestCollector);
+        mRegistry.unregisterSignalCollector(TestConfig.class, TestData.class);
+
+        verify(mCallback, never()).accept(any());
     }
 }

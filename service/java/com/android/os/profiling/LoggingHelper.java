@@ -211,6 +211,7 @@ public final class LoggingHelper {
      * frameworks/proto_logging/stats/enums/profiling/enums.proto:TriggerType
      */
     private static int triggerTypeToEnumValue(int triggerType) {
+        // LINT.IfChange(trigger_types)
         return switch (triggerType) {
             case ProfilingTrigger.TRIGGER_TYPE_NONE -> 1;
             case ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN -> 2;
@@ -219,8 +220,14 @@ public final class LoggingHelper {
             case ProfilingTrigger.TRIGGER_TYPE_KILL_FORCE_STOP -> 5;
             case ProfilingTrigger.TRIGGER_TYPE_KILL_RECENTS -> 6;
             case ProfilingTrigger.TRIGGER_TYPE_KILL_TASK_MANAGER -> 7;
+            case ProfilingTrigger.TRIGGER_TYPE_OOM -> 8;
+            case ProfilingTrigger.TRIGGER_TYPE_ANOMALY -> 9;
+            case ProfilingTrigger.TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE -> 10;
+            case ProfilingTrigger.TRIGGER_TYPE_COLD_START -> 11;
+            case ProfilingTrigger.TRIGGER_TYPE_APP_COMPAT -> 12;
             default -> 0;
         };
+        // LINT.ThenChange(/framework/java/android/os/ProfilingTrigger.java:trigger_types)
     }
 
     /**

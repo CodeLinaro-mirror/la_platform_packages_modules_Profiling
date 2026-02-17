@@ -38,6 +38,7 @@ android_test {
         "testng",
         "anomaly-detector-aconfig-flags-lib",
         "frameworks-base-testutils",
+        "util-profiling",
     ],
     libs: [
         "android.test.runner.stubs.system",
@@ -77,10 +78,8 @@ android_test_helper_app {
     min_sdk_version: "35",
     target_sdk_version: "35",
     test_suites: [
-        "cts",
         "general-tests",
         "mts-profiling",
-        "mcts-profiling",
     ],
     manifest: "src/android/profiling/cts/profilingapp/AndroidManifestProfilingApp.xml",
 }

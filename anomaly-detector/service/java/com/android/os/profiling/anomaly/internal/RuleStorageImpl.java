@@ -21,11 +21,11 @@ import android.annotation.WorkerThread;
 import android.os.Bundle;
 import android.os.OutcomeReceiver;
 import android.os.profiling.anomaly.RuleInternal;
-import android.os.profiling.anomaly.RuleInternal.AnomalyActionType;
+import android.os.profiling.anomaly.RuleInternal.AnomalyActionTypeInternal;
 import android.util.AtomicFile;
-import android.util.Slog;
 
 import com.android.os.profiling.anomaly.core.RuleStorage;
+import com.android.os.profiling.anomaly.util.LogUtil;
 import com.android.server.anomaly.proto.BundleValue;
 import com.android.server.anomaly.proto.RuleProto;
 import com.android.server.anomaly.proto.RuleSetProto;
@@ -50,6 +50,7 @@ import java.util.stream.Collectors;
 public final class RuleStorageImpl implements RuleStorage {
 
     private static final String TAG = "RuleStorageImpl";
+    private static final LogUtil sLog = new LogUtil(TAG);
 
     private final File mFile;
     private final Executor mIoExecutor;
@@ -69,7 +70,7 @@ public final class RuleStorageImpl implements RuleStorage {
                         Set<RuleInternal> rules = readRulesFromDisk();
                         executor.execute(() -> callback.onResult(rules));
                     } catch (Exception e) {
-                        Slog.e(TAG, "Failed to load rules from proto", e);
+                        sLog.e("Failed to load rules from proto", e);
                         executor.execute(() -> callback.onError(e));
                     }
                 });
@@ -85,7 +86,7 @@ public final class RuleStorageImpl implements RuleStorage {
                         writeRulesToDisk(rules);
                         executor.execute(() -> callback.onResult(null));
                     } catch (Exception e) {
-                        Slog.e(TAG, "Failed to save rules to proto", e);
+                        sLog.e("Failed to save rules to proto", e);
                         executor.execute(() -> callback.onError(e));
                     }
                 });
@@ -154,6 +155,7 @@ public final class RuleStorageImpl implements RuleStorage {
     private RuleProto convertRuleToProto(RuleInternal rule) {
         RuleProto.Builder ruleBuilder =
                 RuleProto.newBuilder()
+                        .setName(rule.getName())
                         .addAllAnomalyActions(rule.getAnomalyActions())
                         .setConditionType(rule.getConditionType());
 
@@ -175,8 +177,7 @@ public final class RuleStorageImpl implements RuleStorage {
             } else if (value instanceof Float) {
                 valueBuilder.setFloatValue((Float) value);
             } else {
-                Slog.w(
-                        TAG,
+                sLog.w(
                         "Unsupported value type in Bundle for key: "
                                 + key
                                 + ". Skipping rule: "
@@ -199,8 +200,7 @@ public final class RuleStorageImpl implements RuleStorage {
     @Nullable
     private RuleInternal convertProtoToRule(RuleProto proto) {
         if (!proto.hasConditionType()) {
-            Slog.w(
-                    TAG,
+            sLog.w(
                     "Skipping rule with missing condition type. Actions: "
                             + proto.getAnomalyActionsList());
             return null;
@@ -231,8 +231,7 @@ public final class RuleStorageImpl implements RuleStorage {
                     break;
                 case VALUETYPE_NOT_SET:
                 default:
-                    Slog.w(
-                            TAG,
+                    sLog.w(
                             "Unrecognized value type in proto for key: "
                                     + key
                                     + ". Skipping rule with condition type: "
@@ -243,10 +242,11 @@ public final class RuleStorageImpl implements RuleStorage {
 
         RuleInternal.Builder builder =
                 new RuleInternal.Builder()
+                        .setName(proto.getName())
                         .setConditionType(proto.getConditionType())
                         .setRuleCondition(bundle);
 
-        for (@AnomalyActionType int action : proto.getAnomalyActionsList()) {
+        for (@AnomalyActionTypeInternal int action : proto.getAnomalyActionsList()) {
             builder.addAnomalyAction(action);
         }
 

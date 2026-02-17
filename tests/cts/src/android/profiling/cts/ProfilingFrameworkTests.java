@@ -30,6 +30,7 @@ import static android.profiling.cts.ProfilingTestUtils.overrideSystemCallerEnfor
 import static android.profiling.cts.ProfilingTestUtils.resetAllConfigs;
 import static android.profiling.cts.ProfilingTestUtils.sleep;
 import static android.profiling.cts.ProfilingTestUtils.startSystemTriggeredTraceForTesting;
+import static android.profiling.cts.ProfilingTestUtils.waitForCondition;
 
 import static com.google.common.truth.Truth.assertThat;
 
@@ -136,6 +137,8 @@ public final class ProfilingFrameworkTests {
     private static final int TEN_SECONDS_MS = 10 * 1000;
     private static final int TEN_MINUTES_MS = 10 * 60 * 1000;
 
+    private static final long DAY_IN_MS = 24 * 60 * 60 * 1000;
+
     private ProfilingManager mProfilingManager = null;
     private Context mContext = null;
     private Instrumentation mInstrumentation;
@@ -164,13 +167,40 @@ public final class ProfilingFrameworkTests {
                         android.Manifest.permission.INTERACT_ACROSS_USERS_FULL);
 
         mProfilingManager.clearProfilingTriggers();
+
+        // Ensure there is no lingering profiling files from previous tests.
+        assertFalse(Files.exists(Paths.get(mContext.getFilesDir().getPath().toString(),
+                ProfilingManager.OUTPUT_FILE_RELATIVE_PATH)));
     }
 
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager.mProfilingService lock.
     @After
-    public void cleanup() {
+    public void cleanup() throws Exception {
         mProfilingManager.mProfilingService = null;
         resetAllConfigs();
+
+        File profilingDir =
+                new File(
+                        mContext.getFilesDir().getPath()
+                                + ProfilingManager.OUTPUT_FILE_RELATIVE_PATH);
+        if (profilingDir.exists()) {
+                deleteFileRecursive(profilingDir.getAbsolutePath());
+        }
+        // Reset last cleanup time to allow old file cleanup on next test.
+        mProfilingManager.mLastCleanupMs = 0;
+    }
+
+    private void deleteFileRecursive(String path) {
+        File file = new File(path);
+        if (file.isDirectory()) {
+                File[] children = file.listFiles();
+                if (children != null) {
+                for (File child : children) {
+                        deleteFileRecursive(child.getAbsolutePath());
+                }
+            }
+        }
+        file.delete();
     }
 
     /** Check and see if we can get a reference to the ProfilingManager service. */
@@ -2392,6 +2422,48 @@ public final class ProfilingFrameworkTests {
                 false);
     }
 
+    /**
+     * Test the memory runtime limit case of the anomaly trigger which calls profiling directly,
+     * rather than through anomaly detector.
+     */
+    @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public void testAnomalyProfilingMemoryRuntimeLimit() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        // This trigger is enforced to system caller, so override the requriement.
+        overrideSystemCallerEnforcement();
+
+        // Register a trigger to this process.
+        ProfilingTrigger trigger =
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY).build();
+        mProfilingManager.addProfilingTriggers(List.of(trigger));
+
+        // Add a global listener.
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
+
+        // There is no need to override any rate limiting for this test as this trigger type is
+        // exempt from rate limiting.
+
+        // Now fake a the system trigger.
+        ProfilingServiceHelper.getInstance()
+                .onProfilingTriggerOccurred(
+                        Binder.getCallingUid(),
+                        REAL_PACKAGE_NAME,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY);
+
+        // Wait for the profiling to process.
+        waitForCallback(callbackGeneral);
+
+        // Finally, confirm that a result was received.
+        confirmCollectionSuccess(
+                callbackGeneral.mResult,
+                OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX,
+                ProfilingTrigger.TRIGGER_TYPE_ANOMALY);
+    }
+
     @Test
     @RequiresFlagsDisabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
     public void testIsAnomalyTriggerType_flagOff() {
@@ -2418,6 +2490,135 @@ public final class ProfilingFrameworkTests {
                         ProfilingTrigger.isAnomalyTriggerType(
                                 ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN))
                 .isFalse();
+    }
+
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_OLD_FILES_CLEANUP)
+    public void testOldFilesCleanup() throws Exception {
+        // Add some files to app profiling files directory.
+        File dir =
+                new File(
+                        mContext.getFilesDir().getPath()
+                                + ProfilingManager.OUTPUT_FILE_RELATIVE_PATH);
+        dir.mkdir();
+        assertTrue(dir.exists());
+        assertTrue(dir.isDirectory());
+
+        File newFile1 = new File(dir, "new_file_1" + OUTPUT_FILE_HEAP_PROFILE_SUFFIX);
+        newFile1.createNewFile();
+        assertTrue(newFile1.exists());
+        assertTrue(newFile1.setLastModified(System.currentTimeMillis()));
+
+        File newFile2 = new File(dir, "new_file_2" + OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX);
+        newFile2.createNewFile();
+        assertTrue(newFile2.exists());
+        assertTrue(newFile2.setLastModified(System.currentTimeMillis() - DAY_IN_MS));
+
+        File oldFile1 = new File(dir, "old_file_1" + OUTPUT_FILE_STACK_SAMPLING_SUFFIX);
+        oldFile1.createNewFile();
+        assertTrue(oldFile1.exists());
+        assertTrue(oldFile1.setLastModified(System.currentTimeMillis() - DAY_IN_MS * 6));
+
+        File oldFile2 = new File(dir, "old_file_2" + OUTPUT_FILE_TRACE_SUFFIX);
+        oldFile2.createNewFile();
+        assertTrue(oldFile2.exists());
+        assertTrue(oldFile2.setLastModified(System.currentTimeMillis() - DAY_IN_MS * 14));
+
+        // Add a general listener to trigger cleanup.
+        AppCallback callbackGeneral = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
+
+        // Wait a bit for cleanup to finish.
+        waitForCondition(() -> !oldFile2.exists() && !oldFile1.exists(),
+                ONE_SECOND_MS, true /* failIfTimedOut */);
+
+        // Confirm that old files were deleted.
+        expect.that(oldFile1.exists()).isFalse();
+        expect.that(oldFile2.exists()).isFalse();
+
+        // Confirm that the not too old files remained.
+        expect.that(newFile1.exists()).isTrue();
+        expect.that(newFile2.exists()).isTrue();
+
+        // Update newFile1 so that it's now old.
+        assertTrue(newFile2.setLastModified(System.currentTimeMillis() - DAY_IN_MS * 10));
+
+        // Add another general listener to trigger potential cleanup.
+        AppCallback callbackGeneral2 = new AppCallback();
+        mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral2);
+
+        // Wait a bit so we can confirm nothing happenend.
+        sleep(ONE_SECOND_MS);
+
+        // Confirm that the no files were deleted.
+        expect.that(newFile1.exists()).isTrue();
+        expect.that(newFile2.exists()).isTrue();
+    }
+
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_OLD_FILES_CLEANUP)
+    public void testOldFilesCleanup_requestProfiling() throws Exception {
+        if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
+
+        disableRateLimiter();
+
+        overrideStackSamplingDeviceConfigValues(
+                false, ONE_SECOND_MS, ONE_SECOND_MS, FIVE_SECONDS_MS);
+
+        // Add some files to app profiling files directory.
+        File dir =
+                new File(
+                        mContext.getFilesDir().getPath()
+                                + ProfilingManager.OUTPUT_FILE_RELATIVE_PATH);
+        dir.mkdir();
+        assertTrue(dir.exists());
+        assertTrue(dir.isDirectory());
+
+        File newFile1 = new File(dir, "new_file_1" + OUTPUT_FILE_HEAP_PROFILE_SUFFIX);
+        newFile1.createNewFile();
+        assertTrue(newFile1.exists());
+        assertTrue(newFile1.setLastModified(System.currentTimeMillis()));
+
+        File newFile2 = new File(dir, "new_file_2" + OUTPUT_FILE_JAVA_HEAP_DUMP_SUFFIX);
+        newFile2.createNewFile();
+        assertTrue(newFile2.exists());
+        assertTrue(newFile2.setLastModified(System.currentTimeMillis() - DAY_IN_MS));
+
+        File oldFile1 = new File(dir, "old_file_1" + OUTPUT_FILE_STACK_SAMPLING_SUFFIX);
+        oldFile1.createNewFile();
+        assertTrue(oldFile1.exists());
+        assertTrue(oldFile1.setLastModified(System.currentTimeMillis() - DAY_IN_MS * 6));
+
+        File oldFile2 = new File(dir, "old_file_2" + OUTPUT_FILE_TRACE_SUFFIX);
+        oldFile2.createNewFile();
+        assertTrue(oldFile2.exists());
+        assertTrue(oldFile2.setLastModified(System.currentTimeMillis() - DAY_IN_MS * 14));
+
+        // Request profiling with a request specific listener to trigger cleanup.
+        AppCallback callback = new AppCallback();
+        mProfilingManager.requestProfiling(
+                ProfilingManager.PROFILING_TYPE_STACK_SAMPLING,
+                getOneSecondDurationParamBundle(),
+                null,
+                null,
+                new ImmediateExecutor(),
+                callback);
+
+        // Wait for the result.
+        waitForCallback(callback);
+
+        // Wait a bit more for cleanup to finish.
+        waitForCondition(()
+                             -> !oldFile2.exists() && !oldFile1.exists(),
+            ONE_SECOND_MS, true /* failIfTimedOut */);
+
+        // Confirm that old files were deleted.
+        expect.that(oldFile1.exists()).isFalse();
+        expect.that(oldFile2.exists()).isFalse();
+
+        // Confirm that the not too old files remained.
+        expect.that(newFile1.exists()).isTrue();
+        expect.that(newFile2.exists()).isTrue();
     }
 
     /** Disable the rate limiter and wait long enough for the update to be picked up. */

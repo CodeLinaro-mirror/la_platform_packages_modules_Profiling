@@ -112,6 +112,7 @@ public final class RuleStorageImplTests {
         bundle1.putBoolean("boolKey", true);
         RuleInternal rule1 =
                 new RuleInternal.Builder()
+                        .setName("rule1")
                         .setConditionType("TYPE_1")
                         .setRuleCondition(bundle1)
                         .addAnomalyAction(1)
@@ -123,6 +124,7 @@ public final class RuleStorageImplTests {
         bundle2.putFloat("floatKey", 789.0f);
         RuleInternal rule2 =
                 new RuleInternal.Builder()
+                        .setName("rule2")
                         .setConditionType("TYPE_2")
                         .setRuleCondition(bundle2)
                         .addAnomalyAction(2)
@@ -153,11 +155,13 @@ public final class RuleStorageImplTests {
                         .findFirst()
                         .get();
 
+        assertThat(loadedRule1.getName()).isEqualTo("rule1");
         assertThat(loadedRule1.getAnomalyActions()).containsExactly(1);
         assertThat(loadedRule1.getRuleCondition().getString("stringKey")).isEqualTo("stringValue");
         assertThat(loadedRule1.getRuleCondition().getInt("intKey")).isEqualTo(123);
         assertThat(loadedRule1.getRuleCondition().getBoolean("boolKey")).isTrue();
 
+        assertThat(loadedRule2.getName()).isEqualTo("rule2");
         assertThat(loadedRule2.getAnomalyActions()).containsExactly(2, 3).inOrder();
         assertThat(loadedRule2.getRuleCondition().getLong("longKey")).isEqualTo(456L);
         assertThat(loadedRule2.getRuleCondition().getDouble("doubleKey")).isEqualTo(123.456);
@@ -182,6 +186,7 @@ public final class RuleStorageImplTests {
         validBundle.putString("key", "value");
         RuleInternal validRule =
                 new RuleInternal.Builder()
+                        .setName("valid_rule")
                         .setConditionType("VALID_TYPE")
                         .setRuleCondition(validBundle)
                         .addAnomalyAction(1)
@@ -192,6 +197,7 @@ public final class RuleStorageImplTests {
                 "unsupported", new byte[] {1, 2, 3}); // byte array is not supported
         RuleInternal invalidRule =
                 new RuleInternal.Builder()
+                        .setName("invalid_rule")
                         .setConditionType("INVALID_TYPE")
                         .setRuleCondition(invalidBundle)
                         .addAnomalyAction(2)
@@ -212,9 +218,16 @@ public final class RuleStorageImplTests {
     @Test
     public void load_skipsRuleWithMissingConditionType() throws IOException {
         RuleProto validProto =
-                RuleProto.newBuilder().setConditionType("VALID_TYPE").addAnomalyActions(1).build();
+                RuleProto.newBuilder()
+                        .setName("valid_rule")
+                        .setConditionType("VALID_TYPE")
+                        .addAnomalyActions(1)
+                        .build();
         RuleProto invalidProto =
-                RuleProto.newBuilder().addAnomalyActions(2).build(); // No condition type
+                RuleProto.newBuilder()
+                        .setName("invalid_rule")
+                        .addAnomalyActions(2)
+                        .build(); // No condition type
 
         RuleSetProto ruleSetProto =
                 RuleSetProto.newBuilder().addRules(validProto).addRules(invalidProto).build();
@@ -234,9 +247,14 @@ public final class RuleStorageImplTests {
     @Test
     public void load_skipsRuleWithUnsupportedBundleValue() throws IOException {
         RuleProto validProto =
-                RuleProto.newBuilder().setConditionType("VALID_TYPE").addAnomalyActions(1).build();
+                RuleProto.newBuilder()
+                        .setName("valid_rule")
+                        .setConditionType("VALID_TYPE")
+                        .addAnomalyActions(1)
+                        .build();
         RuleProto invalidProto =
                 RuleProto.newBuilder()
+                        .setName("invalid_rule")
                         .setConditionType("INVALID_TYPE")
                         .addAnomalyActions(2)
                         .putRuleCondition(

@@ -3,6 +3,7 @@ package com.android.os.profiling.anomaly {
 
   @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public interface AnomalyDetectorManagerLocal {
     method public <T extends com.android.os.profiling.anomaly.collector.SignalCollectorConfig, U extends com.android.os.profiling.anomaly.collector.SignalCollectorData> void registerSignalCollector(@NonNull Class<T>, @NonNull Class<U>, @NonNull com.android.os.profiling.anomaly.collector.SignalCollector<T,U>);
+    method public <T extends com.android.os.profiling.anomaly.collector.SignalCollectorConfig, U extends com.android.os.profiling.anomaly.collector.SignalCollectorData> void unregisterSignalCollector(@NonNull Class<T>, @NonNull Class<U>);
   }
 
 }

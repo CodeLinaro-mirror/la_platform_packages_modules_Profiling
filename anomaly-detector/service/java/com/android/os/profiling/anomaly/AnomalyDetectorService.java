@@ -21,15 +21,15 @@ import static android.Manifest.permission.CONFIGURE_ANOMALY_DETECTOR;
 import android.annotation.FlaggedApi;
 import android.annotation.PermissionManuallyEnforced;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.os.Environment;
 import android.os.OutcomeReceiver;
 import android.os.profiling.anomaly.IAnomalyDetectorService;
 import android.os.profiling.anomaly.RuleInternal;
-import android.os.profiling.anomaly.RuleInternal.AnomalyActionType;
+import android.os.profiling.anomaly.RuleInternal.AnomalyActionTypeInternal;
 import android.os.profiling.anomaly.RuleParcel;
 import android.os.profiling.anomaly.flags.Flags;
 import android.util.ArraySet;
-import android.util.Slog;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.os.profiling.anomaly.collector.SignalCollector;
@@ -47,10 +47,13 @@ import com.android.os.profiling.anomaly.internal.AnomalyDetectorRegistryImpl;
 import com.android.os.profiling.anomaly.internal.AnomalyHandlerRegistryImpl;
 import com.android.os.profiling.anomaly.internal.RuleStorageImpl;
 import com.android.os.profiling.anomaly.internal.SignalCollectorRegistryImpl;
+import com.android.os.profiling.anomaly.util.LogUtil;
 import com.android.server.LocalManagerRegistry;
 import com.android.server.SystemService;
 
 import java.io.File;
+import java.io.FileDescriptor;
+import java.io.PrintWriter;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Executor;
@@ -69,11 +72,11 @@ import java.util.concurrent.Executors;
 @FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE)
 public final class AnomalyDetectorService extends SystemService {
     private static final String TAG = "AnomalyDetectorService";
+    private static final LogUtil sLog = new LogUtil(TAG);
 
-    private final BinderService mBinderService;
+    @VisibleForTesting final BinderService mBinderService;
 
     @VisibleForTesting final AnomalyDetectorManagerLocal mLocalManager;
-
     private final SignalCollectorRegistry mSignalCollectorRegistry;
 
     @VisibleForTesting final AnomalyDetectorControllerImpl mController;
@@ -100,7 +103,7 @@ public final class AnomalyDetectorService extends SystemService {
             File rulesFile = new File(anomalyServiceDir, "rules.pb");
             ruleStorage = new RuleStorageImpl(rulesFile, ioExecutor);
         } else {
-            Slog.e(TAG, "Failed to create directory: " + anomalyServiceDir.getPath());
+            sLog.e("Failed to create directory: " + anomalyServiceDir.getPath());
             // Create a no-op storage if the directory cannot be created.
             ruleStorage =
                     new RuleStorage() {
@@ -146,7 +149,7 @@ public final class AnomalyDetectorService extends SystemService {
     /** {@inheritDoc} */
     @Override
     public void onStart() {
-        Slog.i(TAG, "onStart()");
+        sLog.i("onStart()");
 
         LocalManagerRegistry.addManager(AnomalyDetectorManagerLocal.class, mLocalManager);
 
@@ -162,17 +165,58 @@ public final class AnomalyDetectorService extends SystemService {
     }
 
     /** Implementation of the IAnomalyDetectorService binder service. */
-    private static final class BinderService extends IAnomalyDetectorService.Stub {
+    @VisibleForTesting
+    static final class BinderService extends IAnomalyDetectorService.Stub {
         private final Context mContext;
 
-        @SuppressWarnings("unused") // This will be used once APIs are implemented.
-        private final AnomalyDetectorController mController;
+        final AnomalyDetectorController mController;
 
         BinderService(Context context, AnomalyDetectorController controller) {
             mContext = context;
             mController = controller;
         }
 
+        /**
+         * dump implements the 'dumpsys anomaly_detector', currently for debugging (no guarantees on
+         * format stability for now)
+         *
+         * @param fd The raw file descriptor that the dump is being sent to.
+         * @param pw The file to which you should dump your state. This will be closed for you after
+         *     you return.
+         * @param args additional arguments to the dump request.
+         */
+        @PermissionManuallyEnforced
+        @Override
+        protected void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
+            if (mContext.checkCallingOrSelfPermission(android.Manifest.permission.DUMP)
+                    != PackageManager.PERMISSION_GRANTED) {
+                return;
+            }
+            dump(pw, args);
+        }
+
+        @VisibleForTesting
+        void dump(PrintWriter pw, String[] args) {
+            Set<RuleInternal> rules = mController.getRules();
+            if (rules != null) {
+                pw.println("Rules:");
+                for (RuleInternal r : rules) {
+                    pw.println(
+                            r.getConditionType()
+                                    + " "
+                                    + r.getAnomalyActions()
+                                    + " "
+                                    + r.getRuleCondition());
+                }
+            }
+        }
+
+        /**
+         * setRules is the entrypoint from allowed apps that interact with the control plane (server
+         * or local) to inject the rules.
+         *
+         * @param ruleParcelList The list of rules to set.
+         */
         @Override
         @PermissionManuallyEnforced
         public void setRules(List<RuleParcel> ruleParcelList) {
@@ -189,9 +233,10 @@ public final class AnomalyDetectorService extends SystemService {
             for (RuleParcel ruleParcel : ruleParcelList) {
                 RuleInternal.Builder ruleBuilder =
                         new RuleInternal.Builder()
+                                .setName(ruleParcel.name)
                                 .setConditionType(ruleParcel.conditionType)
                                 .setRuleCondition(ruleParcel.ruleCondition);
-                for (@AnomalyActionType int action : ruleParcel.anomalyActions) {
+                for (@AnomalyActionTypeInternal int action : ruleParcel.anomalyActions) {
                     ruleBuilder.addAnomalyAction(action);
                 }
                 rules.add(ruleBuilder.build());
@@ -211,6 +256,13 @@ public final class AnomalyDetectorService extends SystemService {
                 void registerSignalCollector(
                         Class<T> configType, Class<U> dataType, SignalCollector<T, U> collector) {
             mSignalCollectorRegistry.registerSignalCollector(configType, dataType, collector);
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public <T extends SignalCollectorConfig, U extends SignalCollectorData>
+                void unregisterSignalCollector(Class<T> configType, Class<U> dataType) {
+            mSignalCollectorRegistry.unregisterSignalCollector(configType, dataType);
         }
     }
 }
