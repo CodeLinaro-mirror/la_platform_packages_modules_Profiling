@@ -16,6 +16,9 @@
 
 package com.android.os.profiling.anomaly.detector;
 
+import static android.os.ProfilingManager.KEY_SAMPLE_BINDER_ONLY;
+import static android.os.ProfilingManager.PROFILING_TYPE_STACK_SAMPLING;
+
 import android.annotation.Nullable;
 import android.os.Bundle;
 import android.os.OutcomeReceiver;
@@ -29,6 +32,7 @@ import android.util.SparseLongArray;
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.os.profiling.anomaly.attribute.BinderSpamDetailsAttribute;
+import com.android.os.profiling.anomaly.attribute.ProfilingParamsAttribute;
 import com.android.os.profiling.anomaly.attribute.SummaryAttribute;
 import com.android.os.profiling.anomaly.attribute.UidAttribute;
 import com.android.os.profiling.anomaly.collector.SignalCollector;
@@ -72,6 +76,9 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
 
     @GuardedBy("mLock")
     private SignalCollector<BinderSpamConfigList, BinderSpamData> mCollector;
+
+    // TODO: b/483173066 - Make this configurable.
+    private static final int MAX_SESSION_DURATION_MS = 20000;
 
     /**
      * Constructs a new BinderSpamAnomalyDetector.
@@ -297,6 +304,10 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
                             actualCallsPerSecond,
                             mCallCountThreshold,
                             mWindowSize.toSeconds());
+
+            Bundle sessionParams = new Bundle();
+            sessionParams.putBoolean(KEY_SAMPLE_BINDER_ONLY, true);
+
             return new AnomalyReportImpl.Builder(mRule)
                     .addAttribute(new UidAttribute(data.getCallingUid()))
                     .addAttribute(new SummaryAttribute(summary))
@@ -308,6 +319,11 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
                                     timespan,
                                     mCallCountThreshold,
                                     mWindowSize))
+                    .addAttribute(
+                            new ProfilingParamsAttribute(
+                                    MAX_SESSION_DURATION_MS,
+                                    PROFILING_TYPE_STACK_SAMPLING,
+                                    sessionParams))
                     .build();
         }
     }

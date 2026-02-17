@@ -73,6 +73,7 @@ java_sdk_library {
     impl_library_visibility: [
         "//packages/modules/Profiling/service:__subpackages__",
         "//packages/modules/Profiling/tests:__subpackages__",
+        "//packages/modules/Profiling/anomaly-detector:__subpackages__",
     ],
 
     apex_available: [

@@ -48,6 +48,7 @@ import com.android.os.profiling.anomaly.internal.AnomalyHandlerRegistryImpl;
 import com.android.os.profiling.anomaly.internal.RuleStorageImpl;
 import com.android.os.profiling.anomaly.internal.SignalCollectorRegistryImpl;
 import com.android.os.profiling.anomaly.util.LogUtil;
+import com.android.os.profiling.anomaly.wrapper.ContextSystemServiceFetcher;
 import com.android.server.LocalManagerRegistry;
 import com.android.server.SystemService;
 
@@ -125,7 +126,8 @@ public final class AnomalyDetectorService extends SystemService {
         }
 
         mSignalCollectorRegistry = new SignalCollectorRegistryImpl();
-        AnomalyHandlerRegistry handlerRegistry = new AnomalyHandlerRegistryImpl();
+        AnomalyHandlerRegistry handlerRegistry =
+                new AnomalyHandlerRegistryImpl(new ContextSystemServiceFetcher(context));
 
         // Manually create the set of all known detector factories.
         // This is the central place to register a new detector with the system.

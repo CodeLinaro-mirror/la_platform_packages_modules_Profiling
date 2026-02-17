@@ -18,6 +18,7 @@ package com.android.os.profiling.anomaly.wrapper;
 
 import android.app.ActivityManager;
 import android.content.Context;
+import android.content.pm.PackageManager;
 
 import java.util.Objects;
 
@@ -37,5 +38,10 @@ public final class ContextSystemServiceFetcher implements SystemServiceFetcher {
     @Override
     public ActivityManager getActivityManager() {
         return mContext.getSystemService(ActivityManager.class);
+    }
+
+    @Override
+    public PackageManager getPackageManager() {
+        return mContext.getPackageManager();
     }
 }
