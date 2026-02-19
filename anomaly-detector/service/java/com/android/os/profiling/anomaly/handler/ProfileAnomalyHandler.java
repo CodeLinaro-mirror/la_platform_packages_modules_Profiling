@@ -18,6 +18,7 @@ package com.android.os.profiling.anomaly.handler;
 
 import android.annotation.Nullable;
 import android.content.pm.PackageManager;
+import android.os.AnomalyProfilingClient;
 import android.os.AnomalyProfilingManager;
 import android.os.ProfilingTrigger;
 import android.text.TextUtils;
@@ -28,8 +29,6 @@ import com.android.os.profiling.anomaly.attribute.UidAttribute;
 import com.android.os.profiling.anomaly.core.AnomalyHandler;
 import com.android.os.profiling.anomaly.core.AnomalyReport;
 import com.android.os.profiling.anomaly.util.LogUtil;
-import com.android.os.profiling.anomaly.wrapper.AnomalyProfilingClient;
-import com.android.os.profiling.anomaly.wrapper.AnomalyProfilingManagerWrapper;
 import com.android.os.profiling.anomaly.wrapper.SystemServiceFetcher;
 
 import java.util.ArrayList;
@@ -50,10 +49,7 @@ public final class ProfileAnomalyHandler implements AnomalyHandler {
     private final AnomalyProfilingClient mAnomalyProfilingManager;
 
     public ProfileAnomalyHandler(SystemServiceFetcher systemServiceFetcher) {
-        this(
-                systemServiceFetcher,
-                new ProfilingSessionHelper(),
-                new AnomalyProfilingManagerWrapper(new AnomalyProfilingManager()));
+        this(systemServiceFetcher, new ProfilingSessionHelper(), new AnomalyProfilingManager());
     }
 
     @VisibleForTesting

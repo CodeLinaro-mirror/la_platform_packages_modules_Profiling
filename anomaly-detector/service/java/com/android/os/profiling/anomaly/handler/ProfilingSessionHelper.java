@@ -19,6 +19,7 @@ package com.android.os.profiling.anomaly.handler;
 import static android.os.ProfilingManager.KEY_DURATION_MS;
 
 import android.annotation.Nullable;
+import android.os.AnomalyProfilingClient;
 import android.os.AnomalyProfilingManager;
 import android.os.AnomalyRequestResult;
 import android.os.Bundle;
@@ -29,8 +30,6 @@ import android.util.SparseArray;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.os.profiling.anomaly.util.LogUtil;
-import com.android.os.profiling.anomaly.wrapper.AnomalyProfilingClient;
-import com.android.os.profiling.anomaly.wrapper.AnomalyProfilingManagerWrapper;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -51,7 +50,7 @@ public class ProfilingSessionHelper {
     private final SparseArray<SessionInfo> mUidSessionInfoSparseArray = new SparseArray<>();
 
     public ProfilingSessionHelper() {
-        this(new AnomalyProfilingManagerWrapper(new AnomalyProfilingManager()));
+        this(new AnomalyProfilingManager());
     }
 
     @VisibleForTesting
