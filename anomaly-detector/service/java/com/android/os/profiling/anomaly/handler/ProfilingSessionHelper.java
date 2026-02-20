@@ -42,7 +42,7 @@ import java.util.UUID;
  * @hide
  */
 public class ProfilingSessionHelper {
-    private static final LogUtil sLog = new LogUtil("ProfilingHelper");
+    private static final LogUtil sLog = new LogUtil("ProfilingSessionHelper");
 
     private final Object mLock = new Object();
 
@@ -80,13 +80,13 @@ public class ProfilingSessionHelper {
             // with the trace file
             sLog.d(
                     String.format(
-                            "Profiling completed, session info: %s, result path:" + " %s",
+                            "Profiling completed, session tag: %s, result path: %s",
                             anomalyRequestResult.getTag(),
                             anomalyRequestResult.getResultFilePath()));
         } else {
             sLog.d(
                     String.format(
-                            "Profiling ERROR, session info: %s, error code: %d",
+                            "Profiling ERROR, session tag: %s, error code: %d",
                             anomalyRequestResult.getTag(), anomalyRequestResult.getErrorCode()));
         }
     }

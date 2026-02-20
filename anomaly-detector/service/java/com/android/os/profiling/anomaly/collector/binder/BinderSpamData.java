@@ -23,7 +23,6 @@ import android.annotation.NonNull;
 import android.annotation.SystemApi;
 import android.app.ActivityManager;
 import android.os.profiling.anomaly.flags.Flags;
-import android.text.TextUtils;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.os.profiling.anomaly.collector.SignalCollectorData;
@@ -233,11 +232,7 @@ public final class BinderSpamData implements SignalCollectorData {
          */
         @NonNull
         public Builder setInterfaceName(@NonNull String interfaceName) {
-            // TODO(b/440140585): Validate the format of the interface name.
-            if (TextUtils.isEmpty(interfaceName)) {
-                throw new IllegalArgumentException("Interface name must not be empty!");
-            }
-            mInterfaceName = interfaceName;
+            mInterfaceName = Objects.requireNonNull(interfaceName);
             return this;
         }
 
@@ -249,10 +244,7 @@ public final class BinderSpamData implements SignalCollectorData {
          */
         @NonNull
         public Builder setMethodName(@NonNull String methodName) {
-            if (TextUtils.isEmpty(methodName)) {
-                throw new IllegalArgumentException("Method name must not be empty!");
-            }
-            mMethodName = methodName;
+            mMethodName = Objects.requireNonNull(methodName);
             return this;
         }
 

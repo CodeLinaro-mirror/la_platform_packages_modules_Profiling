@@ -1,0 +1,53 @@
+# Example configuration for the generate_anomaly_rules.py script.
+#
+# This file defines a list of anomaly detection rules in a human-readable
+# format.
+#
+# For the list of supported values for condition_type, anomaly_actions, and
+# their parameters, please refer to generate_anomaly_rules.py script.
+#
+# Each rule in the list is a dictionary containing the following keys:
+#
+# - name: (String) A descriptive name for the rule.
+# - condition_type: (String) The type of condition to monitor.
+# - anomaly_actions: (List of Integers) A list of actions to take when the
+#   condition is met.
+# - params: (Dictionary) A map of parameters specific to the condition_type.
+#   Each parameter must have a 'type' and a 'value'.
+
+rules:
+  - name: "Excessive IActivityManager Calls to startService"
+    condition_type: "binder_spam"
+    anomaly_actions:
+      - 1
+    params:
+      binder_interface_name:
+        type: "string"
+        value: "android.app.IActivityManager"
+      binder_method_name:
+        type: "string"
+        value: "startService"
+      binder_call_limit:
+        type: "int"
+        value: 10
+      binder_call_interval_millis:
+        type: "long"
+        value: 60000
+
+  - name: "Frequent broadcastIntent Calls"
+    condition_type: "binder_spam"
+    anomaly_actions:
+      - 1
+    params:
+      binder_interface_name:
+        type: "string"
+        value: "android.app.IActivityManager"
+      binder_method_name:
+        type: "string"
+        value: "broadcastIntent"
+      binder_call_limit:
+        type: "int"
+        value: 25
+      binder_call_interval_millis:
+        type: "long"
+        value: 30000

@@ -78,7 +78,7 @@ public final class ProfileAnomalyHandler implements AnomalyHandler {
         ProfilingParamsAttribute profilingManagerParametersAttribute =
                 report.get(ProfilingParamsAttribute.class);
         if (profilingManagerParametersAttribute == null) {
-            sLog.e("No ProfilingManagerParametersAttribute in AnomalyReport");
+            sLog.e("No profiling parameters attribute in AnomalyReport");
             return;
         }
 
