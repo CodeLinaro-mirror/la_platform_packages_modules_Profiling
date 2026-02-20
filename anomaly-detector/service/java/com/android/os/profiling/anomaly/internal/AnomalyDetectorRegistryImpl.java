@@ -52,7 +52,6 @@ public final class AnomalyDetectorRegistryImpl implements AnomalyDetectorRegistr
         }
     }
 
-    /** {@inheritDoc} */
     @Override
     @Nullable
     public AnomalyDetector.AnomalyDetectorFactory getFactory(
@@ -60,7 +59,6 @@ public final class AnomalyDetectorRegistryImpl implements AnomalyDetectorRegistr
         return mFactories.get(conditionType);
     }
 
-    /** {@inheritDoc} */
     @Override
     public AnomalyDetector createDetectorForCondition(
             @ConditionTypeInternal String conditionType, SignalCollectorRegistry registry) {
