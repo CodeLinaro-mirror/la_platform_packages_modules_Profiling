@@ -44,13 +44,11 @@ public final class AnomalyReportImpl implements AnomalyReport {
         mAttributes = Collections.unmodifiableMap(new HashMap<>(builder.mAttributes));
     }
 
-    /** {@inheritDoc} */
     @Override
     public RuleInternal getRule() {
         return mRule;
     }
 
-    /** {@inheritDoc} */
     @Override
     @Nullable
     public <T> T get(Class<T> attributeType) {

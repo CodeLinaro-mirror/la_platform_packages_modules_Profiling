@@ -148,7 +148,6 @@ public final class AnomalyDetectorService extends SystemService {
         mLocalManager = new Local();
     }
 
-    /** {@inheritDoc} */
     @Override
     public void onStart() {
         sLog.i("onStart()");
@@ -158,7 +157,6 @@ public final class AnomalyDetectorService extends SystemService {
         publishBinderService(Context.ANOMALY_DETECTOR_SERVICE, mBinderService);
     }
 
-    /** {@inheritDoc} */
     @Override
     public void onBootPhase(int phase) {
         if (phase == SystemService.PHASE_SYSTEM_SERVICES_READY) {
@@ -252,7 +250,6 @@ public final class AnomalyDetectorService extends SystemService {
      * This would typically implement an updated AnomalyDetectorManagerLocal interface.
      */
     private final class Local implements AnomalyDetectorManagerLocal {
-        /** {@inheritDoc} */
         @Override
         public <T extends SignalCollectorConfig, U extends SignalCollectorData>
                 void registerSignalCollector(
@@ -260,7 +257,6 @@ public final class AnomalyDetectorService extends SystemService {
             mSignalCollectorRegistry.registerSignalCollector(configType, dataType, collector);
         }
 
-        /** {@inheritDoc} */
         @Override
         public <T extends SignalCollectorConfig, U extends SignalCollectorData>
                 void unregisterSignalCollector(Class<T> configType, Class<U> dataType) {

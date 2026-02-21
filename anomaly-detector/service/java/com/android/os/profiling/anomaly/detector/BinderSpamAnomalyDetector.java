@@ -114,7 +114,6 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
                 }
             };
 
-    /** {@inheritDoc} */
     @Override
     public void setRules(Set<RuleInternal> rules) {
         synchronized (mLock) {
@@ -347,7 +346,6 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
         }
     }
 
-    /** {@inheritDoc} */
     @Override
     public void onSignalCollectorUnregistered(SignalTypeId signalTypeId) {
         synchronized (mLock) {

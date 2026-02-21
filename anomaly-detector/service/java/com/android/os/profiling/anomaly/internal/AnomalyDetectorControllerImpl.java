@@ -94,7 +94,6 @@ public class AnomalyDetectorControllerImpl
                 mExecutor, this::onSignalCollectorUnregistered);
     }
 
-    /** {@inheritDoc} */
     @Override
     public void setRules(Set<RuleInternal> rules) {
         Objects.requireNonNull(rules, "Set<Rule> cannot be null");
@@ -105,7 +104,6 @@ public class AnomalyDetectorControllerImpl
         setRulesInternal(rules);
     }
 
-    /** {@inheritDoc} */
     @Override
     public Set<RuleInternal> getRules() {
         synchronized (mLock) {
@@ -137,7 +135,6 @@ public class AnomalyDetectorControllerImpl
                 });
     }
 
-    /** {@inheritDoc} */
     @Override
     public void onSystemServicesReady() {
         mRuleStorage.load(
@@ -210,7 +207,6 @@ public class AnomalyDetectorControllerImpl
                         });
     }
 
-    /** {@inheritDoc} */
     @Override
     public void onAnomalyDetected(AnomalyReport report) {
         sLog.i("Anomaly detected");
