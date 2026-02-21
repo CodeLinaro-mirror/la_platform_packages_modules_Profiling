@@ -106,6 +106,10 @@ public final class ProfilingTrigger {
      *
      * <p>The tag returned with the {@link ProfilingResult#getTag()} will contain additional
      * information about the type of anomaly.
+     *
+     * <p>Note: For some anomalous behaviors, the system may not provide artifacts if this trigger
+     * is registered by more than one package with the same user id
+     * (see {@link PackageManager#getPackagesForUid(int)}).
      */
     @FlaggedApi(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
     public static final int TRIGGER_TYPE_ANOMALY = 8;
