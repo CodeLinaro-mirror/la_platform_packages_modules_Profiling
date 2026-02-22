@@ -30,6 +30,7 @@ android_test {
         "service-anomaly-detector.impl",
         "anomaly-detector-aconfig-flags-lib",
         "framework-anomaly-detector.impl",
+        "framework-profiling.impl",
         "testng",
         "services.core",
         "anomaly-detector-rules-proto-lite",
