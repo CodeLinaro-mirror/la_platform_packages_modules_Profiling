@@ -21,7 +21,6 @@ package {
 
 android_test {
     name: "MtsAnomalyDetectorTests",
-    defaults: ["modules-utils-testable-device-config-defaults"],
     static_libs: [
         "androidx.test.rules",
         "androidx.test.ext.truth",
@@ -29,8 +28,6 @@ android_test {
         "ctstestrunner-axt",
         "cts-wm-util",
         "service-anomaly-detector.impl",
-        "StatsdTestUtils",
-        "statsdprotolite",
         "anomaly-detector-aconfig-flags-lib",
         "framework-anomaly-detector.impl",
         "framework-profiling.impl",
@@ -43,11 +40,9 @@ android_test {
         "android.test.base.stubs.system",
         "android.test.mock.stubs.system",
         "junit",
-        "framework-statsd.stubs.module_lib",
     ],
     compile_multilib: "both",
     srcs: [
-        "//packages/modules/Profiling/anomaly-detector/service:anomaly-statslog-java-gen-src",
         "src/**/*.java",
     ],
     jarjar_rules: "jarjar-rules.txt",
