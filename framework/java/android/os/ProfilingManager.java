@@ -15,12 +15,15 @@
  */
 package android.os;
 
+import static android.os.Build.VERSION.SDK_INT;
 import static android.os.ProfilingTrigger.TriggerType;
 
 import android.annotation.FlaggedApi;
 import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.app.ActivityManager;
+import android.app.AnrWarningResult;
 import android.content.Context;
 import android.os.profiling.Flags;
 import android.util.Log;
@@ -36,6 +39,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Executor;
@@ -256,6 +260,21 @@ public final class ProfilingManager {
     @GuardedBy("mLock")
     public IProfilingService mProfilingService;
 
+    private HashSet<Integer> mRegisteredTriggerTypes = new HashSet<>();
+
+    // Used for any operations that profiling manager needs to perform asynchronously
+    // without creating a new thread in the app.
+    private Executor mLastAppProvidedExecutor;
+
+    private Consumer<AnrWarningResult> mAnrWarningListener;
+
+    // LINT.IfChange(TriggerTypes)
+    // This is the same as {@link ProfilingTriggerData#TRIGGER_ALL} so it should be kept
+    // in sync.
+    private static final int TRIGGER_ALL = -1;
+
+    // LINT.ThenChange(packages/modules/Profiling/service/java/com/android/os/profiling/ProfilingTriggerData.java:TriggerTypes)
+
     /**
      * Constructor for ProfilingManager.
      *
@@ -417,8 +436,8 @@ public final class ProfilingManager {
      * while a trace is in progress) re-delivery may be attempted using a listener added via this
      * method.
      *
-     * <p>The provided executor may also be used to perform a cleanup of old delivered profiles, if
-     * necessary.
+     * <p>The provided executor may also be used for other tasks required by ProfilingManager such
+     * as cleaning up old delivered profiles.
      *
      * @param executor The executor to call back with.
      * @param listener Listener to be triggered with result.
@@ -466,6 +485,47 @@ public final class ProfilingManager {
         }
 
         maybeCleanupOldFiles(executor);
+
+        mLastAppProvidedExecutor = executor;
+        registerAnrWarningListenerIfNeeded();
+    }
+
+    @SuppressWarnings("NewApi")
+    void registerAnrWarningListenerIfNeeded() {
+        if (mLastAppProvidedExecutor == null) {
+            // We don't have any known executor, so we skip until app has registered one
+            // after {@link #registerForAllProfilingResults} is called.
+            return;
+        }
+
+        if (SDK_INT < Build.VERSION_CODES.CINNAMON_BUN) {
+            // ANR Warning callback is not supported before then.
+            return;
+        }
+
+        if (mRegisteredTriggerTypes.contains(ProfilingTrigger.TRIGGER_TYPE_ANR)
+                || mRegisteredTriggerTypes.contains(TRIGGER_ALL)) {
+            // We register an ANR warning to add the ANR Id for two reasons:
+            // 1) it provides a timestamp when the ANR is imminent which is useful debugging
+            // information.
+            // 2) It ensures that the trace slice is traced as part of the process to avoid
+            // having the trace slice trimmed by redactor.
+            ActivityManager am = mContext.getSystemService(ActivityManager.class);
+            if (mAnrWarningListener == null) {
+                mAnrWarningListener =
+                        result -> {
+                            Trace.beginSection(
+                                    "ANR Warning ANR-Id: "
+                                            + result.getAnrId()
+                                            + " consumedMs= "
+                                            + result.getConsumedMillis()
+                                            + " timeoutMs="
+                                            + result.getTimeoutMillis());
+                            Trace.endSection();
+                        };
+            }
+            am.registerAnrWarningListener(mLastAppProvidedExecutor, mAnrWarningListener);
+        }
     }
 
     private void maybeCleanupOldFiles(final Executor executor) {
@@ -629,6 +689,12 @@ public final class ProfilingManager {
                 if (DEBUG) Log.d(TAG, "Binder exception processing request", e);
                 e.rethrowAsRuntimeException();
             }
+
+            for (ProfilingTrigger trigger : triggers) {
+                mRegisteredTriggerTypes.add(trigger.getTriggerType());
+            }
+
+            registerAnrWarningListenerIfNeeded();
         }
     }
 
@@ -665,6 +731,7 @@ public final class ProfilingManager {
                 if (DEBUG) Log.d(TAG, "Binder exception processing request", e);
                 e.rethrowAsRuntimeException();
             }
+            mRegisteredTriggerTypes.add(TRIGGER_ALL);
         }
     }
 
@@ -682,6 +749,7 @@ public final class ProfilingManager {
     }
 
     /** Remove triggers for this process with trigger types in the provided list. */
+    @SuppressWarnings("NewApi")
     @FlaggedApi(Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void removeProfilingTriggersByType(@NonNull @TriggerType int[] triggers) {
         synchronized (mLock) {
@@ -712,13 +780,33 @@ public final class ProfilingManager {
                 if (DEBUG) Log.d(TAG, "Binder exception processing request", e);
                 throw new RuntimeException("Unable to remove profiling triggers.");
             }
+
+            for (int trigger : triggers) {
+                if (trigger == ProfilingTrigger.TRIGGER_TYPE_ANR
+                        && mAnrWarningListener != null
+                        && SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN) {
+                    ActivityManager am = mContext.getSystemService(ActivityManager.class);
+                    am.unregisterAnrWarningListener(mAnrWarningListener);
+                    mAnrWarningListener = null;
+                }
+                mRegisteredTriggerTypes.remove(trigger);
+            }
         }
     }
 
     /** Remove all triggers for this process. */
+    @SuppressWarnings("NewApi")
     @FlaggedApi(Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW)
     public void clearProfilingTriggers() {
         synchronized (mLock) {
+            mRegisteredTriggerTypes.clear();
+            if (SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN
+                    && mAnrWarningListener != null) {
+                ActivityManager am = mContext.getSystemService(ActivityManager.class);
+                am.unregisterAnrWarningListener(mAnrWarningListener);
+                mAnrWarningListener = null;
+            }
+
             final IProfilingService service = getOrCreateIProfilingServiceLocked(false);
             if (service == null) {
                 // If we can't access service then we can't do anything. Return.
