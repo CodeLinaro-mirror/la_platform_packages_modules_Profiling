@@ -42,6 +42,7 @@ import com.android.os.profiling.anomaly.collector.binder.BinderSpamConfigList;
 import com.android.os.profiling.anomaly.collector.binder.BinderSpamData;
 import com.android.os.profiling.anomaly.core.AnomalyDetector;
 import com.android.os.profiling.anomaly.core.AnomalyReport;
+import com.android.os.profiling.anomaly.core.AnomalyStatsAtomsLog;
 import com.android.os.profiling.anomaly.core.SignalCollectorRegistry;
 import com.android.os.profiling.anomaly.core.SignalTypeId;
 import com.android.os.profiling.anomaly.internal.AnomalyReportImpl;
@@ -306,6 +307,15 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
 
             Bundle sessionParams = new Bundle();
             sessionParams.putBoolean(KEY_SAMPLE_BINDER_ONLY, true);
+
+            // Only log the anomaly if there is a rule violation
+            AnomalyStatsAtomsLog.write(
+                    AnomalyStatsAtomsLog.ANOMALY_STATS_BINDER_SPAM,
+                    data.getCallingUid(),
+                    data.getInterfaceName(),
+                    data.getMethodName(),
+                    callCount,
+                    timespan.toMillis());
 
             return new AnomalyReportImpl.Builder(mRule)
                     .addAttribute(new UidAttribute(data.getCallingUid()))
