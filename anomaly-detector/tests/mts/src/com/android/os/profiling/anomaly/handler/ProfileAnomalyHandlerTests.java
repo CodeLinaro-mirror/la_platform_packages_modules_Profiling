@@ -29,6 +29,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import android.content.pm.PackageManager;
+import android.os.AnomalyProfilingClient;
 import android.os.Bundle;
 import android.os.profiling.anomaly.RuleInternal;
 
@@ -37,7 +38,6 @@ import androidx.test.runner.AndroidJUnit4;
 import com.android.os.profiling.anomaly.attribute.ProfilingParamsAttribute;
 import com.android.os.profiling.anomaly.attribute.UidAttribute;
 import com.android.os.profiling.anomaly.core.AnomalyReport;
-import com.android.os.profiling.anomaly.wrapper.AnomalyProfilingClient;
 import com.android.os.profiling.anomaly.wrapper.SystemServiceFetcher;
 
 import org.junit.Before;

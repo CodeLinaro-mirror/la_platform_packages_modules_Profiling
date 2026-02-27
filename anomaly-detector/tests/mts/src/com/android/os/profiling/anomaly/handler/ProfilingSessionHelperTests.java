@@ -27,11 +27,10 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
 
+import android.os.AnomalyProfilingClient;
 import android.os.Bundle;
 
 import androidx.test.runner.AndroidJUnit4;
-
-import com.android.os.profiling.anomaly.wrapper.AnomalyProfilingClient;
 
 import org.junit.Before;
 import org.junit.Rule;
