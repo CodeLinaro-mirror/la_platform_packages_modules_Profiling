@@ -103,6 +103,7 @@ public class ProfileAnomalyHandlerTests {
     @Test
     public void execute_normalCondition_shouldStartProfile() {
         when(mMockReport.get(UidAttribute.class)).thenReturn(new UidAttribute(UID));
+        when(mMockRule.getConditionType()).thenReturn(RuleInternal.CONDITION_TYPE_BINDER_SPAM);
         when(mMockReport.getRule()).thenReturn(mMockRule);
         when(mPackageManager.getPackagesForUid(UID)).thenReturn(SINGLE_PACKAGE_NAME_ARRAY);
 
@@ -112,12 +113,19 @@ public class ProfileAnomalyHandlerTests {
         mHandler.execute(mMockReport);
 
         verify(mProfilingSessionHelper)
-                .startProfiling(eq(UID), eq(PACKAGE_NAME), anyInt(), any(), anyInt());
+                .requestProfiling(
+                        eq(UID),
+                        eq(PACKAGE_NAME),
+                        anyInt(),
+                        any(),
+                        anyInt(),
+                        eq(RuleInternal.CONDITION_TYPE_BINDER_SPAM));
     }
 
     @Test
     public void execute_multiplePackageName_shouldNotStartProfile() {
         when(mMockReport.get(UidAttribute.class)).thenReturn(new UidAttribute(UID));
+        when(mMockRule.getConditionType()).thenReturn(RuleInternal.CONDITION_TYPE_BINDER_SPAM);
         when(mMockReport.getRule()).thenReturn(mMockRule);
         when(mPackageManager.getPackagesForUid(UID)).thenReturn(MULTIPLE_PACKAGE_NAME_ARRAY);
 
@@ -130,12 +138,19 @@ public class ProfileAnomalyHandlerTests {
         mHandler.execute(mMockReport);
 
         verify(mProfilingSessionHelper, never())
-                .startProfiling(eq(UID), anyString(), anyInt(), any(), anyInt());
+                .requestProfiling(
+                        eq(UID),
+                        anyString(),
+                        anyInt(),
+                        any(),
+                        anyInt(),
+                        eq(RuleInternal.CONDITION_TYPE_BINDER_SPAM));
     }
 
     @Test
     public void execute_noTriggerRegistered_shouldNotStartProfiling() {
         when(mMockReport.get(UidAttribute.class)).thenReturn(new UidAttribute(UID));
+        when(mMockRule.getConditionType()).thenReturn(RuleInternal.CONDITION_TYPE_BINDER_SPAM);
         when(mMockReport.getRule()).thenReturn(mMockRule);
         when(mPackageManager.getPackagesForUid(UID)).thenReturn(MULTIPLE_PACKAGE_NAME_ARRAY);
 
@@ -148,30 +163,50 @@ public class ProfileAnomalyHandlerTests {
         mHandler.execute(mMockReport);
 
         verify(mProfilingSessionHelper, never())
-                .startProfiling(eq(UID), anyString(), anyInt(), any(), anyInt());
+                .requestProfiling(
+                        eq(UID),
+                        anyString(),
+                        anyInt(),
+                        any(),
+                        anyInt(),
+                        eq(RuleInternal.CONDITION_TYPE_BINDER_SPAM));
     }
 
     @Test
     public void execute_noPackageName_shouldNotStartProfiling() {
         when(mMockReport.get(UidAttribute.class)).thenReturn(new UidAttribute(UID));
+        when(mMockRule.getConditionType()).thenReturn(RuleInternal.CONDITION_TYPE_BINDER_SPAM);
         when(mMockReport.getRule()).thenReturn(mMockRule);
         when(mPackageManager.getPackagesForUid(UID)).thenReturn(EMPTY_PACKAGE_NAME_ARRAY);
 
         mHandler.execute(mMockReport);
 
         verify(mProfilingSessionHelper, never())
-                .startProfiling(anyInt(), anyString(), anyInt(), any(), anyInt());
+                .requestProfiling(
+                        anyInt(),
+                        anyString(),
+                        anyInt(),
+                        any(),
+                        anyInt(),
+                        eq(RuleInternal.CONDITION_TYPE_BINDER_SPAM));
     }
 
     @Test
     public void execute_noUidAttribute_shouldNotStartProfiling() {
         when(mMockReport.get(UidAttribute.class)).thenReturn(null);
+        when(mMockRule.getConditionType()).thenReturn(RuleInternal.CONDITION_TYPE_BINDER_SPAM);
         when(mMockReport.getRule()).thenReturn(mMockRule);
         when(mPackageManager.getPackagesForUid(UID)).thenReturn(EMPTY_PACKAGE_NAME_ARRAY);
 
         mHandler.execute(mMockReport);
 
         verify(mProfilingSessionHelper, never())
-                .startProfiling(anyInt(), anyString(), anyInt(), any(), anyInt());
+                .requestProfiling(
+                        anyInt(),
+                        anyString(),
+                        anyInt(),
+                        any(),
+                        anyInt(),
+                        eq(RuleInternal.CONDITION_TYPE_BINDER_SPAM));
     }
 }
