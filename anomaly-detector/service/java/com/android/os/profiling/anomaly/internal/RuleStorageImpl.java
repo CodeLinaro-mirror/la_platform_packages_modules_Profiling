@@ -61,7 +61,6 @@ public final class RuleStorageImpl implements RuleStorage {
         this.mIoExecutor = ioExecutor;
     }
 
-    /** {@inheritDoc} */
     @Override
     public void load(Executor executor, OutcomeReceiver<Set<RuleInternal>, Throwable> callback) {
         mIoExecutor.execute(
@@ -76,7 +75,6 @@ public final class RuleStorageImpl implements RuleStorage {
                 });
     }
 
-    /** {@inheritDoc} */
     @Override
     public void save(
             Set<RuleInternal> rules, Executor executor, OutcomeReceiver<Void, Throwable> callback) {

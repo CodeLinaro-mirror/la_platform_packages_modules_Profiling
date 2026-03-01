@@ -19,6 +19,7 @@ package com.android.os.profiling.anomaly.handler;
 import static android.os.ProfilingManager.KEY_DURATION_MS;
 
 import android.annotation.Nullable;
+import android.os.AnomalyProfilingClient;
 import android.os.AnomalyProfilingManager;
 import android.os.AnomalyRequestResult;
 import android.os.Bundle;
@@ -29,8 +30,6 @@ import android.util.SparseArray;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.os.profiling.anomaly.util.LogUtil;
-import com.android.os.profiling.anomaly.wrapper.AnomalyProfilingClient;
-import com.android.os.profiling.anomaly.wrapper.AnomalyProfilingManagerWrapper;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -42,7 +41,7 @@ import java.util.UUID;
  * @hide
  */
 public class ProfilingSessionHelper {
-    private static final LogUtil sLog = new LogUtil("ProfilingHelper");
+    private static final LogUtil sLog = new LogUtil("ProfilingSessionHelper");
 
     private final Object mLock = new Object();
 
@@ -51,7 +50,7 @@ public class ProfilingSessionHelper {
     private final SparseArray<SessionInfo> mUidSessionInfoSparseArray = new SparseArray<>();
 
     public ProfilingSessionHelper() {
-        this(new AnomalyProfilingManagerWrapper(new AnomalyProfilingManager()));
+        this(new AnomalyProfilingManager());
     }
 
     @VisibleForTesting
@@ -80,13 +79,13 @@ public class ProfilingSessionHelper {
             // with the trace file
             sLog.d(
                     String.format(
-                            "Profiling completed, session info: %s, result path:" + " %s",
+                            "Profiling completed, session tag: %s, result path: %s",
                             anomalyRequestResult.getTag(),
                             anomalyRequestResult.getResultFilePath()));
         } else {
             sLog.d(
                     String.format(
-                            "Profiling ERROR, session info: %s, error code: %d",
+                            "Profiling ERROR, session tag: %s, error code: %d",
                             anomalyRequestResult.getTag(), anomalyRequestResult.getErrorCode()));
         }
     }

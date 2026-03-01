@@ -275,10 +275,12 @@ public class RuleInternal {
      */
     @Target(ElementType.TYPE_USE)
     @Retention(RetentionPolicy.SOURCE)
+    // LINT.IfChange(supported_actions)
     @IntDef({
         ACTION_TYPE_LOG,
         ACTION_TYPE_COLLECT_PROFILE,
     })
+    // LINT.ThenChange(/anomaly-detector/tests/scripts/generate_anomaly_rules.py:supported_actions)
     // TODO(b/416804300): Add default and other action once finalized.
     public @interface AnomalyActionTypeInternal {}
 
@@ -289,9 +291,11 @@ public class RuleInternal {
      */
     @Target(ElementType.TYPE_USE)
     @Retention(RetentionPolicy.SOURCE)
+    // LINT.IfChange(supported_condition_types)
     @StringDef({
         CONDITION_TYPE_BINDER_SPAM,
     })
+    // LINT.ThenChange(/anomaly-detector/tests/scripts/generate_anomaly_rules.py:supported_condition_types)
     public @interface ConditionTypeInternal {}
 
     /**

@@ -186,20 +186,15 @@ public final class BinderSpamDataTests {
     }
 
     @Test
-    public void builder_withInvalidInterfaceName_throwException() {
-        IllegalArgumentException exception =
-                assertThrows(
-                        IllegalArgumentException.class,
-                        () ->
-                                new BinderSpamData.Builder()
-                                        .setCallingUid(CALLING_UID)
-                                        .setServerUid(SERVER_UID)
-                                        .setCallCount(CALL_COUNT)
-                                        .setInterfaceName("")
-                                        .setMethodName(METHOD_NAME)
-                                        .setTimespan(TIMESPAN)
-                                        .build());
-        assertThat(exception).hasMessageThat().contains("Interface name must not be empty!");
+    public void builder_withEmptyInterfaceName_noException() {
+        new BinderSpamData.Builder()
+                .setCallingUid(CALLING_UID)
+                .setServerUid(SERVER_UID)
+                .setCallCount(CALL_COUNT)
+                .setInterfaceName("")
+                .setMethodName(METHOD_NAME)
+                .setTimespan(TIMESPAN)
+                .build();
     }
 
     @Test
@@ -217,20 +212,15 @@ public final class BinderSpamDataTests {
     }
 
     @Test
-    public void builder_withInvalidMethodName_throwException() {
-        IllegalArgumentException exception =
-                assertThrows(
-                        IllegalArgumentException.class,
-                        () ->
-                                new BinderSpamData.Builder()
-                                        .setCallingUid(CALLING_UID)
-                                        .setServerUid(SERVER_UID)
-                                        .setCallCount(CALL_COUNT)
-                                        .setInterfaceName(INTERFACE_NAME)
-                                        .setMethodName("")
-                                        .setTimespan(TIMESPAN)
-                                        .build());
-        assertThat(exception).hasMessageThat().contains("Method name must not be empty!");
+    public void builder_withEmptyMethodName_noException() {
+        new BinderSpamData.Builder()
+                .setCallingUid(CALLING_UID)
+                .setServerUid(SERVER_UID)
+                .setCallCount(CALL_COUNT)
+                .setInterfaceName(INTERFACE_NAME)
+                .setMethodName("")
+                .setTimespan(TIMESPAN)
+                .build();
     }
 
     @Test
