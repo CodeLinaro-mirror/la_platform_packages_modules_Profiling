@@ -70,7 +70,6 @@ public final class ProfileAnomalyHandler implements AnomalyHandler {
             return;
         }
 
-        // TODO: b/477968969 - check with rate limiter before starting the profiling session
         ProfilingParamsAttribute profilingManagerParametersAttribute =
                 report.get(ProfilingParamsAttribute.class);
         if (profilingManagerParametersAttribute == null) {
@@ -88,12 +87,13 @@ public final class ProfileAnomalyHandler implements AnomalyHandler {
                         "Anomaly report received, starting profiling for uid: %d, packageName: %s",
                         uidAttribute.uid(), packageName));
 
-        mProfilingSessionHelper.startProfiling(
+        mProfilingSessionHelper.requestProfiling(
                 uidAttribute.uid(),
                 packageName,
                 profilingManagerParametersAttribute.maxSessionDurationMs(),
                 profilingManagerParametersAttribute.sessionParams(),
-                profilingManagerParametersAttribute.profilingType());
+                profilingManagerParametersAttribute.profilingType(),
+                report.getRule().getConditionType());
     }
 
     /**
