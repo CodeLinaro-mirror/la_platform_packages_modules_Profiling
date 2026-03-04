@@ -75,6 +75,14 @@ public final class LoggingHelper {
     public static final int TRIGGER_CALLBACK_STATUS_MISSING_NAME = 12;
     public static final int TRIGGER_CALLBACK_STATUS_TIMEOUT = 13;
 
+    public static final int PROFILING_TAG_UNSPECIFIED = 0;
+    public static final int PROFILING_TAG_USER_SPECIFIED = 1;
+    public static final int PROFILING_TAG_ANOMALY_MEMORY_LIMIT = 2;
+
+    // LINT.IfChange(anomaly_memory_limit_tag)
+    public static final String ANOMALY_MEMORY_LIMIT_TAG = "MEMORY_LIMIT";
+    // LINT.ThenChange(ProfilingService.java:anomaly_memory_limit_tag)
+
     @IntDef(
             prefix = {"REQUEST_RESULT_"},
             value = {
@@ -151,6 +159,16 @@ public final class LoggingHelper {
     @Retention(RetentionPolicy.SOURCE)
     public @interface TriggerCallbackStatus {}
 
+    @IntDef(
+            prefix = {"PROFILING_TAG_"},
+            value = {
+                PROFILING_TAG_UNSPECIFIED,
+                PROFILING_TAG_USER_SPECIFIED,
+                PROFILING_TAG_ANOMALY_MEMORY_LIMIT,
+            })
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface ProfilingTag {}
+
     /** Log that a profiling request was made. */
     public static void logProfilingRequest(
             int uid,
@@ -202,14 +220,20 @@ public final class LoggingHelper {
                 params != null && !params.isEmpty());
     }
 
-    /** Log that a trigger was sent. */
+    /**
+     * Log that a trigger was sent.
+     *
+     * <p>Only predefined anomaly tags are logged. User-defined tags will be logged as {@link
+     * #PROFILING_TAG_USER_SPECIFIED}.
+     */
     public static void logProfilingTriggerSent(
-            int uid, int triggerType, @TriggerStatus int triggerStatus) {
+            int uid, int triggerType, @TriggerStatus int triggerStatus, @Nullable String tag) {
         ProfilingStatsLog.write(
                 ProfilingStatsLog.PROFILING_TRIGGER_SENT,
                 uid,
                 triggerTypeToEnumValue(triggerType),
-                triggerStatus);
+                triggerStatus,
+                profilingTagToEnumValue(tag));
     }
 
     /** Log a background trace state change. */
@@ -295,5 +319,23 @@ public final class LoggingHelper {
             case ProfilingResult.ERROR_UNKNOWN -> 9;
             default -> 0;
         };
+    }
+
+    /**
+     * Convert profiling tag to logging enum value.
+     *
+     * <p>Constants come from:
+     * frameworks/proto_logging/stats/enums/profiling/enums.proto:ProfilingTag
+     */
+    private static @ProfilingTag int profilingTagToEnumValue(@Nullable String tag) {
+        if (tag == null) {
+            return PROFILING_TAG_UNSPECIFIED;
+        }
+        // LINT.IfChange(profiling_tags)
+        return switch (tag) {
+            case ANOMALY_MEMORY_LIMIT_TAG -> PROFILING_TAG_ANOMALY_MEMORY_LIMIT;
+            default -> PROFILING_TAG_USER_SPECIFIED;
+        };
+        // LINT.ThenChange(/frameworks/proto_logging/stats/enums/profiling/enums.proto:profiling_tags)
     }
 }
