@@ -28,11 +28,11 @@ import static android.profiling.cts.ProfilingTestUtils.OUTPUT_FILE_JAVA_HEAP_DUM
 import static android.profiling.cts.ProfilingTestUtils.executeShellCmd;
 import static android.profiling.cts.ProfilingTestUtils.resetAllConfigs;
 import static android.profiling.cts.ProfilingTestUtils.sleep;
-import static android.profiling.cts.ProfilingTestUtils.startSystemTriggeredTraceForTesting;
 
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.junit.Assert.fail;
+import static org.junit.Assume.assumeTrue;
 
 import android.app.Instrumentation;
 import android.content.BroadcastReceiver;
@@ -50,8 +50,6 @@ import android.util.Log;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
-
-import com.android.compatibility.common.util.AmUtils;
 
 import com.google.common.truth.Expect;
 
@@ -115,9 +113,22 @@ public class ProfilingMemoryLimiterTests {
         executeShellCmd("am force-stop " + STUB_PACKAGE_NAME);
     }
 
+    // Return true if the memory limiter is enabled and ready for testing.  This is an indirect
+    // way of testing the memory limiter flags.  The test is somewhat fragile, since it depends on
+    // the output of the shell command.
+    private static boolean limiterEnabled() {
+        final String status = executeShellCmd("am memory-limiter status");
+        if (status == null || status.contains("disabled") || status.contains("monitoring=false")) {
+            return false;
+        }
+        return true;
+    }
+
     @Test
     @RequiresFlagsEnabled({Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW})
     public void testMemoryAnomalyTrigger() throws Exception {
+        assumeTrue(limiterEnabled());
+
         // Create a receiver to capture the broadcast intent sent by the test app.
         mResultReceiverFilter =
                 new ResultReceiverFilter(
