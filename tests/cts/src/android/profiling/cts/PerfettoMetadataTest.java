@@ -128,6 +128,13 @@ public class PerfettoMetadataTest {
     }
 
     @Test
+    public void ofMemoryLimit_createAnomalyDetailsOfMemoryLimit() throws Exception {
+        PerfettoMetadata.AnomalyDetails details = PerfettoMetadata.AnomalyDetails.ofMemoryLimit();
+        JSONObject json = new JSONObject(details.toString());
+        assertThat(json.length()).isEqualTo(0);
+    }
+
+    @Test
     public void ofBinderSpam_createAnomalyDetailsOfBinderSpams() throws Exception {
         PerfettoMetadata.AnomalyDetails details =
                 PerfettoMetadata.AnomalyDetails.ofBinderSpam(
