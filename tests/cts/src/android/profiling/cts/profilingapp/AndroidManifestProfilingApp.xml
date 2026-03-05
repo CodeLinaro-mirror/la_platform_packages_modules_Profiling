@@ -17,7 +17,7 @@
 
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
           package="android.profiling.cts.profilingapp">
-    <application>
+    <application android:debuggable="true">
         <activity android:name=".ProfilingTriggerTestActivity"
                   android:exported="true">
         </activity>
