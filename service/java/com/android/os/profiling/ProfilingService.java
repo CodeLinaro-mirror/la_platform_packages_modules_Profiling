@@ -1915,7 +1915,7 @@ public class ProfilingService extends IProfilingService.Stub {
             // Request couldn't be processed. This shouldn't happen.
             if (DEBUG) Log.d(TAG, "Request couldn't be processed", e);
 
-            performTriggerCallback(session);
+            performTriggerCallback(session, LoggingHelper.TRIGGER_CALLBACK_STATUS_INVALID_REQUEST);
 
             session.setError(ProfilingResult.ERROR_FAILED_INVALID_REQUEST, e.getMessage());
 
@@ -1967,7 +1967,7 @@ public class ProfilingService extends IProfilingService.Stub {
                 Log.d(TAG, "Failed to start profiling.");
             }
 
-            performTriggerCallback(session);
+            performTriggerCallback(session, LoggingHelper.TRIGGER_CALLBACK_STATUS_PERFETTO_ERROR);
 
             session.setError(ProfilingResult.ERROR_FAILED_EXECUTING, "Trace couldn't be started");
 
@@ -2124,9 +2124,18 @@ public class ProfilingService extends IProfilingService.Stub {
             int triggerType,
             @Nullable String tag,
             @Nullable IProfilingTriggerCallback callback) {
+        if (callback != null) {
+            LoggingHelper.logProfilingTriggerCallbackStatus(
+                    uid, triggerType, LoggingHelper.TRIGGER_CALLBACK_STATUS_RECEIVED);
+        }
+
         if (!Flags.systemTriggeredProfilingNew()) {
             // Flag disabled.
-            performTriggerCallback(callback);
+            performTriggerCallback(
+                    uid,
+                    triggerType,
+                    LoggingHelper.TRIGGER_CALLBACK_STATUS_FEATURE_DISABLED,
+                    callback);
             return;
         }
 
@@ -2235,7 +2244,11 @@ public class ProfilingService extends IProfilingService.Stub {
 
         if (profilingType == -1) {
             // Something is wrong. Log an error and quit.
-            performTriggerCallback(callback);
+            performTriggerCallback(
+                    uid,
+                    triggerType,
+                    LoggingHelper.TRIGGER_CALLBACK_STATUS_INVALID_REQUEST,
+                    callback);
 
             Log.e(
                     TAG,
@@ -2311,12 +2324,12 @@ public class ProfilingService extends IProfilingService.Stub {
             boolean returnToAnomalyDetectorOnly,
             @Nullable Bundle params,
             @Nullable IProfilingTriggerCallback callback) {
-        // All exits from this method which do not result from approving profiling should call both
-        // performTriggerCallback and sendToAnomalyDetectorIfAnomalyTrigger.
+        // All exits from this method which do not result from approving profiling should call
+        // sendToAnomalyDetectorIfAnomalyTrigger.
+        // performTriggerRegistrationCheckAndRateLimiting handles performTriggerCallback internally
+        // on failure.
         if (!performTriggerRegistrationCheckAndRateLimiting(
                 uid, packageName, triggerType, profilingType, tag, callback)) {
-            performTriggerCallback(callback);
-
             if (!ANOMALY_MEMORY_LIMIT_TAG.equals(tag)) {
                 // If we fall into this case, then either rate limiting was denied or the trigger
                 // wasn't registered for the provided process. Since anomaly triggers except for
@@ -2360,7 +2373,11 @@ public class ProfilingService extends IProfilingService.Stub {
         } catch (IllegalArgumentException e) {
             // This should not happen, it should have been caught when checking rate limiter. No
             // need to call back to app as this is a trigger and not an explicit request.
-            performTriggerCallback(callback);
+            performTriggerCallback(
+                    uid,
+                    triggerType,
+                    LoggingHelper.TRIGGER_CALLBACK_STATUS_INVALID_REQUEST,
+                    callback);
 
             if (DEBUG) {
                 Log.d(
@@ -2384,7 +2401,11 @@ public class ProfilingService extends IProfilingService.Stub {
         } catch (RuntimeException e) {
             // Perfetto error. Systems fault. No need to call back to app as this is a trigger and
             // not an explicit request.
-            performTriggerCallback(callback);
+            performTriggerCallback(
+                    uid,
+                    triggerType,
+                    LoggingHelper.TRIGGER_CALLBACK_STATUS_PERFETTO_ERROR,
+                    callback);
 
             if (DEBUG) Log.d(TAG, "Perfetto error", e);
 
@@ -2417,7 +2438,11 @@ public class ProfilingService extends IProfilingService.Stub {
         // performTriggerCallback and sendToAnomalyDetectorIfAnomalyTrigger.
         synchronized (mLock) {
             if (mSystemTriggeredTraceUniqueSessionName == null) {
-                performTriggerCallback(callback);
+                performTriggerCallback(
+                        uid,
+                        triggerType,
+                        LoggingHelper.TRIGGER_CALLBACK_STATUS_MISSING_NAME,
+                        callback);
 
                 // If we don't have the session name then we don't know how to clone the trace so
                 // stop it if it's still running and then return.
@@ -2446,7 +2471,11 @@ public class ProfilingService extends IProfilingService.Stub {
             }
 
             if (mSystemTriggeredTraceProcess == null || !mSystemTriggeredTraceProcess.isAlive()) {
-                performTriggerCallback(callback);
+                performTriggerCallback(
+                        uid,
+                        triggerType,
+                        LoggingHelper.TRIGGER_CALLBACK_STATUS_NOT_RUNNING,
+                        callback);
 
                 // If we make it to this path then session name wasn't set to null but can't be used
                 // anymore as its associated trace is not running, so set to null now.
@@ -2480,8 +2509,6 @@ public class ProfilingService extends IProfilingService.Stub {
                 ProfilingManager.PROFILING_TYPE_SYSTEM_TRACE,
                 tag,
                 callback)) {
-
-            performTriggerCallback(callback);
 
             sendToAnomalyDetectorIfAnomalyTrigger(
                     keyMostSigBits,
@@ -2534,7 +2561,11 @@ public class ProfilingService extends IProfilingService.Stub {
 
                 // Wait again to see if it stops now.
                 if (!clone.waitFor(mPerfettoDestroyTimeoutMs, TimeUnit.MILLISECONDS)) {
-                    performTriggerCallback(callback);
+                    performTriggerCallback(
+                            uid,
+                            triggerType,
+                            LoggingHelper.TRIGGER_CALLBACK_STATUS_TIMEOUT,
+                            callback);
 
                     // Nothing more to do, result won't be ready so return.
                     if (DEBUG) Log.d(TAG, "Cloned system triggered trace timed out.");
@@ -2553,7 +2584,11 @@ public class ProfilingService extends IProfilingService.Stub {
                 }
             }
         } catch (IOException | InterruptedException e) {
-            performTriggerCallback(callback);
+            performTriggerCallback(
+                    uid,
+                    triggerType,
+                    LoggingHelper.TRIGGER_CALLBACK_STATUS_ERROR_UNKNOWN,
+                    callback);
 
             // Failed. There's nothing to clean up as we haven't created a session for this clone
             // yet so just fail quietly. The result for this trigger instance combo will be lost.
@@ -2572,7 +2607,8 @@ public class ProfilingService extends IProfilingService.Stub {
             return;
         }
 
-        performTriggerCallback(callback);
+        performTriggerCallback(
+                uid, triggerType, LoggingHelper.TRIGGER_CALLBACK_STATUS_SUCCESS, callback);
 
         LoggingHelper.logProfilingTriggerSent(
                 uid, triggerType, LoggingHelper.TRIGGER_STATUS_FULFILLED);
@@ -2687,7 +2723,11 @@ public class ProfilingService extends IProfilingService.Stub {
 
         if (trigger == null) {
             // No trigger object, process isn't registered for this trigger.
-            performTriggerCallback(callback);
+            performTriggerCallback(
+                    uid,
+                    triggerType,
+                    LoggingHelper.TRIGGER_CALLBACK_STATUS_NOT_REGISTERED,
+                    callback);
             LoggingHelper.logProfilingTriggerSent(
                     uid, triggerType, LoggingHelper.TRIGGER_STATUS_NOT_REGISTERED);
             return false;
@@ -2702,8 +2742,17 @@ public class ProfilingService extends IProfilingService.Stub {
                 if (trigger.getPackageName().equals(mDebugPackageName)) {
                     return true;
                 }
-                return getMemoryAnomalyRateLimiter().isProfilingRequestAllowed(uid)
-                        == RateLimiter.RATE_LIMIT_RESULT_ALLOWED;
+                if (getMemoryAnomalyRateLimiter().isProfilingRequestAllowed(uid)
+                        == RateLimiter.RATE_LIMIT_RESULT_ALLOWED) {
+                    return true;
+                } else {
+                    performTriggerCallback(
+                            uid,
+                            triggerType,
+                            LoggingHelper.TRIGGER_CALLBACK_STATUS_RATE_LIMIT_SYSTEM,
+                            callback);
+                    return false;
+                }
             }
             return true;
         }
@@ -2712,7 +2761,11 @@ public class ProfilingService extends IProfilingService.Stub {
         if (System.currentTimeMillis() - trigger.getLastTriggeredTimeMs()
                 < trigger.getRateLimitingPeriodHours() * 60L * 60L * 1000L) {
             // App provided rate limiting doesn't allow for this run, return.
-            performTriggerCallback(callback);
+            performTriggerCallback(
+                    uid,
+                    triggerType,
+                    LoggingHelper.TRIGGER_CALLBACK_STATUS_RATE_LIMIT_APP,
+                    callback);
             if (DEBUG) {
                 Log.d(
                         TAG,
@@ -2738,7 +2791,12 @@ public class ProfilingService extends IProfilingService.Stub {
                 // Blocked by system rate limiter, return. Since this is system triggered there is
                 // no callback and therefore no need to distinguish between per app and system
                 // denials within the system rate limiter.
-                performTriggerCallback(callback);
+                performTriggerCallback(
+                        uid,
+                        triggerType,
+                        LoggingHelper.TRIGGER_CALLBACK_STATUS_RATE_LIMIT_SYSTEM,
+                        callback);
+
                 if (DEBUG) {
                     Log.d(
                             TAG,
@@ -3083,11 +3141,11 @@ public class ProfilingService extends IProfilingService.Stub {
         } else if (session.getActiveTrace().isAlive() && processingTimeRemaining < 0) {
             // still running but exceeded max allotted processing time, stop profiling and deliver
             // what results are available.
-            performTriggerCallback(session);
+            performTriggerCallback(session, LoggingHelper.TRIGGER_CALLBACK_STATUS_TIMEOUT);
             stopProfiling(session.getKey(), LoggingHelper.PROFILING_STOPPED_REASON_TIMED_OUT);
         } else {
             // complete, process results and deliver.
-            performTriggerCallback(session);
+            performTriggerCallback(session, LoggingHelper.TRIGGER_CALLBACK_STATUS_SUCCESS);
             LoggingHelper.logProfilingStopped(
                     session.getUid(),
                     session.getProfilingType(),
@@ -4124,17 +4182,29 @@ public class ProfilingService extends IProfilingService.Stub {
         mSystemTriggeredTraceUniqueSessionName = null;
     }
 
-    private void performTriggerCallback(@NonNull TracingSession session) {
-        performTriggerCallback(session.getProfilingTriggerCallback());
+    private void performTriggerCallback(
+            @NonNull TracingSession session, @LoggingHelper.TriggerCallbackStatus int status) {
+        performTriggerCallback(
+                session.getUid(),
+                session.getTriggerType(),
+                status,
+                session.getProfilingTriggerCallback());
         session.setProfilingTriggerCallback(null);
     }
 
-    private void performTriggerCallback(@Nullable IProfilingTriggerCallback callback) {
+    private void performTriggerCallback(
+            int uid,
+            int triggerType,
+            @LoggingHelper.TriggerCallbackStatus int status,
+            @Nullable IProfilingTriggerCallback callback) {
         if (callback != null) {
             try {
                 callback.onComplete();
+                LoggingHelper.logProfilingTriggerCallbackStatus(uid, triggerType, status);
             } catch (RemoteException e) {
                 Log.w(TAG, "Exception notifying caller of process trigger complete.", e);
+                LoggingHelper.logProfilingTriggerCallbackStatus(
+                        uid, triggerType, LoggingHelper.TRIGGER_CALLBACK_STATUS_ERROR_REMOTE);
             }
         }
     }
