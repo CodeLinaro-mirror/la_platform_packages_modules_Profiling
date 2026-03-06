@@ -21,6 +21,8 @@ import static android.profiling.cts.ProfilingTestConstants.ACTION_INIT_AND_ADD_A
 import static android.profiling.cts.ProfilingTestConstants.ACTION_KEY;
 import static android.profiling.cts.ProfilingTestConstants.ACTION_REGISTER_AND_ALLOCATE_MEMORY;
 import static android.profiling.cts.ProfilingTestConstants.ACTION_REGISTER_AND_REPORT_FULLY_DRAWN;
+import static android.profiling.cts.ProfilingTestConstants.ACTION_REGISTER_ANR_CALLBACK;
+import static android.profiling.cts.ProfilingTestConstants.ACTION_SETUP_PROFILING_TRIGGER_AND_TRIGGER_ANR;
 import static android.profiling.cts.ProfilingTestConstants.FILE_VALIDATION_RESULT_FILE_DOES_NOT_EXIST;
 import static android.profiling.cts.ProfilingTestConstants.FILE_VALIDATION_RESULT_FILE_EMPTY;
 import static android.profiling.cts.ProfilingTestConstants.FILE_VALIDATION_RESULT_FILE_PATH_EMPTY;
@@ -30,14 +32,19 @@ import static android.profiling.cts.profilingapp.ProfilingAppUtils.reply;
 
 import android.app.Activity;
 import android.app.ActivityManager;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Bundle;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
 import android.os.ProfilingTrigger;
 import android.os.SharedMemory;
+import android.os.SystemClock;
 import android.system.ErrnoException;
 import android.util.Log;
+import android.view.WindowManager;
 
 import java.io.File;
 import java.nio.ByteBuffer;
@@ -49,6 +56,7 @@ import java.util.function.Consumer;
 
 public class ProfilingTriggerTestActivity extends Activity {
     private static final String TAG = ProfilingTriggerTestActivity.class.getSimpleName();
+    private static final String ACTION_ANR = "action_anr";
 
     private final List<ByteBuffer> mAllocations = new ArrayList<>();
     private volatile boolean mStopAllocation = false;
@@ -68,6 +76,9 @@ public class ProfilingTriggerTestActivity extends Activity {
             case ACTION_REGISTER_AND_REPORT_FULLY_DRAWN -> registerAndReportFullyDrawn();
             case ACTION_INIT_AND_ADD_ANOMALY_TRIGGER -> initAndAddAnomalyTrigger();
             case ACTION_REGISTER_AND_ALLOCATE_MEMORY -> registerAndAllocateMemory();
+            case ACTION_SETUP_PROFILING_TRIGGER_AND_TRIGGER_ANR ->
+                    setupProfilingTriggersAndTriggerAnr();
+            case ACTION_REGISTER_ANR_CALLBACK -> registerAnrCallback();
             default -> {
                 Log.e(TAG, "Unknown action: " + action);
                 finish();
@@ -169,6 +180,50 @@ public class ProfilingTriggerTestActivity extends Activity {
         profilingManager.registerForAllProfilingResults(
                 Executors.newSingleThreadExecutor(), new AppCallback(this));
         reportFullyDrawn();
+    }
+
+    /** Triggers an ANR by registering a broadcast receiver that enters an infinite loop. */
+    private void triggerAnr() {
+        registerReceiver(
+                new BroadcastReceiver() {
+                    @Override
+                    public void onReceive(Context context, Intent intent) {
+                        Log.d(TAG, "Received broadcast: " + intent.getAction());
+                        while (true) {
+                            SystemClock.sleep(2);
+                        }
+                    }
+                },
+                new IntentFilter(ACTION_ANR),
+                Context.RECEIVER_EXPORTED);
+
+        getWindow()
+                .addFlags(
+                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                                | WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+                                | WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+                                | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
+    }
+
+    /**
+     * Sets up ANR profiling triggers, registers for profiling results, and then triggers an ANR.
+     */
+    private void setupProfilingTriggersAndTriggerAnr() {
+        Log.d(TAG, "setupProfilingTriggersAndTriggerAnr");
+        ProfilingManager profilingManager = getSystemService(ProfilingManager.class);
+        profilingManager.clearProfilingTriggers();
+        ProfilingTrigger trigger =
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANR).build();
+        profilingManager.addProfilingTriggers(Collections.singletonList(trigger));
+
+        triggerAnr();
+    }
+
+    /** Registers for ANR profiling trigger results. */
+    private void registerAnrCallback() {
+        ProfilingManager profilingManager = getSystemService(ProfilingManager.class);
+        profilingManager.registerForAllProfilingResults(
+                Executors.newSingleThreadExecutor(), new AppCallback(this));
     }
 
     private class AppCallback implements Consumer<ProfilingResult> {
