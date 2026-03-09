@@ -16,8 +16,10 @@
 
 package android.profiling.cts.profilingapp;
 
+import static android.profiling.cts.ProfilingTestConstants.ACTION_INIT_AND_ADD_ANOMALY_TRIGGER;
 import static android.profiling.cts.ProfilingTestConstants.ACTION_INIT_AND_ADD_APP_FULLY_DRAWN_TRIGGER;
 import static android.profiling.cts.ProfilingTestConstants.ACTION_KEY;
+import static android.profiling.cts.ProfilingTestConstants.ACTION_REGISTER_AND_ALLOCATE_MEMORY;
 import static android.profiling.cts.ProfilingTestConstants.ACTION_REGISTER_AND_REPORT_FULLY_DRAWN;
 import static android.profiling.cts.ProfilingTestConstants.FILE_VALIDATION_RESULT_FILE_DOES_NOT_EXIST;
 import static android.profiling.cts.ProfilingTestConstants.FILE_VALIDATION_RESULT_FILE_EMPTY;
@@ -27,20 +29,29 @@ import static android.profiling.cts.ProfilingTestConstants.FILE_VALIDATION_RESUL
 import static android.profiling.cts.profilingapp.ProfilingAppUtils.reply;
 
 import android.app.Activity;
+import android.app.ActivityManager;
 import android.content.Context;
 import android.os.Bundle;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
 import android.os.ProfilingTrigger;
+import android.os.SharedMemory;
+import android.system.ErrnoException;
 import android.util.Log;
 
 import java.io.File;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
 public class ProfilingTriggerTestActivity extends Activity {
     private static final String TAG = ProfilingTriggerTestActivity.class.getSimpleName();
+
+    private final List<ByteBuffer> mAllocations = new ArrayList<>();
+    private volatile boolean mStopAllocation = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -55,11 +66,92 @@ public class ProfilingTriggerTestActivity extends Activity {
         switch (action) {
             case ACTION_INIT_AND_ADD_APP_FULLY_DRAWN_TRIGGER -> initAndAddAppFullyDrawnTrigger();
             case ACTION_REGISTER_AND_REPORT_FULLY_DRAWN -> registerAndReportFullyDrawn();
+            case ACTION_INIT_AND_ADD_ANOMALY_TRIGGER -> initAndAddAnomalyTrigger();
+            case ACTION_REGISTER_AND_ALLOCATE_MEMORY -> registerAndAllocateMemory();
             default -> {
                 Log.e(TAG, "Unknown action: " + action);
                 finish();
             }
         }
+    }
+
+    /** Clears all profiling triggers and adds an anomaly profiling trigger. */
+    private void initAndAddAnomalyTrigger() {
+        ProfilingManager profilingManager = getSystemService(ProfilingManager.class);
+        profilingManager.clearProfilingTriggers();
+        ProfilingTrigger trigger =
+                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY).build();
+        profilingManager.addProfilingTriggers(Collections.singletonList(trigger));
+    }
+
+    /** Registers for profiling results and allocates memory. */
+    private void registerAndAllocateMemory() {
+        Log.i(TAG, "registerAndAllocateMemory starting");
+        ProfilingManager profilingManager = getSystemService(ProfilingManager.class);
+
+        profilingManager.registerForAllProfilingResults(
+                Executors.newSingleThreadExecutor(), new AppCallback(this));
+
+        new Thread(
+                        () -> {
+                            // Fetch total memory to calculate a safe allocation target.
+                            ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
+                            ActivityManager am = getSystemService(ActivityManager.class);
+                            am.getMemoryInfo(mi);
+
+                            // The test sets a 5% limit via 'am memory-limiter manual'.
+                            // We allocate 10% of total RAM to ensure we exceed that limit.
+                            long targetAllocation = mi.totalMem / 10;
+                            int chunkSize = 50 * 1024 * 1024; // 50MB chunks
+
+                            Log.i(
+                                    TAG,
+                                    "Total RAM: "
+                                            + mi.totalMem
+                                            + ", Target allocation: "
+                                            + targetAllocation);
+
+                            long allocated = 0;
+                            try {
+                                while (allocated < targetAllocation && !mStopAllocation) {
+                                    Log.i(TAG, "Allocating chunk " + (allocated / chunkSize + 1));
+                                    try {
+                                        SharedMemory mem = SharedMemory.create(null, chunkSize);
+                                        ByteBuffer chunk = mem.mapReadWrite();
+                                        // Make sure the memory is actually allocated and not just
+                                        // lazy-paged.
+                                        for (int i = 0; i < chunkSize; i += 4096) {
+                                            chunk.put(i, (byte) 1);
+                                        }
+                                        mAllocations.add(chunk);
+                                    } catch (ErrnoException e) {
+                                        Log.e(TAG, "SharedMemory allocation failed", e);
+                                        break;
+                                    }
+
+                                    allocated += chunkSize;
+                                    Log.i(TAG, "Allocated total: " + allocated);
+
+                                    // Wait a bit to allow the system to detect and callback
+                                    try {
+                                        Thread.sleep(1000);
+                                    } catch (InterruptedException e) {
+                                        Thread.currentThread().interrupt();
+                                        break;
+                                    }
+                                }
+                                Log.i(
+                                        TAG,
+                                        "Allocation loop finished. StopAllocation: "
+                                                + mStopAllocation);
+                            } catch (OutOfMemoryError e) {
+                                Log.e(
+                                        TAG,
+                                        "Caught OutOfMemoryError after allocating " + allocated,
+                                        e);
+                            }
+                        })
+                .start();
     }
 
     /** Clears all profiling triggers and adds an app fully drawn profiling trigger. */
@@ -79,7 +171,7 @@ public class ProfilingTriggerTestActivity extends Activity {
         reportFullyDrawn();
     }
 
-    private static class AppCallback implements Consumer<ProfilingResult> {
+    private class AppCallback implements Consumer<ProfilingResult> {
         private final Context mContext;
 
         AppCallback(Context context) {
@@ -89,6 +181,7 @@ public class ProfilingTriggerTestActivity extends Activity {
         @Override
         public void accept(ProfilingResult result) {
             Log.d(TAG, "Profiling result received: " + result.toString());
+            mStopAllocation = true;
 
             // Validates the result file in the test app context. The result file is stored under
             // test app's file directory and can't be accessed by host app directly. We validate the

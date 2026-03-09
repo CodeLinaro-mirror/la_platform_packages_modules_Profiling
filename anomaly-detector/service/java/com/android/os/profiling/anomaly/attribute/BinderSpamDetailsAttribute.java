@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The Android Open Source Project
+ * Copyright (C) 2026 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,16 +14,22 @@
  * limitations under the License.
  */
 
-package com.android.os.profiling.anomaly.core;
+package com.android.os.profiling.anomaly.attribute;
 
-import android.os.profiling.anomaly.RuleInternal.AnomalyActionTypeInternal;
+import com.android.os.profiling.anomaly.core.AnomalyAttribute;
+
+import java.time.Duration;
 
 /**
- * A registry for mapping action types to their handlers.
+ * An attribute that provides the details of a binder spam anomaly.
  *
  * @hide
  */
-public interface AnomalyHandlerRegistry {
-    /** Returns the handler for a given action type. */
-    AnomalyHandler getHandler(@AnomalyActionTypeInternal int action);
-}
+public record BinderSpamDetailsAttribute(
+        String interfaceName,
+        String methodName,
+        int observedCallCount,
+        Duration observedInterval,
+        int thresholdCallCount,
+        Duration thresholdInterval)
+        implements AnomalyAttribute {}

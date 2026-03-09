@@ -18,7 +18,6 @@ package com.android.os.profiling.anomaly.internal;
 
 import android.annotation.Nullable;
 import android.util.ArrayMap;
-import android.util.Slog;
 
 import com.android.internal.annotations.GuardedBy;
 import com.android.os.profiling.anomaly.collector.SignalCollector;
@@ -26,6 +25,7 @@ import com.android.os.profiling.anomaly.collector.SignalCollectorConfig;
 import com.android.os.profiling.anomaly.collector.SignalCollectorData;
 import com.android.os.profiling.anomaly.core.SignalCollectorRegistry;
 import com.android.os.profiling.anomaly.core.SignalTypeId;
+import com.android.os.profiling.anomaly.util.LogUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -41,6 +41,7 @@ import java.util.function.Consumer;
  */
 public final class SignalCollectorRegistryImpl implements SignalCollectorRegistry {
     private static final String TAG = "SignalCollectorRegistry";
+    private static final LogUtil sLog = new LogUtil(TAG);
 
     /** Map from signal type ID to the registered collector. */
     @GuardedBy("mRegisteredCollectors")
@@ -81,7 +82,7 @@ public final class SignalCollectorRegistryImpl implements SignalCollectorRegistr
             entry.getValue().execute(() -> entry.getKey().accept(signalTypeId));
         }
 
-        Slog.i(TAG, "Registered SignalCollector for " + signalTypeId);
+        sLog.i("Registered SignalCollector for " + signalTypeId);
     }
 
     /** {@inheritDoc} */
@@ -102,13 +103,13 @@ public final class SignalCollectorRegistryImpl implements SignalCollectorRegistr
             synchronized (mRegisteredCollectors) {
                 callbacksToExecute = new ArrayMap<>(mCollectorUnregisteredCallbacks);
             }
-            Slog.i(TAG, "Unregistered SignalCollector for " + signalTypeId);
+            sLog.i("Unregistered SignalCollector for " + signalTypeId);
             for (Map.Entry<Consumer<SignalTypeId>, Executor> entry :
                     callbacksToExecute.entrySet()) {
                 entry.getValue().execute(() -> entry.getKey().accept(signalTypeId));
             }
         } else {
-            Slog.w(TAG, "No SignalCollector found for unregistration: " + signalTypeId);
+            sLog.w("No SignalCollector found for unregistration: " + signalTypeId);
         }
     }
 
@@ -169,7 +170,7 @@ public final class SignalCollectorRegistryImpl implements SignalCollectorRegistr
             SignalCollector<?, ?> rawCollector = mRegisteredCollectors.get(signalTypeId);
 
             if (rawCollector == null) {
-                Slog.w(TAG, "No collector entry found for " + signalTypeId);
+                sLog.w("No collector entry found for " + signalTypeId);
                 return null; // Collector not found
             }
 

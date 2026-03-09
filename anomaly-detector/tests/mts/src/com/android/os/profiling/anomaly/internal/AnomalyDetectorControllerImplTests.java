@@ -43,7 +43,6 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 
@@ -105,33 +104,29 @@ public final class AnomalyDetectorControllerImplTests {
 
     @Test
     public void setRules_detectorCreated() {
-        when(mMockAnomalyDetectorRegistry.getFactory(any(String.class)))
-                .thenAnswer(i -> mMockFactory);
-        when(mMockAnomalyDetectorRegistry.createDetectorForRule(any(), any()))
+        when(mMockAnomalyDetectorRegistry.createDetectorForCondition(any(), any()))
                 .thenAnswer(i -> mMockDetector);
 
         mController.setRules(Collections.singleton(mTestConditionRule));
 
-        verify(mMockAnomalyDetectorRegistry).getFactory(TEST_CONDITION_TYPE);
         verify(mMockAnomalyDetectorRegistry)
-                .createDetectorForRule(mTestConditionRule, mMockSignalCollectorRegistry);
+                .createDetectorForCondition(TEST_CONDITION_TYPE, mMockSignalCollectorRegistry);
         verify(mMockDetector).setOnAnomalyDetectedListener(mController);
+        verify(mMockDetector).setRules(Collections.singleton(mTestConditionRule));
     }
 
     @Test
-    public void setRules_flushesOldDetectors() {
+    public void setRules_flushesOldRules() {
         // Activate a first rule.
-        when(mMockAnomalyDetectorRegistry.getFactory(any(String.class)))
-                .thenAnswer(i -> mMockFactory);
-        when(mMockAnomalyDetectorRegistry.createDetectorForRule(any(), any()))
+        when(mMockAnomalyDetectorRegistry.createDetectorForCondition(any(), any()))
                 .thenAnswer(i -> mMockDetector);
         mController.setRules(Collections.singleton(mTestConditionRule));
 
         // Now, set a new, empty set of rules.
         mController.setRules(Collections.emptySet());
 
-        // Verify the old detector was flushed by having setRule(null) called on it.
-        verify(mMockDetector).setRule(null);
+        // Verify that setRules(emptySet) was called on the detector.
+        verify(mMockDetector).setRules(Collections.emptySet());
     }
 
     @Test
@@ -144,10 +139,8 @@ public final class AnomalyDetectorControllerImplTests {
         Consumer<SignalTypeId> callback = callbackCaptor.getValue();
 
         // Set up a rule for which the detector cannot be created initially.
-        when(mMockAnomalyDetectorRegistry.getFactory(any(String.class)))
-                .thenAnswer(i -> mMockFactory);
-        when(mMockAnomalyDetectorRegistry.createDetectorForRule(
-                        mTestConditionRule, mMockSignalCollectorRegistry))
+        when(mMockAnomalyDetectorRegistry.createDetectorForCondition(
+                        TEST_CONDITION_TYPE, mMockSignalCollectorRegistry))
                 .thenReturn(null); // Simulate dependency not met
 
         // Try to set the rule. The detector should not be activated.
@@ -155,8 +148,8 @@ public final class AnomalyDetectorControllerImplTests {
         verify(mMockDetector, never()).setOnAnomalyDetectedListener(any());
 
         // Now, change the mock so the detector *can* be created.
-        when(mMockAnomalyDetectorRegistry.createDetectorForRule(
-                        mTestConditionRule, mMockSignalCollectorRegistry))
+        when(mMockAnomalyDetectorRegistry.createDetectorForCondition(
+                        TEST_CONDITION_TYPE, mMockSignalCollectorRegistry))
                 .thenAnswer(i -> mMockDetector);
 
         // Trigger the callback, simulating a new collector being registered.
@@ -164,18 +157,24 @@ public final class AnomalyDetectorControllerImplTests {
 
         // Verify the controller re-evaluated the rule and activated the detector this time.
         verify(mMockAnomalyDetectorRegistry, times(2))
-                .createDetectorForRule(mTestConditionRule, mMockSignalCollectorRegistry);
+                .createDetectorForCondition(TEST_CONDITION_TYPE, mMockSignalCollectorRegistry);
         verify(mMockDetector).setOnAnomalyDetectedListener(mController);
+        verify(mMockDetector).setRules(Collections.singleton(mTestConditionRule));
     }
 
     @Test
     public void setRules_detectorNotCreatedWhenFactoryMissing() {
-        when(mMockAnomalyDetectorRegistry.getFactory(UNREGISTERED_CONDITION_TYPE)).thenReturn(null);
+        // Return null when trying to create a detector for the unregistered type
+        when(mMockAnomalyDetectorRegistry.createDetectorForCondition(
+                        UNREGISTERED_CONDITION_TYPE, mMockSignalCollectorRegistry))
+                .thenReturn(null);
 
         mController.setRules(Collections.singleton(mUnregisteredConditionRule));
 
-        verify(mMockAnomalyDetectorRegistry).getFactory(UNREGISTERED_CONDITION_TYPE);
-        verify(mMockAnomalyDetectorRegistry, never()).createDetectorForRule(any(), any());
+        verify(mMockAnomalyDetectorRegistry)
+                .createDetectorForCondition(
+                        UNREGISTERED_CONDITION_TYPE, mMockSignalCollectorRegistry);
+        verify(mMockDetector, never()).setRules(any());
     }
 
     @Test
@@ -188,7 +187,7 @@ public final class AnomalyDetectorControllerImplTests {
         // Set up a rule and detector.
         when(mMockAnomalyDetectorRegistry.getFactory(any(String.class)))
                 .thenAnswer(i -> mMockFactory);
-        when(mMockAnomalyDetectorRegistry.createDetectorForRule(any(), any()))
+        when(mMockAnomalyDetectorRegistry.createDetectorForCondition(any(), any()))
                 .thenAnswer(i -> mMockDetector);
         SignalTypeId signalTypeId = new SignalTypeId(TestConfig.class, TestData.class);
         when(mMockFactory.getRequiredSignalCollectorTypes())
@@ -197,19 +196,11 @@ public final class AnomalyDetectorControllerImplTests {
         mController.setRules(Collections.singleton(mTestConditionRule));
         verify(mMockDetector).setOnAnomalyDetectedListener(mController);
 
-        // Reset the mock to ensure we are only verifying behavior from this point forward.
-        Mockito.reset(mMockAnomalyDetectorRegistry);
-        when(mMockAnomalyDetectorRegistry.getFactory(any(String.class)))
-                .thenAnswer(i -> mMockFactory);
-        when(mMockFactory.getRequiredSignalCollectorTypes())
-                .thenReturn(Collections.singleton(signalTypeId));
-
         // Simulate the collector being unregistered.
         callback.accept(signalTypeId);
 
         // Verify the detector was notified.
         verify(mMockDetector).onSignalCollectorUnregistered(signalTypeId);
-        verify(mMockAnomalyDetectorRegistry, never()).createDetectorForRule(any(), any());
     }
 
     @Test

@@ -18,7 +18,7 @@ package com.android.os.profiling.anomaly.core;
 
 import android.annotation.Nullable;
 import android.os.profiling.anomaly.RuleInternal;
-import android.os.profiling.anomaly.RuleInternal.ConditionType;
+import android.os.profiling.anomaly.RuleInternal.ConditionTypeInternal;
 
 import java.util.Set;
 
@@ -57,19 +57,19 @@ public abstract class AnomalyDetector {
         Set<SignalTypeId> getRequiredSignalCollectorTypes();
 
         /** Returns the condition type that this factory's detectors handle. */
-        @ConditionType
+        @ConditionTypeInternal
         String getConditionType();
     }
 
     /**
-     * Sets the rule that this detector should use for its evaluation.
+     * Sets the rules that this detector should use for its evaluation.
      *
-     * <p>When a rule is set, the detector should subscribe to any necessary data streams. When the
-     * rule is set to {@code null}, the detector should unsubscribe and clean up its resources.
+     * <p>When rules are set, the detector should subscribe to any necessary data streams. When the
+     * set is empty, the detector should unsubscribe and clean up its resources.
      *
-     * @param rule The rule to apply, or {@code null} to clear the current rule.
+     * @param rules The rules to apply.
      */
-    public abstract void setRule(RuleInternal rule);
+    public abstract void setRules(Set<RuleInternal> rules);
 
     /**
      * Called when a signal collector that this detector depends on has been unregistered.

@@ -427,14 +427,27 @@ public final class RuleInternalTests {
     }
 
     @Test
-    public void setName_empty_throws() {
-        assertThrows(IllegalArgumentException.class, () -> new RuleInternal.Builder().setName(""));
+    public void setName_empty_doesNotThrow() {
+        RuleInternal rule =
+                new RuleInternal.Builder()
+                        .setName("")
+                        .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
+                        .setRuleCondition(createBinderSpamBundle())
+                        .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
+                        .build();
+        assertThat(rule.getName()).isEmpty();
     }
 
     @Test
-    public void setName_blank_throws() {
-        assertThrows(
-                IllegalArgumentException.class, () -> new RuleInternal.Builder().setName("   "));
+    public void setName_blank_doesNotThrow() {
+        RuleInternal rule =
+                new RuleInternal.Builder()
+                        .setName("   ")
+                        .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
+                        .setRuleCondition(createBinderSpamBundle())
+                        .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
+                        .build();
+        assertThat(rule.getName()).isEqualTo("   ");
     }
 
     @Test
