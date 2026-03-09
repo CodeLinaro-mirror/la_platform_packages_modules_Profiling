@@ -16,13 +16,32 @@
 
 package android.profiling.utils;
 
+import android.annotation.WorkerThread;
+import android.util.Slog;
+
 import com.android.internal.annotations.VisibleForTesting;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.zip.Deflater;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+
+import javax.annotation.concurrent.NotThreadSafe;
 
 /**
  * A class to construct metadata for a Perfetto trace, which can be used to highlight anomalies.
@@ -53,8 +72,12 @@ import java.util.concurrent.TimeUnit;
  * }
  * </pre>
  */
+@NotThreadSafe
 public final class PerfettoMetadata {
     private static final String TAG = PerfettoMetadata.class.getSimpleName();
+    @VisibleForTesting public static final String METADATA_FILE_NAME = "perfetto_metadata.json";
+    @VisibleForTesting public static final String ZIP_FILE_SUFFIX = "-metadata.zip";
+    private static final int BUFFER_SIZE = 64 * 1024; // 64KB
 
     // -- Root key --
     /** The root key for the Perfetto metadata object. */
@@ -193,6 +216,103 @@ public final class PerfettoMetadata {
         region.put(ANOMALY_DETAILS_KEY, anomalyDetails);
 
         return region;
+    }
+
+    /**
+     * Attaches this metadata as a separate file to a profiling result file by creating a zip
+     * bundle.
+     *
+     * <p>This method does not compress the files when bundling. This is equivalent to invoking
+     * <code> {@link #attachToProfilingResult(String, boolean)
+     * attachToProfilingResult(profilingResultPath,&nbsp;false)}</code>.
+     *
+     * @param profilingResultPath The path to the original profiling result file.
+     * @return The path to the bundled file which contains this metadata file and the profiling
+     *     result file separately. The path will be the same as the original trace file, with a
+     *     "-metadata.zip" suffix.
+     * @throws IOException If an I/O error occurs.
+     */
+    @WorkerThread
+    public String attachToProfilingResult(String profilingResultPath) throws IOException {
+        return attachToProfilingResult(profilingResultPath, /* compressed= */ false);
+    }
+
+    /**
+     * Attaches this metadata as a separate file to a profiling result file by creating a zip
+     * bundle.
+     *
+     * @param profilingResultPath The path to the original profiling result file.
+     * @param compressed Whether to compress the zip entries.
+     * @return The path to the bundled file which contains this metadata file and the profiling
+     *     result file separately. The path will be the same as the original trace file, with a
+     *     "-metadata.zip" suffix.
+     * @throws IOException If an I/O error occurs.
+     */
+    @WorkerThread
+    public String attachToProfilingResult(String profilingResultPath, boolean compressed)
+            throws IOException {
+        if (Objects.requireNonNull(profilingResultPath, "profilingResultPath can not be null!")
+                .isBlank()) {
+            throw new IllegalArgumentException(
+                    "Path to the profiling result file can not be blank!");
+        }
+
+        Path profilingResult;
+        Path outputFilePath;
+        try {
+            profilingResult = Path.of(profilingResultPath);
+            outputFilePath = Path.of(profilingResultPath + ZIP_FILE_SUFFIX);
+        } catch (InvalidPathException e) {
+            throw new IllegalArgumentException(
+                    "Invalid profiling result path: " + profilingResultPath, e);
+        }
+
+        if (!Files.isRegularFile(profilingResult) || !Files.isReadable(profilingResult)) {
+            throw new IllegalArgumentException(
+                    "Profiling result file does not exist, is a directory, or is not readable: "
+                            + profilingResultPath);
+        }
+
+        try {
+            try (OutputStream os =
+                            Files.newOutputStream(outputFilePath, StandardOpenOption.CREATE_NEW);
+                    BufferedOutputStream bos = new BufferedOutputStream(os);
+                    ZipOutputStream zos = new ZipOutputStream(bos)) {
+                if (!compressed) {
+                    zos.setLevel(Deflater.NO_COMPRESSION);
+                }
+
+                // Add the trace file.
+                ZipEntry traceEntry = new ZipEntry(profilingResult.getFileName().toString());
+                zos.putNextEntry(traceEntry);
+                try (InputStream is = Files.newInputStream(profilingResult);
+                        BufferedInputStream bis = new BufferedInputStream(is)) {
+                    byte[] buffer = new byte[BUFFER_SIZE];
+                    int length;
+                    while ((length = bis.read(buffer)) > 0) {
+                        zos.write(buffer, 0, length);
+                    }
+                }
+                zos.closeEntry();
+
+                // Add the metadata file.
+                byte[] metadataBytes = toString().getBytes(StandardCharsets.UTF_8);
+                ZipEntry metadataEntry = new ZipEntry(METADATA_FILE_NAME);
+                zos.putNextEntry(metadataEntry);
+                zos.write(metadataBytes);
+                zos.closeEntry();
+            }
+            return outputFilePath.toString();
+        } catch (IOException | RuntimeException e) {
+            Slog.e(TAG, "Failed to create profiling result and metadata bundle!", e);
+            try {
+                Files.deleteIfExists(outputFilePath);
+            } catch (IOException cleanUpException) {
+                Slog.e(TAG, "Failed to clean up partial bundle file!", cleanUpException);
+            }
+            // Rethrow so that the caller knows it failed.
+            throw e;
+        }
     }
 
     /**

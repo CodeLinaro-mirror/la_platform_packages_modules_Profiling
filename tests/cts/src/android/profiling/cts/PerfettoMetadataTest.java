@@ -18,6 +18,8 @@ package android.profiling.cts;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import static org.junit.Assert.assertThrows;
+
 import android.profiling.utils.PerfettoMetadata;
 
 import androidx.test.runner.AndroidJUnit4;
@@ -28,15 +30,26 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 import java.util.concurrent.TimeUnit;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 // TODO(b/473875650): Drop this test class when we have actual integration tests that verifies API
 // behavior in ProfilingService.
 @RunWith(AndroidJUnit4.class)
 public class PerfettoMetadataTest {
 
+    private static final String TRACE_FILENAME = "trace.perfetto-trace";
+    private static final String COMPRESSED_TRACE_FILENAME = "trace_compressed.perfetto-trace";
+    private static final String TRACE_CONTENT = "trace content".repeat(1000);
     private static final String INTERFACE_NAME = "com.interface";
     private static final String METHOD_NAME = "method";
     private static final String EXPECTED_BINDER_TARGET = INTERFACE_NAME + "#" + METHOD_NAME;
@@ -52,8 +65,10 @@ public class PerfettoMetadataTest {
 
     @Rule public final Expect mExpect = Expect.create();
 
+    @Rule public final TemporaryFolder mTemporaryFolder = new TemporaryFolder();
+
     @Test
-    public void createPerfettoMetadata() throws Exception {
+    public void createPerfettoMetadata_initializeCommonContent() throws Exception {
         PerfettoMetadata metadata = new PerfettoMetadata();
         JSONObject root = new JSONObject(metadata.toString());
 
@@ -128,5 +143,165 @@ public class PerfettoMetadataTest {
                 .isEqualTo(EXPECTED_SPAM_RATE);
         mExpect.that(json.getDouble(PerfettoMetadata.AnomalyDetails.EXPECTED_RATE_THRESHOLD_KEY))
                 .isEqualTo(EXPECTED_THRESHOLD_RATE);
+    }
+
+    @Test
+    public void attachToProfilingResult_uncompressed() throws Exception {
+        verifyAttachToProfilingResult(false);
+    }
+
+    @Test
+    public void attachToProfilingResult_compressed() throws Exception {
+        // Create a dummy trace file.
+        verifyAttachToProfilingResult(true);
+    }
+
+    private void verifyAttachToProfilingResult(boolean compressed) throws Exception {
+        String traceFilename = compressed ? COMPRESSED_TRACE_FILENAME : TRACE_FILENAME;
+        // Create a dummy trace file.
+        File traceFile = createTraceFile(traceFilename);
+
+        // Create metadata.
+        PerfettoMetadata metadata = createPerfettoMetadataWithAnomaly();
+
+        // Attach metadata (uncompressed).
+        String outputFilePath =
+                metadata.attachToProfilingResult(
+                        traceFile.getAbsolutePath(), /* compressed= */ compressed);
+
+        // Verify output file.
+        File outputFile = new File(outputFilePath);
+        assertThat(outputFile.exists()).isTrue();
+        assertThat(outputFile.getName()).endsWith(PerfettoMetadata.ZIP_FILE_SUFFIX);
+
+        verifyZipEntry(outputFile, traceFilename, TRACE_CONTENT, /* isCompressed= */ compressed);
+        verifyZipEntry(
+                outputFile,
+                PerfettoMetadata.METADATA_FILE_NAME,
+                metadata.toString(),
+                /* isCompressed= */ compressed);
+    }
+
+    @Test
+    public void attachToProfilingResult_conflictWithExistingFile() throws Exception {
+        // Create a dummy trace file.
+        File traceFile = createTraceFile(TRACE_FILENAME);
+        // Create a dummy bundle file
+        mTemporaryFolder.newFile(TRACE_FILENAME + PerfettoMetadata.ZIP_FILE_SUFFIX);
+        // Create metadata.
+        PerfettoMetadata metadata = createPerfettoMetadataWithAnomaly();
+
+        // Attach metadata throws exception.
+        assertThrows(
+                FileAlreadyExistsException.class,
+                () ->
+                        metadata.attachToProfilingResult(
+                                traceFile.getAbsolutePath(), /* compressed= */ false));
+    }
+
+    @Test
+    public void attachToProfilingResult_blankPath() throws Exception {
+        // Create metadata.
+        PerfettoMetadata metadata = createPerfettoMetadataWithAnomaly();
+
+        // Attach metadata throws exception.
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        metadata.attachToProfilingResult(
+                                /* profilingResultPath= */ " ", /* compressed= */ false));
+    }
+
+    @Test
+    public void attachToProfilingResult_nullInput() throws Exception {
+        // Create metadata.
+        PerfettoMetadata metadata = createPerfettoMetadataWithAnomaly();
+
+        // Attach metadata throws exception.
+        assertThrows(
+                NullPointerException.class,
+                () ->
+                        metadata.attachToProfilingResult(
+                                /* profilingResultPath= */ null, /* compressed= */ false));
+    }
+
+    @Test
+    public void attachToProfilingResult_traceFileDoesNotExist() throws Exception {
+        PerfettoMetadata metadata = createPerfettoMetadataWithAnomaly();
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        metadata.attachToProfilingResult(
+                                mTemporaryFolder
+                                        .getRoot()
+                                        .toPath()
+                                        .resolve("nonexistent")
+                                        .toString()));
+    }
+
+    @Test
+    public void attachToProfilingResult_traceFileIsDirectory() throws Exception {
+        PerfettoMetadata metadata = createPerfettoMetadataWithAnomaly();
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        metadata.attachToProfilingResult(
+                                mTemporaryFolder.getRoot().getAbsolutePath()));
+    }
+
+    @Test
+    public void attachToProfilingResult_invalidPath() throws Exception {
+        PerfettoMetadata metadata = createPerfettoMetadataWithAnomaly();
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> metadata.attachToProfilingResult("invalid\u0000path"));
+    }
+
+    private File createTraceFile(String fileName) throws Exception {
+        File traceFile = mTemporaryFolder.newFile(fileName);
+        try (FileOutputStream fos = new FileOutputStream(traceFile)) {
+            fos.write(TRACE_CONTENT.getBytes(StandardCharsets.UTF_8));
+        }
+        return traceFile;
+    }
+
+    private void verifyZipEntry(
+            File outputFile, String entryFileName, String expectedContent, boolean isCompressed)
+            throws Exception {
+        try (ZipFile zipFile = new ZipFile(outputFile)) {
+            ZipEntry entry = zipFile.getEntry(entryFileName);
+            assertThat(entry).isNotNull();
+            try (InputStream is = zipFile.getInputStream(entry)) {
+                mExpect.that(new String(is.readAllBytes(), StandardCharsets.UTF_8))
+                        .isEqualTo(expectedContent);
+            }
+            if (isCompressed) {
+                // Verify compression: compressed size should be smaller than original size.
+                mExpect.that(entry.getCompressedSize()).isLessThan(entry.getSize());
+            } else {
+                // Verify compression: uncompressed should be larger or equal (due to wrapping
+                // overhead).
+                mExpect.that(entry.getCompressedSize()).isAtLeast(entry.getSize());
+            }
+        }
+    }
+
+    private static PerfettoMetadata createPerfettoMetadataWithAnomaly() throws Exception {
+        PerfettoMetadata metadata = new PerfettoMetadata();
+        metadata.addAnomaly(
+                UID,
+                PACKAGE_NAME,
+                START_TIME_MILLIS,
+                END_TIME_MILLIS,
+                HIGHLIGHT_REASON,
+                PerfettoMetadata.AnomalyDetails.ofBinderSpam(
+                        INTERFACE_NAME,
+                        METHOD_NAME,
+                        BINDER_SPAM_OBSERVED_RATE,
+                        BINDER_SPAM_THRESHOLD_RATE));
+        return metadata;
     }
 }
