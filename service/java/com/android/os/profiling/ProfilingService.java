@@ -1248,6 +1248,7 @@ public class ProfilingService extends IProfilingService.Stub {
             long keyMostSigBits,
             long keyLeastSigBits,
             String packageName) {
+        long profilingRequestTimeMs = System.currentTimeMillis();
         enforceCallerMatchesPackageName(packageName);
 
         int uid = Binder.getCallingUid();
@@ -1266,7 +1267,8 @@ public class ProfilingService extends IProfilingService.Stub {
                     tag,
                     "Invalid request profiling type",
                     getTriggerTypeNone(),
-                    profilingType);
+                    profilingType,
+                    profilingRequestTimeMs);
             LoggingHelper.logProfilingRequest(
                     uid,
                     profilingType,
@@ -1290,7 +1292,8 @@ public class ProfilingService extends IProfilingService.Stub {
                         tag,
                         null,
                         getTriggerTypeNone(),
-                        profilingType);
+                        profilingType,
+                        profilingRequestTimeMs);
                 LoggingHelper.logProfilingRequest(
                         uid,
                         profilingType,
@@ -1310,7 +1313,8 @@ public class ProfilingService extends IProfilingService.Stub {
                     tag,
                     "Error communicating with perfetto",
                     getTriggerTypeNone(),
-                    profilingType);
+                    profilingType,
+                    profilingRequestTimeMs);
             LoggingHelper.logProfilingRequest(
                     uid,
                     profilingType,
@@ -1338,7 +1342,8 @@ public class ProfilingService extends IProfilingService.Stub {
                                 tag,
                                 keyMostSigBits,
                                 keyLeastSigBits,
-                                getTriggerTypeNone());
+                                getTriggerTypeNone(),
+                                profilingRequestTimeMs);
                 if (Flags.addRateLimiterDisabledToResult()
                         && getRateLimiter().isRateLimiterDisabled()) {
                     session.setErrorMessage(RATE_LIMITER_DISABLED_ERROR_MESSAGE);
@@ -1363,7 +1368,8 @@ public class ProfilingService extends IProfilingService.Stub {
                         tag,
                         e.getMessage(),
                         getTriggerTypeNone(),
-                        profilingType);
+                        profilingType,
+                        profilingRequestTimeMs);
                 LoggingHelper.logProfilingRequest(
                         uid,
                         profilingType,
@@ -1383,7 +1389,8 @@ public class ProfilingService extends IProfilingService.Stub {
                         tag,
                         "Perfetto error",
                         getTriggerTypeNone(),
-                        profilingType);
+                        profilingType,
+                        profilingRequestTimeMs);
                 LoggingHelper.logProfilingRequest(
                         uid,
                         profilingType,
@@ -1404,7 +1411,8 @@ public class ProfilingService extends IProfilingService.Stub {
                     tag,
                     null,
                     getTriggerTypeNone(),
-                    profilingType);
+                    profilingType,
+                    profilingRequestTimeMs);
             int rateLimitType =
                     status == RateLimiter.RATE_LIMIT_RESULT_BLOCKED_PROCESS
                             ? LoggingHelper.REQUEST_RESULT_RATE_LIMIT_PROCESS
@@ -1824,7 +1832,8 @@ public class ProfilingService extends IProfilingService.Stub {
                         session.getTag(),
                         session.getErrorMessage(),
                         session.getTriggerType(),
-                        session.getProfilingType());
+                        session.getProfilingType(),
+                        session.getProfilingRequestTimeMs());
 
         if (continueAdvancing && succeeded) {
             advanceTracingSession(session, TracingState.NOTIFIED_REQUESTER);
@@ -1851,7 +1860,8 @@ public class ProfilingService extends IProfilingService.Stub {
             @Nullable String tag,
             @Nullable String error,
             int triggerType,
-            int profilingType) {
+            int profilingType,
+            long profilingRequestTimeMs) {
         List<IProfilingResultCallback> perUidCallbacks = mResultCallbacks.get(uid);
         if (perUidCallbacks == null || perUidCallbacks.isEmpty()) {
             // No callbacks, nowhere to notify with result or failure.
@@ -1899,7 +1909,8 @@ public class ProfilingService extends IProfilingService.Stub {
             }
         }
 
-        LoggingHelper.logProfilingResultCallbackSent(uid, profilingType, triggerType, status);
+        LoggingHelper.logProfilingResultCallbackSent(
+                uid, profilingType, triggerType, status, profilingRequestTimeMs);
 
         return succeeded;
     }
