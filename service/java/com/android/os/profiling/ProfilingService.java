@@ -116,7 +116,9 @@ public class ProfilingService extends IProfilingService.Stub {
     private static final String RATE_LIMITER_DISABLED_ERROR_MESSAGE =
             "Rate limiter disabled manually via adb.";
 
+    // LINT.IfChange(anomaly_memory_limit_tag)
     private static final String ANOMALY_MEMORY_LIMIT_TAG = "MEMORY_LIMIT";
+    // LINT.ThenChange(LoggingHelper.java:anomaly_memory_limit_tag)
 
     private static final int TAG_MAX_CHARS_FOR_FILENAME = 20;
 
@@ -2257,7 +2259,7 @@ public class ProfilingService extends IProfilingService.Stub {
                             triggerType, packageName));
 
             LoggingHelper.logProfilingTriggerSent(
-                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_ERROR);
+                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_ERROR, tag);
 
             return;
         }
@@ -2368,7 +2370,7 @@ public class ProfilingService extends IProfilingService.Stub {
             }
             advanceTracingSession(session, TracingState.APPROVED);
             LoggingHelper.logProfilingTriggerSent(
-                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_FULFILLED);
+                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_FULFILLED, tag);
             return;
         } catch (IllegalArgumentException e) {
             // This should not happen, it should have been caught when checking rate limiter. No
@@ -2387,7 +2389,7 @@ public class ProfilingService extends IProfilingService.Stub {
             }
 
             LoggingHelper.logProfilingTriggerSent(
-                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_ERROR);
+                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_ERROR, tag);
 
             sendToAnomalyDetectorIfAnomalyTrigger(
                     keyMostSigBits,
@@ -2410,7 +2412,7 @@ public class ProfilingService extends IProfilingService.Stub {
             if (DEBUG) Log.d(TAG, "Perfetto error", e);
 
             LoggingHelper.logProfilingTriggerSent(
-                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_ERROR);
+                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_ERROR, tag);
 
             sendToAnomalyDetectorIfAnomalyTrigger(
                     keyMostSigBits,
@@ -2457,7 +2459,7 @@ public class ProfilingService extends IProfilingService.Stub {
                 }
 
                 LoggingHelper.logProfilingTriggerSent(
-                        uid, triggerType, LoggingHelper.TRIGGER_STATUS_MISSING_NAME);
+                        uid, triggerType, LoggingHelper.TRIGGER_STATUS_MISSING_NAME, tag);
 
                 sendToAnomalyDetectorIfAnomalyTrigger(
                         keyMostSigBits,
@@ -2487,7 +2489,7 @@ public class ProfilingService extends IProfilingService.Stub {
                 }
 
                 LoggingHelper.logProfilingTriggerSent(
-                        uid, triggerType, LoggingHelper.TRIGGER_STATUS_NOT_RUNNING);
+                        uid, triggerType, LoggingHelper.TRIGGER_STATUS_NOT_RUNNING, tag);
 
                 sendToAnomalyDetectorIfAnomalyTrigger(
                         keyMostSigBits,
@@ -2570,7 +2572,7 @@ public class ProfilingService extends IProfilingService.Stub {
                     // Nothing more to do, result won't be ready so return.
                     if (DEBUG) Log.d(TAG, "Cloned system triggered trace timed out.");
                     LoggingHelper.logProfilingTriggerSent(
-                            uid, triggerType, LoggingHelper.TRIGGER_STATUS_ERROR);
+                            uid, triggerType, LoggingHelper.TRIGGER_STATUS_ERROR, tag);
 
                     sendToAnomalyDetectorIfAnomalyTrigger(
                             keyMostSigBits,
@@ -2594,7 +2596,7 @@ public class ProfilingService extends IProfilingService.Stub {
             // yet so just fail quietly. The result for this trigger instance combo will be lost.
             if (DEBUG) Log.d(TAG, "Failed to clone running system triggered trace.", e);
             LoggingHelper.logProfilingTriggerSent(
-                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_ERROR);
+                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_ERROR, tag);
 
             sendToAnomalyDetectorIfAnomalyTrigger(
                     keyMostSigBits,
@@ -2611,7 +2613,7 @@ public class ProfilingService extends IProfilingService.Stub {
                 uid, triggerType, LoggingHelper.TRIGGER_CALLBACK_STATUS_SUCCESS, callback);
 
         LoggingHelper.logProfilingTriggerSent(
-                uid, triggerType, LoggingHelper.TRIGGER_STATUS_FULFILLED);
+                uid, triggerType, LoggingHelper.TRIGGER_STATUS_FULFILLED, tag);
 
         // If we get here the clone was successful. Create a new TracingSession to track this and
         // continue moving it along the processing process.
@@ -2729,7 +2731,7 @@ public class ProfilingService extends IProfilingService.Stub {
                     LoggingHelper.TRIGGER_CALLBACK_STATUS_NOT_REGISTERED,
                     callback);
             LoggingHelper.logProfilingTriggerSent(
-                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_NOT_REGISTERED);
+                    uid, triggerType, LoggingHelper.TRIGGER_STATUS_NOT_REGISTERED, tag);
             return false;
         }
 
@@ -2777,7 +2779,8 @@ public class ProfilingService extends IProfilingService.Stub {
             LoggingHelper.logProfilingTriggerSent(
                     trigger.getUid(),
                     trigger.getTriggerType(),
-                    LoggingHelper.TRIGGER_STATUS_RATE_LIMIT_APP);
+                    LoggingHelper.TRIGGER_STATUS_RATE_LIMIT_APP,
+                    tag);
             return false;
         }
 
@@ -2811,7 +2814,7 @@ public class ProfilingService extends IProfilingService.Stub {
                                 ? LoggingHelper.TRIGGER_STATUS_RATE_LIMIT_PROCESS
                                 : LoggingHelper.TRIGGER_STATUS_RATE_LIMIT_SYSTEM;
                 LoggingHelper.logProfilingTriggerSent(
-                        trigger.getUid(), trigger.getTriggerType(), rateLimitType);
+                        trigger.getUid(), trigger.getTriggerType(), rateLimitType, tag);
                 return false;
             }
         }
