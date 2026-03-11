@@ -27,6 +27,7 @@ java_library {
     sdk_version: "system_server_current",
     libs: [
         "framework-annotations-lib",
+        "jsr305",
     ],
     static_libs: [
         "util-profiling-proto",
