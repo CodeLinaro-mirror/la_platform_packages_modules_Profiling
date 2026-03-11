@@ -361,6 +361,15 @@ public final class PerfettoMetadata {
         private AnomalyDetails() {}
 
         /**
+         * Creates an AnomalyDetails object for a memory limit anomaly.
+         *
+         * @return An AnomalyDetails object with the memory limit details.
+         */
+        public static AnomalyDetails ofMemoryLimit() {
+            return new AnomalyDetails();
+        }
+
+        /**
          * Creates an AnomalyDetails object for a binder spam anomaly.
          *
          * @param interfaceName The interface name of the spammed binder target.

@@ -70,6 +70,7 @@ import android.os.profiling.TracingSession;
 import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
+import android.profiling.utils.PerfettoMetadata;
 import android.profiling.utils.RateLimiterBase;
 import android.util.SparseArray;
 
@@ -81,16 +82,22 @@ import com.android.compatibility.common.util.SystemUtil;
 
 import com.google.common.truth.Expect;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -146,6 +153,8 @@ public final class ProfilingServiceTests {
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
 
     @Rule public final Expect expect = Expect.create();
+
+    @Rule public final TemporaryFolder mTemporaryFolder = new TemporaryFolder();
 
     @Mock private Process mActiveTrace;
 
@@ -220,11 +229,20 @@ public final class ProfilingServiceTests {
         mRateLimiter.setupFromPersistedData();
         mMemoryAnomalyRateLimiter.setupFromPersistedData();
 
+        // Override the temp trace path to a temporary folder in app storage. This is necessary
+        // because the test app process doesn't have permissions to write to the default system
+        // directory.
+        ProfilingService.sTempTracePath =
+                mTemporaryFolder.newFolder("profiling").getAbsolutePath() + "/";
+
         doReturn(true).when(mProfilingService).tempProfileExists(any());
     }
 
     @After
     public void cleanup() throws Exception {
+        // Reset the temp trace path to default to avoid affecting other tests.
+        ProfilingService.sTempTracePath = "/data/misc/perfetto-traces/profiling/";
+
         // Delete any local persist files.
         if (mRateLimiter != null && mRateLimiter.mPersistFile != null) {
             mRateLimiter.mPersistFile.delete();
@@ -3012,8 +3030,12 @@ public final class ProfilingServiceTests {
                 .isProfilingRequestAllowed(eq(FAKE_UID), anyInt(), anyBoolean(), any());
 
         // The rate limiter instance is created for the test so it should pass with not overrides,
-        // verify that the session was approved for processing.
-        verify(mProfilingService, times(1)).advanceTracingSession(any(), eq(TracingState.APPROVED));
+        // verify that the session was approved for processing and that the tag was correctly set.
+        ArgumentCaptor<TracingSession> sessionCaptor =
+                ArgumentCaptor.forClass(TracingSession.class);
+        verify(mProfilingService, times(1))
+                .advanceTracingSession(sessionCaptor.capture(), eq(TracingState.APPROVED));
+        assertEquals("MEMORY_LIMIT", sessionCaptor.getValue().getTag());
     }
 
     /** Test that the memory limit anomaly rate limiter works as expected. */
@@ -3040,6 +3062,81 @@ public final class ProfilingServiceTests {
         assertEquals(
                 MemoryAnomalyRateLimiter.RATE_LIMIT_RESULT_BLOCKED_SYSTEM,
                 mMemoryAnomalyRateLimiter.isProfilingRequestAllowed(FAKE_UID_3));
+    }
+
+    /** Test that the memory limit anomaly result is bundled with metadata. */
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public void testMemoryLimiterAnomaly_bundling() throws Exception {
+        // Create a session for memory limit anomaly.
+        TracingSession session =
+                new TracingSession(
+                        ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP,
+                        new Bundle(),
+                        FAKE_UID,
+                        APP_PACKAGE_NAME,
+                        "MEMORY_LIMIT",
+                        KEY_MOST_SIG_BITS,
+                        KEY_LEAST_SIG_BITS,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY);
+
+        String fileName = "test_heap_dump.perfetto-java-heap-dump";
+        // By manually setting the filename in the session and populating the file on disk,
+        // we bypass the actual trace collection process and can skip directly to
+        // the PROFILING_FINISHED processing logic.
+        session.setFileName(fileName);
+        session.setState(TracingState.PROFILING_STARTED);
+
+        // Create the mock result file.
+        File resultFile = new File(ProfilingService.sTempTracePath + fileName);
+        resultFile.createNewFile();
+        try (FileOutputStream fos = new FileOutputStream(resultFile)) {
+            fos.write("dummy heap dump".getBytes());
+        }
+
+        // Add callback.
+        ProfilingResultCallback callback = new ProfilingResultCallback();
+        mProfilingService.mResultCallbacks.put(FAKE_UID, Arrays.asList(callback));
+
+        // Advance session to PROFILING_FINISHED.
+        mProfilingService.advanceTracingSession(session, TracingState.PROFILING_FINISHED);
+
+        // Verify that the file was bundled.
+        String expectedZipName = fileName + PerfettoMetadata.ZIP_FILE_SUFFIX;
+        assertEquals(expectedZipName, session.getFileName());
+
+        File zipFile = new File(ProfilingService.sTempTracePath + expectedZipName);
+        assertTrue("Zip file should exist", zipFile.exists());
+
+        // Verify ZIP contents.
+        try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(zipFile)) {
+            assertNotNull(zip.getEntry(fileName));
+            java.util.zip.ZipEntry metadataEntry =
+                    zip.getEntry(PerfettoMetadata.METADATA_FILE_NAME);
+            assertNotNull(metadataEntry);
+
+            // Verify metadata file contents.
+            try (InputStream is = zip.getInputStream(metadataEntry)) {
+                String metadataString = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                JSONObject root = new JSONObject(metadataString);
+                JSONObject metadata = root.getJSONObject(PerfettoMetadata.ROOT_KEY);
+                JSONArray regions = metadata.getJSONArray(PerfettoMetadata.REGIONS_OF_INTEREST_KEY);
+                assertEquals(1, regions.length());
+
+                JSONObject region = regions.getJSONObject(0);
+                JSONObject targetFocus = region.getJSONObject(PerfettoMetadata.TARGET_FOCUS_KEY);
+                expect.that(FAKE_UID).isEqualTo(targetFocus.getInt(PerfettoMetadata.UID_KEY));
+                expect.that(APP_PACKAGE_NAME)
+                        .isEqualTo(targetFocus.getString(PerfettoMetadata.PACKAGE_NAME_KEY));
+                expect.that("memory_limit")
+                        .isEqualTo(region.getString(PerfettoMetadata.HIGHLIGHT_REASON_KEY));
+                assertNotNull(region.getJSONObject(PerfettoMetadata.ANOMALY_DETAILS_KEY));
+            }
+        }
+
+        // Verify original file was deleted.
+        // TODO(b/489806709): Verify the file is deleted.
+        // assertFalse("Original file should be deleted", resultFile.exists());
     }
 
     private File createAndConfirmFileExists(File directory, String fileName) throws Exception {

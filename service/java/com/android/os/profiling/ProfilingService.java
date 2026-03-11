@@ -48,6 +48,7 @@ import android.os.ProfilingTriggerValueParcel;
 import android.os.ProfilingTriggersWrapper;
 import android.os.QueuedResultsWrapper;
 import android.os.RemoteException;
+import android.profiling.utils.PerfettoMetadata;
 import android.profiling.utils.RateLimiterBase;
 import android.provider.DeviceConfig;
 import android.text.TextUtils;
@@ -86,7 +87,6 @@ public class ProfilingService extends IProfilingService.Stub {
     private static final String TAG = ProfilingService.class.getSimpleName();
     private static final boolean DEBUG = false;
 
-    private static final String TEMP_TRACE_PATH = "/data/misc/perfetto-traces/profiling/";
     private static final String OUTPUT_FILE_SECTION_SEPARATOR = "_";
     private static final String OUTPUT_FILE_FIELD_SEPARATOR = "-";
     private static final String OUTPUT_FILE_PREFIX = "profile";
@@ -120,6 +120,8 @@ public class ProfilingService extends IProfilingService.Stub {
     private static final String ANOMALY_MEMORY_LIMIT_TAG = "MEMORY_LIMIT";
     // LINT.ThenChange(LoggingHelper.java:anomaly_memory_limit_tag)
 
+    private static final String MEMORY_LIMIT_METADATA_HIGHLIGHT_REASON = "memory_limit";
+
     private static final int TAG_MAX_CHARS_FOR_FILENAME = 20;
 
     private static final int PERFETTO_DESTROY_DEFAULT_TIMEOUT_MS = 10 * 1000;
@@ -149,6 +151,9 @@ public class ProfilingService extends IProfilingService.Stub {
     private static final int DEFAULT_SYSTEM_TRIGGERED_TRACE_MAX_PERIOD_SECONDS = 30 * 60 * 60;
 
     private static final int PROFILING_TRIGGER_COLD_START_TRACE_DURATION_DEFAULT_MS = 5_000;
+
+    @VisibleForTesting
+    public static String sTempTracePath = "/data/misc/perfetto-traces/profiling/";
 
     private final Context mContext;
     private final Object mLock = new Object();
@@ -988,6 +993,10 @@ public class ProfilingService extends IProfilingService.Stub {
                         // retained result after profiling completes.
                         handleRetainedTempFiles(session);
 
+                        // If the trigger type is an anomaly memory limit trigger, bundle the result
+                        // with metadata.
+                        attachMetadataIfNeeded(session);
+
                         // No redaction needed, move straight to copying to app storage.
                         beginMoveFileToAppStorage(session);
                     }
@@ -1055,7 +1064,7 @@ public class ProfilingService extends IProfilingService.Stub {
         synchronized (mLock) {
             if (mLastClearTemporaryDirectoryTimeMs + mClearTemporaryDirectoryFrequencyMs
                     < System.currentTimeMillis()) {
-                cleanupTemporaryDirectoryLocked(TEMP_TRACE_PATH);
+                cleanupTemporaryDirectoryLocked(sTempTracePath);
             }
         }
     }
@@ -1651,7 +1660,7 @@ public class ProfilingService extends IProfilingService.Stub {
         // At this point we've identified the session that has sent us this file descriptor.
         // Now, we'll create a temporary file pointing to the profiling output for that session.
         // If that file looks good, we'll copy it to the app's local file descriptor.
-        File tempResultFile = new File(TEMP_TRACE_PATH + getResultFileName(session));
+        File tempResultFile = new File(sTempTracePath + getResultFileName(session));
         FileInputStream tempPerfettoFileInStream = null;
         FileOutputStream appFileOutStream = null;
 
@@ -1950,7 +1959,7 @@ public class ProfilingService extends IProfilingService.Stub {
         session.setFileName(baseFileName + suffix);
 
         Process activeProfiling =
-                startProfilingProcess(config, TEMP_TRACE_PATH + session.getFileName());
+                startProfilingProcess(config, sTempTracePath + session.getFileName());
 
         if (activeProfiling != null) {
             // Profiling is running, save the session.
@@ -2066,7 +2075,7 @@ public class ProfilingService extends IProfilingService.Stub {
                     Configs.generateSystemTriggeredTraceConfig(
                             uniqueSessionName, packageNames, mDebugPackageName != null);
             String outputFile =
-                    TEMP_TRACE_PATH
+                    sTempTracePath
                             + SYSTEM_TRIGGERED_SESSION_NAME_PREFIX
                             + OUTPUT_FILE_IN_PROGRESS
                             + OUTPUT_FILE_UNREDACTED_TRACE_SUFFIX;
@@ -2547,7 +2556,7 @@ public class ProfilingService extends IProfilingService.Stub {
                                         "--clone-by-name",
                                         mSystemTriggeredTraceUniqueSessionName,
                                         "--out",
-                                        TEMP_TRACE_PATH + unredactedFullName
+                                        sTempTracePath + unredactedFullName
                                     });
 
             // Wait for cloned process to stop.
@@ -2744,10 +2753,9 @@ public class ProfilingService extends IProfilingService.Stub {
                 if (trigger.getPackageName().equals(mDebugPackageName)) {
                     return true;
                 }
-                if (getMemoryAnomalyRateLimiter().isProfilingRequestAllowed(uid)
-                        == RateLimiter.RATE_LIMIT_RESULT_ALLOWED) {
-                    return true;
-                } else {
+                if (!getRateLimiter().isRateLimiterDisabled()
+                        && getMemoryAnomalyRateLimiter().isProfilingRequestAllowed(uid)
+                                != RateLimiterBase.RATE_LIMIT_RESULT_ALLOWED) {
                     performTriggerCallback(
                             uid,
                             triggerType,
@@ -2755,6 +2763,7 @@ public class ProfilingService extends IProfilingService.Stub {
                             callback);
                     return false;
                 }
+                return true;
             }
             return true;
         }
@@ -3074,7 +3083,7 @@ public class ProfilingService extends IProfilingService.Stub {
                 session.getKeyMostSigBits(),
                 session.getKeyLeastSigBits(),
                 session.getUid(),
-                session.getDestinationFileName(TEMP_TRACE_PATH),
+                session.getDestinationFileName(sTempTracePath),
                 session.getErrorStatus(),
                 session.getTag(),
                 session.getTriggerType());
@@ -3409,7 +3418,7 @@ public class ProfilingService extends IProfilingService.Stub {
                                 + session.getRedactedFileName());
             }
             // We need to create an empty file for the redaction process to write the output into.
-            File emptyRedactedTraceFile = new File(TEMP_TRACE_PATH + session.getRedactedFileName());
+            File emptyRedactedTraceFile = new File(sTempTracePath + session.getRedactedFileName());
             emptyRedactedTraceFile.createNewFile();
         } catch (Exception exception) {
             if (DEBUG) Log.e(TAG, "Creating empty redacted file failed.", exception);
@@ -3427,8 +3436,8 @@ public class ProfilingService extends IProfilingService.Stub {
             ProcessBuilder redactionProcess =
                     new ProcessBuilder(
                             "/apex/com.android.profiling/bin/trace_redactor",
-                            TEMP_TRACE_PATH + session.getFileName(),
-                            TEMP_TRACE_PATH + session.getRedactedFileName(),
+                            sTempTracePath + session.getFileName(),
+                            sTempTracePath + session.getRedactedFileName(),
                             session.getPackageName());
             session.setActiveRedaction(redactionProcess.start());
             session.setRedactionStartTimeMs(System.currentTimeMillis());
@@ -3542,12 +3551,12 @@ public class ProfilingService extends IProfilingService.Stub {
     /** Wrapper to log all necessary information about retained file locations. */
     private void logRetainedFileDetails(String fileName, boolean readable) {
         if (readable) {
-            Log.i(TAG, "Profiling file retained at: " + TEMP_TRACE_PATH + fileName);
+            Log.i(TAG, "Profiling file retained at: " + sTempTracePath + fileName);
         } else {
             Log.i(
                     TAG,
                     "Profiling file retained at: "
-                            + TEMP_TRACE_PATH
+                            + sTempTracePath
                             + fileName
                             + " | File is not publicly accessible, root access is required to"
                             + " read.");
@@ -3564,7 +3573,7 @@ public class ProfilingService extends IProfilingService.Stub {
     @SuppressWarnings("SetWorldReadable")
     private boolean makeFileReadable(String fileName) {
         try {
-            File file = new File(TEMP_TRACE_PATH + fileName);
+            File file = new File(sTempTracePath + fileName);
             return file.setReadable(true, false);
         } catch (Exception e) {
             Log.w(TAG, "Failed to make file readable for testing.", e);
@@ -3693,7 +3702,7 @@ public class ProfilingService extends IProfilingService.Stub {
                 if (DEBUG) {
                     Log.d(TAG, "delete redacted file=" + session.getRedactedFileName());
                 }
-                Files.deleteIfExists(Path.of(TEMP_TRACE_PATH + session.getRedactedFileName()));
+                Files.deleteIfExists(Path.of(sTempTracePath + session.getRedactedFileName()));
             } catch (Exception exception) {
                 if (DEBUG) Log.e(TAG, "Failed to delete file.", exception);
             }
@@ -3704,7 +3713,7 @@ public class ProfilingService extends IProfilingService.Stub {
                 if (DEBUG) {
                     Log.d(TAG, "delete unredacted file session=" + session.getFileName());
                 }
-                Files.deleteIfExists(Path.of(TEMP_TRACE_PATH + session.getFileName()));
+                Files.deleteIfExists(Path.of(sTempTracePath + session.getFileName()));
             } catch (Exception exception) {
                 if (DEBUG) Log.e(TAG, "Failed to delete file.", exception);
             }
@@ -3766,7 +3775,7 @@ public class ProfilingService extends IProfilingService.Stub {
      * @return true if there is a temporary profile for tracing session, false otherwise.
      */
     public boolean tempProfileExists(TracingSession session) {
-        File perfettoOutputFile = new File(TEMP_TRACE_PATH + session.getFileName());
+        File perfettoOutputFile = new File(sTempTracePath + session.getFileName());
         if (!perfettoOutputFile.exists()) {
             return false;
         }
@@ -4271,6 +4280,40 @@ public class ProfilingService extends IProfilingService.Stub {
                 // app the next time it registers a general listener.
                 stopAllProfilingForUid(mUid, LoggingHelper.PROFILING_STOPPED_REASON_APP_DIED);
             }
+        }
+    }
+
+    /**
+     * Attaches metadata to the profiling result if the trigger type is an anomaly memory limit
+     * trigger.
+     */
+    private void attachMetadataIfNeeded(TracingSession session) {
+        if (session.getTriggerType() != ProfilingTrigger.TRIGGER_TYPE_ANOMALY
+                || !ANOMALY_MEMORY_LIMIT_TAG.equals(session.getTag())) {
+            return;
+        }
+
+        try {
+            PerfettoMetadata metadata = new PerfettoMetadata();
+            metadata.addAnomaly(
+                    session.getUid(),
+                    session.getPackageName(),
+                    0,
+                    0,
+                    MEMORY_LIMIT_METADATA_HIGHLIGHT_REASON,
+                    PerfettoMetadata.AnomalyDetails.ofMemoryLimit());
+
+            String resultPath = sTempTracePath + getResultFileName(session);
+            // Generate the metadata.zip file. The original result file will be deleted after
+            // generating the zip.
+            String zipPath = metadata.attachToProfilingResult(resultPath);
+
+            // Update session with zip file name. Currently only memory limit anomalies are
+            // supported, which do not require redaction.
+            session.setFileName(new File(zipPath).getName());
+
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to attach metadata to profiling result", e);
         }
     }
 
