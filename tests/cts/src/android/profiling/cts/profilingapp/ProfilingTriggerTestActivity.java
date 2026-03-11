@@ -18,6 +18,7 @@ package android.profiling.cts.profilingapp;
 
 import static android.profiling.cts.ProfilingTestConstants.ACTION_INIT_AND_ADD_ANOMALY_TRIGGER;
 import static android.profiling.cts.ProfilingTestConstants.ACTION_INIT_AND_ADD_APP_FULLY_DRAWN_TRIGGER;
+import static android.profiling.cts.ProfilingTestConstants.ACTION_INIT_AND_REQUEST_RUNNING_TRACE;
 import static android.profiling.cts.ProfilingTestConstants.ACTION_KEY;
 import static android.profiling.cts.ProfilingTestConstants.ACTION_REGISTER_AND_ALLOCATE_MEMORY;
 import static android.profiling.cts.ProfilingTestConstants.ACTION_REGISTER_AND_REPORT_FULLY_DRAWN;
@@ -79,6 +80,7 @@ public class ProfilingTriggerTestActivity extends Activity {
             case ACTION_SETUP_PROFILING_TRIGGER_AND_TRIGGER_ANR ->
                     setupProfilingTriggersAndTriggerAnr();
             case ACTION_REGISTER_ANR_CALLBACK -> registerAnrCallback();
+            case ACTION_INIT_AND_REQUEST_RUNNING_TRACE -> initAndRequestRunningTrace();
             default -> {
                 Log.e(TAG, "Unknown action: " + action);
                 finish();
@@ -224,6 +226,25 @@ public class ProfilingTriggerTestActivity extends Activity {
         ProfilingManager profilingManager = getSystemService(ProfilingManager.class);
         profilingManager.registerForAllProfilingResults(
                 Executors.newSingleThreadExecutor(), new AppCallback(this));
+    }
+
+    /**
+     * Clears triggers, adds a request running trace trigger, registers for results, and requests a
+     * trace.
+     */
+    private void initAndRequestRunningTrace() {
+        ProfilingManager profilingManager = getSystemService(ProfilingManager.class);
+        profilingManager.clearProfilingTriggers();
+        ProfilingTrigger trigger =
+                new ProfilingTrigger.Builder(
+                                ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE)
+                        .build();
+        profilingManager.addProfilingTriggers(Collections.singletonList(trigger));
+
+        profilingManager.registerForAllProfilingResults(
+                Executors.newSingleThreadExecutor(), new AppCallback(this));
+
+        profilingManager.requestRunningSystemTrace(null);
     }
 
     private class AppCallback implements Consumer<ProfilingResult> {
