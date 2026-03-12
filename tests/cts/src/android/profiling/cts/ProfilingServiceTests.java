@@ -1341,7 +1341,8 @@ public final class ProfilingServiceTests {
                         REQUEST_TAG,
                         KEY_LEAST_SIG_BITS,
                         KEY_MOST_SIG_BITS,
-                        TRIGGER_TYPE_NONE);
+                        TRIGGER_TYPE_NONE,
+                        System.currentTimeMillis());
         session1.setProfilingStartTimeMs(System.currentTimeMillis());
         session1.setState(TracingState.PROFILING_FINISHED);
 
@@ -3223,6 +3224,7 @@ public final class ProfilingServiceTests {
         expect.that(s1.getErrorStatus()).isEqualTo(s2.getErrorStatus());
         expect.that(s1.getTriggerType()).isEqualTo(s2.getTriggerType());
         expect.that(s1.getProfilingStartTimeMs()).isEqualTo(s2.getProfilingStartTimeMs());
+        expect.that(s1.getProfilingRequestTimeMs()).isEqualTo(s2.getProfilingRequestTimeMs());
     }
 
     // LINT.ThenChange(/service/proto/android/os/queue.proto:proto)
