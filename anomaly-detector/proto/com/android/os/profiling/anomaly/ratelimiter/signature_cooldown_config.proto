@@ -1,0 +1,49 @@
+/*
+ * Copyright (C) 2026 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto3";
+
+option java_package = "com.android.os.profiling.anomaly.ratelimiter.proto";
+option java_multiple_files = true;
+
+// A container for all signature-based cool-down rules.
+// This message will be serialized, encoded in Base64, and stored in a single
+// DeviceConfig string flag.
+message SignatureCoolDownConfigProto {
+  repeated SignatureCoolDownRule rules = 1;
+}
+
+// A single rule that defines a cool-down for a specific anomaly signature.
+message SignatureCoolDownRule {
+  // A unique name for the rule, for logging/debugging.
+  string name = 1;
+
+  // Higher number means higher priority. If an anomaly matches multiple rules,
+  // the one with the highest priority is used.
+  int32 priority = 2;
+
+  // The cool-down period for this specific rule, in milliseconds.
+  int64 cool_down_millis = 3;
+
+  // --- Matchers ---
+  // If this is set, the rule only matches anomalies with this condition type.
+  // e.g., "android.os.profiling.anomaly.Rule.binder_spam"
+  string condition_type = 4;
+
+  // If this map is not empty, the rule only matches if the anomaly's signatures
+  // contain ALL of these key-value pairs.
+  map<string, string> signature_matchers = 5;
+}
