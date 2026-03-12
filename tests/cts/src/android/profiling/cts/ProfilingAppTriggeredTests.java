@@ -18,6 +18,7 @@ package android.profiling.cts;
 
 import static android.content.Intent.FLAG_RECEIVER_FOREGROUND;
 import static android.profiling.cts.ProfilingTestConstants.ACTION_INIT_AND_ADD_APP_FULLY_DRAWN_TRIGGER;
+import static android.profiling.cts.ProfilingTestConstants.ACTION_INIT_AND_REQUEST_RUNNING_TRACE;
 import static android.profiling.cts.ProfilingTestConstants.ACTION_KEY;
 import static android.profiling.cts.ProfilingTestConstants.ACTION_REGISTER_AND_REPORT_FULLY_DRAWN;
 import static android.profiling.cts.ProfilingTestConstants.ACTION_REGISTER_ANR_CALLBACK;
@@ -113,7 +114,9 @@ public class ProfilingAppTriggeredTests {
         // Create a receiver to capture the broadcast intent sent by the test app.
         mResultReceiverFilter =
                 new ResultReceiverFilter(
-                        REPLY_ACTION_COMPLETE, /* resultsToWaitFor= */ 1, /* timeoutMs= */ 15_000);
+                        REPLY_ACTION_COMPLETE,
+                        /* resultsToWaitFor= */ 1,
+                        BROADCAST_RECEIVER_TIMEOUT_MS);
 
         // Start the activity in the test app, which will clears all profiling triggers and adds an
         // app fully drawn profiling trigger.
@@ -202,6 +205,34 @@ public class ProfilingAppTriggeredTests {
 
         assertProfilingResultAndFileValidation(
                 mResultReceiverFilter, ProfilingTrigger.TRIGGER_TYPE_ANR);
+    }
+
+    @Test
+    @RequiresFlagsEnabled({
+        Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW,
+    })
+    public void testAppRequestRunningTraceTrigger() throws Exception {
+        // Create a receiver to capture the broadcast intent sent by the test app.
+        mResultReceiverFilter =
+                new ResultReceiverFilter(
+                        REPLY_ACTION_COMPLETE,
+                        /* resultsToWaitFor= */ 1,
+                        BROADCAST_RECEIVER_TIMEOUT_MS);
+
+        startSystemTriggeredTraceForTesting(STUB_PACKAGE_NAME);
+
+        // Start the activity in the test app, which will clears all profiling triggers, adds a
+        // request running trace trigger, registers for results, and requests a running trace.
+        startActivityWithAction(ACTION_INIT_AND_REQUEST_RUNNING_TRACE);
+        sleep(WAIT_TIME_FOR_APP_START_MS);
+
+        Log.d(TAG, "Waiting for broadcast receiver");
+        if (!mResultReceiverFilter.waitForBroadcast()) {
+            fail("Test timed out waiting for BroadcastReceiver");
+        }
+
+        assertProfilingResultAndFileValidation(
+                mResultReceiverFilter, ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE);
     }
 
     /**
