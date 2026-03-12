@@ -28,8 +28,11 @@ public final class ProfilingTestConstants {
     public static final int ACTION_INIT_AND_ADD_ANOMALY_TRIGGER = 3;
     public static final int ACTION_REGISTER_AND_ALLOCATE_MEMORY = 4;
     public static final int ACTION_SETUP_PROFILING_TRIGGER_AND_TRIGGER_ANR = 5;
-    public static final int ACTION_REGISTER_ANR_CALLBACK = 6;
+    public static final int ACTION_REGISTER_PROFILING_CALLBACK = 6;
     public static final int ACTION_INIT_AND_REQUEST_RUNNING_TRACE = 7;
+    public static final int ACTION_SETUP_KILL_FORCE_STOP_TRIGGER = 8;
+    public static final int ACTION_SETUP_KILL_TASK_MANAGER_TRIGGER = 9;
+    public static final int ACTION_SETUP_KILL_RECENTS_TRIGGER = 10;
 
     public static final int FILE_VALIDATION_RESULT_NONE = -1;
     public static final int FILE_VALIDATION_RESULT_SUCCESS = 0;
