@@ -34,6 +34,7 @@ import android.util.SparseArray;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.os.profiling.anomaly.util.LogUtil;
 
+import java.nio.file.Files;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -42,6 +43,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
@@ -200,6 +202,23 @@ public class ProfilingSessionHelper {
                                             + ".zip")
                             .toFile();
             addResultAndMetadataToZipFile(resultFilePath.toFile(), metadata, zipFile);
+            // Delete the result file after adding it to the zip file
+            try {
+            Files.deleteIfExists(resultFilePath);
+            } catch (DirectoryNotEmptyException e) {
+                sLog.e("Unable to delete the result file, directory is not empty (THIS SHOULD NOT"
+                        + " HAPPEN): %s", e);
+            } catch (IOException | SecurityException e) {
+                sLog.e("Unable to delete the result file: %s", e);
+            }
+            int anomalyTypeIndex = sessionInfo.conditionType.lastIndexOf('.') + 1;
+            String anomalyType = sessionInfo.conditionType.substring(anomalyTypeIndex);
+            mAnomalyProfilingManager.sendAnomalyProfile(
+                    sessionInfo.uid,
+                    sessionInfo.packageName,
+                    ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
+                    anomalyType,
+                    zipFile.getName());
         } catch (JSONException e) {
             sLog.e("Failed to generate metadata from SessionInfo", e);
         }
