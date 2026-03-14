@@ -181,4 +181,47 @@ public class ProfilingSessionHelperTests {
 
         assertThat(mProfilingSessionHelper.mUidSessionInfoSparseArray.contains(UID)).isFalse();
     }
+
+    @Test
+    public void handleSessionResult_shouldSendAnomalyProfile() {
+        Bundle sessionParams = new Bundle();
+        sessionParams.putBoolean(KEY_SAMPLE_BINDER_ONLY, true);
+        String binderSpamConditionType =
+                RuleInternal.CONDITION_TYPE_BINDER_SPAM.substring(
+                        RuleInternal.CONDITION_TYPE_BINDER_SPAM.lastIndexOf('.') + 1);
+
+        mProfilingSessionHelper.requestProfiling(
+                UID,
+                PACKAGE_NAME,
+                MAX_SESSION_DURATION_MS,
+                sessionParams,
+                PROFILING_TYPE_STACK_SAMPLING,
+                RuleInternal.CONDITION_TYPE_BINDER_SPAM);
+        mProfilingSessionHelper.requestProfiling(
+                UID,
+                PACKAGE_NAME,
+                MAX_SESSION_DURATION_MS,
+                sessionParams,
+                PROFILING_TYPE_STACK_SAMPLING,
+                RuleInternal.CONDITION_TYPE_BINDER_SPAM);
+        mProfilingSessionHelper.handleSessionResult(
+                new AnomalyRequestResult(
+                        new UUID(789L, 456L),
+                        UID,
+                        ProfilingResult.ERROR_NONE,
+                        "TestPath",
+                        "TestTag",
+                        TRIGGER_TYPE_ANOMALY));
+
+        ArgumentCaptor<String> stringArgumentCaptor = ArgumentCaptor.forClass(String.class);
+        verify(mAnomalyProfilingManager)
+                .sendAnomalyProfile(
+                        eq(UID),
+                        eq(PACKAGE_NAME),
+                        eq(TRIGGER_TYPE_ANOMALY),
+                        eq(binderSpamConditionType),
+                        stringArgumentCaptor.capture());
+        assertThat(stringArgumentCaptor.getValue()).contains(PACKAGE_NAME);
+        assertThat(stringArgumentCaptor.getValue()).contains(".zip");
+    }
 }
