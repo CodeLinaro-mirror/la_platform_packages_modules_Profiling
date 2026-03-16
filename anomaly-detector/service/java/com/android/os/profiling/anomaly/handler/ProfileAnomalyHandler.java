@@ -25,14 +25,18 @@ import android.text.TextUtils;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.os.profiling.anomaly.attribute.ProfilingParamsAttribute;
+import com.android.os.profiling.anomaly.attribute.RateLimitSignatureAttribute;
 import com.android.os.profiling.anomaly.attribute.UidAttribute;
+import com.android.os.profiling.anomaly.config.ProfilingConcurrencyConfig;
 import com.android.os.profiling.anomaly.core.AnomalyHandler;
 import com.android.os.profiling.anomaly.core.AnomalyReport;
+import com.android.os.profiling.anomaly.ratelimiter.ProfilingRateLimiter;
 import com.android.os.profiling.anomaly.util.LogUtil;
 import com.android.os.profiling.anomaly.wrapper.SystemServiceFetcher;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Handler class for starting a profiling session through ProfilingManager
@@ -47,19 +51,36 @@ public final class ProfileAnomalyHandler implements AnomalyHandler {
     private final ProfilingSessionHelper mProfilingSessionHelper;
 
     private final AnomalyProfilingClient mAnomalyProfilingManager;
+    private final ProfilingConcurrencyConfig mProfilingConcurrencyConfig;
 
-    public ProfileAnomalyHandler(SystemServiceFetcher systemServiceFetcher) {
-        this(systemServiceFetcher, new ProfilingSessionHelper(), new AnomalyProfilingManager());
+    // The handler should check with the rate limiter before starting a
+    // profiling session.
+    private final ProfilingRateLimiter mProfilingRateLimiter;
+
+    public ProfileAnomalyHandler(
+            SystemServiceFetcher systemServiceFetcher,
+            ProfilingRateLimiter profilingRateLimiter,
+            ProfilingConcurrencyConfig profilingConcurrencyConfig) {
+        this(
+                systemServiceFetcher,
+                new ProfilingSessionHelper(),
+                new AnomalyProfilingManager(),
+                profilingRateLimiter,
+                profilingConcurrencyConfig);
     }
 
     @VisibleForTesting
     ProfileAnomalyHandler(
             SystemServiceFetcher systemServiceFetcher,
             ProfilingSessionHelper profilingSessionHelper,
-            AnomalyProfilingClient anomalyProfilingManager) {
+            AnomalyProfilingClient anomalyProfilingManager,
+            ProfilingRateLimiter profilingRateLimiter,
+            ProfilingConcurrencyConfig profilingConcurrencyConfig) {
         mSystemServiceFetcher = systemServiceFetcher;
         mProfilingSessionHelper = profilingSessionHelper;
         mAnomalyProfilingManager = anomalyProfilingManager;
+        mProfilingRateLimiter = profilingRateLimiter;
+        mProfilingConcurrencyConfig = profilingConcurrencyConfig;
     }
 
     @Override
@@ -87,13 +108,21 @@ public final class ProfileAnomalyHandler implements AnomalyHandler {
                         "Anomaly report received, starting profiling for uid: %d, packageName: %s",
                         uidAttribute.uid(), packageName));
 
+        RateLimitSignatureAttribute signatureAttribute =
+                report.get(RateLimitSignatureAttribute.class);
+        Map<String, String> signature =
+                (signatureAttribute != null) ? signatureAttribute.signature() : null;
+
         mProfilingSessionHelper.requestProfiling(
                 uidAttribute.uid(),
                 packageName,
                 profilingManagerParametersAttribute.maxSessionDurationMs(),
                 profilingManagerParametersAttribute.sessionParams(),
                 profilingManagerParametersAttribute.profilingType(),
-                report.getRule().getConditionType());
+                report.getRule().getConditionType(),
+                mProfilingRateLimiter,
+                signature,
+                mProfilingConcurrencyConfig);
     }
 
     /**
