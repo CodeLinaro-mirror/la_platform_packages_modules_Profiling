@@ -20,10 +20,12 @@ import android.os.profiling.anomaly.RuleInternal;
 import android.os.profiling.anomaly.RuleInternal.AnomalyActionTypeInternal;
 import android.util.SparseArray;
 
+import com.android.os.profiling.anomaly.config.ProfilingConcurrencyConfig;
 import com.android.os.profiling.anomaly.core.AnomalyHandler;
 import com.android.os.profiling.anomaly.core.AnomalyHandlerRegistry;
 import com.android.os.profiling.anomaly.handler.LogAnomalyHandler;
 import com.android.os.profiling.anomaly.handler.ProfileAnomalyHandler;
+import com.android.os.profiling.anomaly.ratelimiter.ProfilingRateLimiter;
 import com.android.os.profiling.anomaly.wrapper.SystemServiceFetcher;
 
 /**
@@ -34,11 +36,15 @@ import com.android.os.profiling.anomaly.wrapper.SystemServiceFetcher;
 public final class AnomalyHandlerRegistryImpl implements AnomalyHandlerRegistry {
     private final SparseArray<AnomalyHandler> mHandlers = new SparseArray<>();
 
-    public AnomalyHandlerRegistryImpl(SystemServiceFetcher systemServiceFetcher) {
+    public AnomalyHandlerRegistryImpl(
+            SystemServiceFetcher systemServiceFetcher,
+            ProfilingRateLimiter profilingRateLimiter,
+            ProfilingConcurrencyConfig profilingConcurrencyConfig) {
         register(RuleInternal.ACTION_TYPE_LOG, new LogAnomalyHandler());
         register(
                 RuleInternal.ACTION_TYPE_COLLECT_PROFILE,
-                new ProfileAnomalyHandler(systemServiceFetcher));
+                new ProfileAnomalyHandler(
+                        systemServiceFetcher, profilingRateLimiter, profilingConcurrencyConfig));
     }
 
     /** Registers a handler for a given action type. */
