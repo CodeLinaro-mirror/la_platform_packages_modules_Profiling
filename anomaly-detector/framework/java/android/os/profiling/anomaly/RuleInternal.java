@@ -107,6 +107,16 @@ public class RuleInternal {
     public static final String BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS =
             RULE_KEY_PREFIX + "binder_call_interval_millis";
 
+    /**
+     * {@link Bundle} key for the maximum duration of the profiling session in milliseconds. This
+     * value is a long.
+     *
+     * <p>This is an optional key in the rule condition bundle. If not provided, a default value
+     * will be used.
+     */
+    public static final String BUNDLE_KEY_PROFILING_SESSION_DURATION_MILLIS =
+            RULE_KEY_PREFIX + "profiling_session_duration_millis";
+
     private static final Set<String> BINDER_SPAM_CONDITION_KEYS =
             Set.of(
                     BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME,
@@ -295,7 +305,8 @@ public class RuleInternal {
     @StringDef({
         CONDITION_TYPE_BINDER_SPAM,
     })
-    // LINT.ThenChange(/anomaly-detector/tests/scripts/generate_anomaly_rules.py:supported_condition_types)
+    // LINT.ThenChange(
+    //     /anomaly-detector/tests/scripts/generate_anomaly_rules.py:supported_condition_types)
     public @interface ConditionTypeInternal {}
 
     /**
@@ -433,6 +444,16 @@ public class RuleInternal {
                 case CONDITION_TYPE_BINDER_SPAM -> validateBinderSpamBundleValuesType();
                     // add validation for other types.
             }
+
+            if (mRuleCondition.containsKey(BUNDLE_KEY_PROFILING_SESSION_DURATION_MILLIS)) {
+                if (!mAnomalyActions.contains(ACTION_TYPE_COLLECT_PROFILE)) {
+                    throw new IllegalArgumentException(
+                            "Profiling session duration should only be set if"
+                                    + " ACTION_TYPE_COLLECT_PROFILE is present.");
+                }
+                validateBundleValueType(
+                        mRuleCondition, BUNDLE_KEY_PROFILING_SESSION_DURATION_MILLIS, Long.class);
+            }
         }
 
         /*
@@ -440,8 +461,8 @@ public class RuleInternal {
          * runtime type checking.
          */
         @SuppressWarnings("deprecation")
-        private void validateBinderSpamBundleValueType(String key, Class<?> expectedType) {
-            Object value = mRuleCondition.get(key);
+        private void validateBundleValueType(Bundle bundle, String key, Class<?> expectedType) {
+            Object value = bundle.get(key);
 
             if (!expectedType.isInstance(value)) {
                 throw new IllegalArgumentException(
@@ -455,14 +476,16 @@ public class RuleInternal {
 
         // TODO(b/440140585): Validate the format of the interface name and method.
         private void validateBinderSpamBundleValuesType() {
-            validateBinderSpamBundleValueType(
-                    BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME, String.class);
-            validateBinderSpamBundleValueType(
-                    BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME, String.class);
-            validateBinderSpamBundleValueType(
-                    BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT, Integer.class);
-            validateBinderSpamBundleValueType(
-                    BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS, Long.class);
+            validateBundleValueType(
+                    mRuleCondition, BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME, String.class);
+            validateBundleValueType(
+                    mRuleCondition, BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME, String.class);
+            validateBundleValueType(
+                    mRuleCondition, BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT, Integer.class);
+            validateBundleValueType(
+                    mRuleCondition,
+                    BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS,
+                    Long.class);
         }
     }
 }
