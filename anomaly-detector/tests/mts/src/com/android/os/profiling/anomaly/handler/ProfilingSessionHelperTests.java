@@ -36,6 +36,7 @@ import android.os.AnomalyRequestResult;
 import android.os.Bundle;
 import android.os.ProfilingResult;
 import android.os.profiling.anomaly.RuleInternal;
+import android.profiling.utils.PerfettoMetadata;
 
 import androidx.test.runner.AndroidJUnit4;
 
@@ -51,6 +52,7 @@ import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 
+import java.time.Instant;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -63,6 +65,8 @@ public class ProfilingSessionHelperTests {
     @Mock private ProfilingRateLimiter mMockProfilingRateLimiter;
     @Mock private ProfilingConcurrencyConfig mMockProfilingConcurrencyConfig;
 
+    private PerfettoMetadata.AnomalyDetails mAnomalyDetails = null;
+
     private static final int UID = 123;
     private static final int UID_2 = 456;
 
@@ -70,15 +74,28 @@ public class ProfilingSessionHelperTests {
 
     private static final String FAKE_CONDITION_TYPE = "FAKE_CONDITION_TYPE";
 
+    private static final String FAKE_INTERFACE_NAME = "fake.interface.name";
+    private static final String FAKE_METHOD_NAME = "fakeMethodName";
+
     private static final int MAX_SESSION_DURATION_MS = 20000;
 
     private static final int CONCURRENT_SESSIONS_LIMIT = 1;
 
+    private static final long ANOMALY_DURATION_MS = 1000L;
+
+    private static final int ANOMALY_TYPE_INDEX =
+            RuleInternal.CONDITION_TYPE_BINDER_SPAM.lastIndexOf('.') + 1;
+    private static final String EXPECTED_ANOMALY_TYPE =
+            RuleInternal.CONDITION_TYPE_BINDER_SPAM.substring(ANOMALY_TYPE_INDEX);
+
     private ProfilingSessionHelper mProfilingSessionHelper;
 
     @Before
-    public void setUp() {
+    public void setUp() throws Exception {
         doNothing().when(mAnomalyProfilingManager).registerCallback(any(Consumer.class));
+        mAnomalyDetails =
+                PerfettoMetadata.AnomalyDetails.ofBinderSpam(
+                        FAKE_INTERFACE_NAME, FAKE_METHOD_NAME, 1.0, 2.0);
         mProfilingSessionHelper = new ProfilingSessionHelper(mAnomalyProfilingManager);
         when(mMockProfilingRateLimiter.isRequestAllowed(anyInt(), any(), any())).thenReturn(true);
         when(mMockProfilingConcurrencyConfig.getDeviceMaxConcurrentSessions())
@@ -100,7 +117,9 @@ public class ProfilingSessionHelperTests {
                 RuleInternal.CONDITION_TYPE_BINDER_SPAM,
                 mMockProfilingRateLimiter,
                 /* signature= */ null,
-                mMockProfilingConcurrencyConfig);
+                mMockProfilingConcurrencyConfig,
+                mAnomalyDetails,
+                ANOMALY_DURATION_MS);
 
         verify(mAnomalyProfilingManager)
                 .collectAnomalyProfile(
@@ -129,7 +148,9 @@ public class ProfilingSessionHelperTests {
                 RuleInternal.CONDITION_TYPE_BINDER_SPAM,
                 mMockProfilingRateLimiter,
                 /* signature= */ null,
-                mMockProfilingConcurrencyConfig);
+                mMockProfilingConcurrencyConfig,
+                mAnomalyDetails,
+                ANOMALY_DURATION_MS);
 
         assertThat(mProfilingSessionHelper.mUidSessionInfoSparseArray.get(UID).shouldAccept())
                 .isFalse();
@@ -143,7 +164,9 @@ public class ProfilingSessionHelperTests {
                 RuleInternal.CONDITION_TYPE_BINDER_SPAM,
                 mMockProfilingRateLimiter,
                 /* signature= */ null,
-                mMockProfilingConcurrencyConfig);
+                mMockProfilingConcurrencyConfig,
+                mAnomalyDetails,
+                ANOMALY_DURATION_MS);
 
         verify(mAnomalyProfilingManager, times(1))
                 .collectAnomalyProfile(
@@ -156,6 +179,49 @@ public class ProfilingSessionHelperTests {
         assertThat(mProfilingSessionHelper.mUidSessionInfoSparseArray.get(UID)).isNotNull();
         assertThat(mProfilingSessionHelper.mUidSessionInfoSparseArray.get(UID).shouldAccept())
                 .isTrue();
+    }
+
+    @Test
+    public void requestProfiling_ongoingSessionForTheSameUid_updateSessionInfoCorrectly()
+                throws Exception {
+        Bundle sessionParams = new Bundle();
+        sessionParams.putBoolean(KEY_SAMPLE_BINDER_ONLY, true);
+
+        mProfilingSessionHelper.requestProfiling(
+                UID,
+                PACKAGE_NAME,
+                MAX_SESSION_DURATION_MS,
+                sessionParams,
+                PROFILING_TYPE_STACK_SAMPLING,
+                RuleInternal.CONDITION_TYPE_BINDER_SPAM,
+                mMockProfilingRateLimiter,
+                /* signature= */ null,
+                mMockProfilingConcurrencyConfig,
+                mAnomalyDetails,
+                ANOMALY_DURATION_MS);
+        mProfilingSessionHelper.requestProfiling(
+                UID,
+                PACKAGE_NAME,
+                MAX_SESSION_DURATION_MS,
+                sessionParams,
+                PROFILING_TYPE_STACK_SAMPLING,
+                RuleInternal.CONDITION_TYPE_BINDER_SPAM,
+                mMockProfilingRateLimiter,
+                /* signature= */ null,
+                mMockProfilingConcurrencyConfig,
+                mAnomalyDetails,
+                ANOMALY_DURATION_MS);
+
+        ProfilingSessionHelper.SessionInfo sessionInfo =
+                mProfilingSessionHelper.mUidSessionInfoSparseArray.get(UID);
+        assertThat(sessionInfo).isNotNull();
+        assertThat(sessionInfo.shouldAccept()).isTrue();
+        String actualPerfettoMetadataString = sessionInfo.perfettoMetadata().toString();
+        assertThat(actualPerfettoMetadataString).contains(String.valueOf(UID));
+        assertThat(actualPerfettoMetadataString).contains(PACKAGE_NAME);
+        assertThat(actualPerfettoMetadataString).contains(EXPECTED_ANOMALY_TYPE);
+        assertThat(actualPerfettoMetadataString).contains(FAKE_INTERFACE_NAME);
+        assertThat(actualPerfettoMetadataString).contains(FAKE_METHOD_NAME);
     }
 
     @Test
@@ -173,7 +239,9 @@ public class ProfilingSessionHelperTests {
                 FAKE_CONDITION_TYPE,
                 mMockProfilingRateLimiter,
                 /* signature= */ null,
-                mMockProfilingConcurrencyConfig);
+                mMockProfilingConcurrencyConfig,
+                mAnomalyDetails,
+                ANOMALY_DURATION_MS);
 
         verify(mAnomalyProfilingManager, times(1))
                 .collectAnomalyProfile(
@@ -186,6 +254,88 @@ public class ProfilingSessionHelperTests {
         assertThat(mProfilingSessionHelper.mUidSessionInfoSparseArray.get(UID)).isNotNull();
         assertThat(mProfilingSessionHelper.mUidSessionInfoSparseArray.get(UID).shouldAccept())
                 .isTrue();
+    }
+
+    @Test
+    public void updateOngoingSessionInfo_withMatchingConditionType_updatesSessionInfo() {
+        UUID sessionId = new UUID(1L, 2L);
+        PerfettoMetadata metadata = new PerfettoMetadata();
+        Instant startTime = Instant.ofEpochMilli(System.currentTimeMillis());
+        ProfilingSessionHelper.SessionInfo initialSessionInfo =
+                new ProfilingSessionHelper.SessionInfo(
+                        sessionId,
+                        UID,
+                        PACKAGE_NAME,
+                        RuleInternal.CONDITION_TYPE_BINDER_SPAM,
+                        startTime,
+                        /* result= */ null,
+                        /* shouldAccept= */ false,
+                        metadata);
+        mProfilingSessionHelper.mUidSessionInfoSparseArray.put(UID, initialSessionInfo);
+
+        mProfilingSessionHelper.updateOngoingSessionInfo(
+                UID,
+                RuleInternal.CONDITION_TYPE_BINDER_SPAM,
+                PACKAGE_NAME,
+                mAnomalyDetails,
+                ANOMALY_DURATION_MS);
+
+        ProfilingSessionHelper.SessionInfo updatedSessionInfo =
+                mProfilingSessionHelper.mUidSessionInfoSparseArray.get(UID);
+        assertThat(updatedSessionInfo.shouldAccept()).isTrue();
+        String actualPerfettoMetadataString = updatedSessionInfo.perfettoMetadata().toString();
+        assertThat(actualPerfettoMetadataString).contains(String.valueOf(UID));
+        assertThat(actualPerfettoMetadataString).contains(PACKAGE_NAME);
+        assertThat(actualPerfettoMetadataString).contains(EXPECTED_ANOMALY_TYPE);
+        assertThat(actualPerfettoMetadataString).contains(FAKE_INTERFACE_NAME);
+        assertThat(actualPerfettoMetadataString).contains(FAKE_METHOD_NAME);
+    }
+
+    @Test
+    public void updateOngoingSessionInfo_withMismatchedConditionType_doesNotUpdateSessionInfo() {
+        UUID sessionId = new UUID(1L, 2L);
+        PerfettoMetadata metadata = new PerfettoMetadata();
+        Instant startTime = Instant.ofEpochMilli(System.currentTimeMillis());
+        ProfilingSessionHelper.SessionInfo initialSessionInfo =
+                new ProfilingSessionHelper.SessionInfo(
+                        sessionId,
+                        UID,
+                        PACKAGE_NAME,
+                        RuleInternal.CONDITION_TYPE_BINDER_SPAM,
+                        startTime,
+                        /* result= */ null,
+                        /* shouldAccept= */ false,
+                        metadata);
+        mProfilingSessionHelper.mUidSessionInfoSparseArray.put(UID, initialSessionInfo);
+
+        mProfilingSessionHelper.updateOngoingSessionInfo(
+                UID,
+                FAKE_CONDITION_TYPE,
+                PACKAGE_NAME,
+                mAnomalyDetails,
+                ANOMALY_DURATION_MS);
+
+        ProfilingSessionHelper.SessionInfo updatedSessionInfo =
+                mProfilingSessionHelper.mUidSessionInfoSparseArray.get(UID);
+        assertThat(updatedSessionInfo.shouldAccept()).isFalse();
+        String actualPerfettoMetadataString = updatedSessionInfo.perfettoMetadata().toString();
+        assertThat(actualPerfettoMetadataString).doesNotContain(String.valueOf(UID));
+        assertThat(actualPerfettoMetadataString).doesNotContain(PACKAGE_NAME);
+        assertThat(actualPerfettoMetadataString).doesNotContain(EXPECTED_ANOMALY_TYPE);
+        assertThat(actualPerfettoMetadataString).doesNotContain(FAKE_INTERFACE_NAME);
+        assertThat(actualPerfettoMetadataString).doesNotContain(FAKE_METHOD_NAME);
+    }
+
+    @Test
+    public void updateOngoingSessionInfo_noOngoingSession_doesNothing() {
+        mProfilingSessionHelper.updateOngoingSessionInfo(
+                UID,
+                RuleInternal.CONDITION_TYPE_BINDER_SPAM,
+                PACKAGE_NAME,
+                mAnomalyDetails,
+                ANOMALY_DURATION_MS);
+
+        assertThat(mProfilingSessionHelper.mUidSessionInfoSparseArray.get(UID)).isNull();
     }
 
     @Test
@@ -202,7 +352,9 @@ public class ProfilingSessionHelperTests {
                 RuleInternal.CONDITION_TYPE_BINDER_SPAM,
                 mMockProfilingRateLimiter,
                 /* signature= */ null,
-                mMockProfilingConcurrencyConfig);
+                mMockProfilingConcurrencyConfig,
+                mAnomalyDetails,
+                ANOMALY_DURATION_MS);
         mProfilingSessionHelper.handleSessionResult(
                 new AnomalyRequestResult(
                         new UUID(789L, 456L),
@@ -232,7 +384,9 @@ public class ProfilingSessionHelperTests {
                 RuleInternal.CONDITION_TYPE_BINDER_SPAM,
                 mMockProfilingRateLimiter,
                 /* signature= */ null,
-                mMockProfilingConcurrencyConfig);
+                mMockProfilingConcurrencyConfig,
+                mAnomalyDetails,
+                ANOMALY_DURATION_MS);
         mProfilingSessionHelper.requestProfiling(
                 UID,
                 PACKAGE_NAME,
@@ -242,7 +396,9 @@ public class ProfilingSessionHelperTests {
                 RuleInternal.CONDITION_TYPE_BINDER_SPAM,
                 mMockProfilingRateLimiter,
                 /* signature= */ null,
-                mMockProfilingConcurrencyConfig);
+                mMockProfilingConcurrencyConfig,
+                mAnomalyDetails,
+                ANOMALY_DURATION_MS);
         mProfilingSessionHelper.handleSessionResult(
                 new AnomalyRequestResult(
                         new UUID(789L, 456L),
@@ -280,7 +436,9 @@ public class ProfilingSessionHelperTests {
                 RuleInternal.CONDITION_TYPE_BINDER_SPAM,
                 mMockProfilingRateLimiter,
                 /* signature= */ null,
-                mMockProfilingConcurrencyConfig);
+                mMockProfilingConcurrencyConfig,
+                mAnomalyDetails,
+                ANOMALY_DURATION_MS);
 
         verify(mAnomalyProfilingManager, never())
                 .collectAnomalyProfile(anyInt(), any(), anyInt(), anyInt(), any(), any());
@@ -301,7 +459,9 @@ public class ProfilingSessionHelperTests {
                 RuleInternal.CONDITION_TYPE_BINDER_SPAM,
                 mMockProfilingRateLimiter,
                 /* signature= */ null,
-                mMockProfilingConcurrencyConfig);
+                mMockProfilingConcurrencyConfig,
+                mAnomalyDetails,
+                ANOMALY_DURATION_MS);
 
         verify(mAnomalyProfilingManager, times(1))
                 .collectAnomalyProfile(anyInt(), any(), anyInt(), anyInt(), any(), any());
@@ -316,7 +476,9 @@ public class ProfilingSessionHelperTests {
                 RuleInternal.CONDITION_TYPE_BINDER_SPAM,
                 mMockProfilingRateLimiter,
                 /* signature= */ null,
-                mMockProfilingConcurrencyConfig);
+                mMockProfilingConcurrencyConfig,
+                mAnomalyDetails,
+                ANOMALY_DURATION_MS);
 
         // Verify that collectAnomalyProfile was not called a second time.
         verify(mAnomalyProfilingManager, times(1))

@@ -18,18 +18,14 @@ package com.android.os.profiling.anomaly.attribute;
 
 import com.android.os.profiling.anomaly.core.AnomalyAttribute;
 
-import java.time.Duration;
+import android.profiling.utils.PerfettoMetadata;
 
 /**
- * An attribute that provides the details of a binder spam anomaly.
+ * An attribute for holding the anomaly details for the usage of
+ * {@link android.profiling.utils.PerfettoMetadata}.
  *
  * @hide
  */
-public record BinderSpamDetailsAttribute(
-        String interfaceName,
-        String methodName,
-        int observedCallCount,
-        Duration observedInterval,
-        int thresholdCallCount,
-        Duration thresholdInterval)
+public record AnomalyDetailsAttribute(
+    PerfettoMetadata.AnomalyDetails anomalyDetails, long durationMillis)
         implements AnomalyAttribute {}

@@ -20,6 +20,7 @@ import static android.os.ProfilingManager.KEY_DURATION_MS;
 
 import static java.util.zip.Deflater.NO_COMPRESSION;
 
+import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.os.AnomalyProfilingClient;
 import android.os.AnomalyProfilingManager;
@@ -29,6 +30,7 @@ import android.os.ProfilingManager;
 import android.os.ProfilingResult;
 import android.os.ProfilingTrigger;
 import android.os.profiling.anomaly.RuleInternal;
+import android.profiling.utils.PerfettoMetadata;
 import android.util.SparseArray;
 
 import com.android.internal.annotations.VisibleForTesting;
@@ -157,20 +159,25 @@ public class ProfilingSessionHelper {
      * @param profilingRateLimiter The rate limiter instance to check if the request is allowed.
      * @param signature A map of key-value pairs representing the specific anomaly signature, used
      *     for fine-grained rate-limiting. May be {@code null}.
+     * @param anomalyDetails The anomaly details to be written to the trace metadata
+     * @param anomalyDurationMillis The duration of the anomaly in milliseconds
      */
     public void requestProfiling(
             int uid,
             String packageName,
-            long maxSessionDurationMs,
+            long maxSessionDurationMillis,
             Bundle sessionParams,
             @ProfilingManager.ProfilingType int profilingType,
             @RuleInternal.ConditionTypeInternal String conditionType,
             ProfilingRateLimiter profilingRateLimiter,
             @Nullable Map<String, String> signature,
-            ProfilingConcurrencyConfig profilingConcurrencyConfig) {
+            ProfilingConcurrencyConfig profilingConcurrencyConfig,
+            @NonNull PerfettoMetadata.AnomalyDetails anomalyDetails,
+            long anomalyDurationMillis) {
         synchronized (mLock) {
             if (mUidSessionInfoSparseArray.contains(uid)) {
-                markSessionAcceptable(uid, conditionType);
+                updateOngoingSessionInfo(
+                        uid, conditionType, packageName, anomalyDetails, anomalyDurationMillis);
                 // If the incoming request has a UID that is already in the ongoing session list,
                 // a new session should not be started.
                 return;
@@ -188,7 +195,7 @@ public class ProfilingSessionHelper {
         }
 
         Bundle params = new Bundle();
-        params.putLong(KEY_DURATION_MS, maxSessionDurationMs);
+        params.putLong(KEY_DURATION_MS, maxSessionDurationMillis);
         params.putAll(sessionParams);
         UUID sessionId =
                 mAnomalyProfilingManager.collectAnomalyProfile(
@@ -208,7 +215,8 @@ public class ProfilingSessionHelper {
                         /* result= */ null,
                         // TODO: b/485962021 - make the accept/reject logic of sessions configurable
                         /* shouldAccept= */ !conditionType.equals(
-                                RuleInternal.CONDITION_TYPE_BINDER_SPAM));
+                                RuleInternal.CONDITION_TYPE_BINDER_SPAM),
+                        new PerfettoMetadata());
         synchronized (mLock) {
             mUidSessionInfoSparseArray.put(uid, sessionInfo);
         }
@@ -231,38 +239,36 @@ public class ProfilingSessionHelper {
         }
 
         Path resultFilePath = Paths.get(sessionInfo.result.getResultFilePath());
+        // TODO: b/467021367 - use PerfettoMetadata.attachToProfilingResult introduced in
+        // ag/38650931 instead
+        String metadata = sessionInfo.perfettoMetadata.toString();
+        // Zip the trace file and add metadata
+        // TODO: b/485370930 - determine what method to use for bundling file together
+        File zipFile =
+                resultFilePath
+                        .resolveSibling(
+                                sessionInfo.packageName
+                                        + sessionInfo.startTime.toEpochMilli()
+                                        + ".zip")
+                        .toFile();
+        addResultAndMetadataToZipFile(resultFilePath.toFile(), metadata, zipFile);
+        // Delete the result file after adding it to the zip file
         try {
-            String metadata = getMetadataJson(sessionInfo);
-            // Zip the trace file and add metadata
-            // TODO: b/485370930 - determine what method to use for bundling file together
-            File zipFile =
-                    resultFilePath
-                            .resolveSibling(
-                                    sessionInfo.packageName
-                                            + sessionInfo.startTime.toEpochMilli()
-                                            + ".zip")
-                            .toFile();
-            addResultAndMetadataToZipFile(resultFilePath.toFile(), metadata, zipFile);
-            // Delete the result file after adding it to the zip file
-            try {
             Files.deleteIfExists(resultFilePath);
-            } catch (DirectoryNotEmptyException e) {
-                sLog.e("Unable to delete the result file, directory is not empty (THIS SHOULD NOT"
-                        + " HAPPEN): %s", e);
-            } catch (IOException | SecurityException e) {
-                sLog.e("Unable to delete the result file: %s", e);
-            }
-            int anomalyTypeIndex = sessionInfo.conditionType.lastIndexOf('.') + 1;
-            String anomalyType = sessionInfo.conditionType.substring(anomalyTypeIndex);
-            mAnomalyProfilingManager.sendAnomalyProfile(
-                    sessionInfo.uid,
-                    sessionInfo.packageName,
-                    ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
-                    anomalyType,
-                    zipFile.getName());
-        } catch (JSONException e) {
-            sLog.e("Failed to generate metadata from SessionInfo", e);
+        } catch (DirectoryNotEmptyException e) {
+            sLog.e("Unable to delete the result file, directory is not empty (THIS SHOULD NOT"
+                    + " HAPPEN): %s", e);
+        } catch (IOException | SecurityException e) {
+            sLog.e("Unable to delete the result file: %s", e);
         }
+        int anomalyTypeIndex = sessionInfo.conditionType.lastIndexOf('.') + 1;
+        String anomalyType = sessionInfo.conditionType.substring(anomalyTypeIndex);
+        mAnomalyProfilingManager.sendAnomalyProfile(
+                sessionInfo.uid,
+                sessionInfo.packageName,
+                ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
+                anomalyType,
+                zipFile.getName());
     }
 
     /**
@@ -273,8 +279,8 @@ public class ProfilingSessionHelper {
      * @param zipFile A {@link File} to the zip file
      */
     private void addResultAndMetadataToZipFile(File resultFile, String metadata, File zipFile) {
-        try (FileOutputStream fileOutputStream = new FileOutputStream(zipFile)) {
-            ZipOutputStream zipOutputStream = new ZipOutputStream(fileOutputStream);
+        try (FileOutputStream fileOutputStream = new FileOutputStream(zipFile);
+                ZipOutputStream zipOutputStream = new ZipOutputStream(fileOutputStream)) {
             // Skipping compression here to avoid compressing an already compressed file
             zipOutputStream.setLevel(NO_COMPRESSION);
             // Copy the trace file to the zip
@@ -289,41 +295,52 @@ public class ProfilingSessionHelper {
             zipOutputStream.closeEntry();
 
             // Add metadata to the zip
-            zipOutputStream.putNextEntry(new ZipEntry("metadata"));
+            zipOutputStream.putNextEntry(new ZipEntry("metadata.json"));
             zipOutputStream.write(metadata.getBytes(StandardCharsets.UTF_8));
             zipOutputStream.closeEntry();
-            zipOutputStream.close();
         } catch (IOException e) {
             sLog.e("Unable to create the zip file: %s", e);
         }
     }
 
     /**
-     * Convert the given {@link SessionInfo} to a JSON String containing the metadata in it
-     *
-     * @param sessionInfo The {@link SessionInfo} from which to generate the result JSON
-     * @return A {@code String} containing the metadata, to be written to the metadata file
-     */
-    private String getMetadataJson(SessionInfo sessionInfo) throws JSONException {
-        JSONObject jsonObject = new JSONObject();
-        // TODO: b/476499105 - complete the JSON structure, add info to SessionInfo if needed
-        jsonObject.put(JSON_ROOT_KEY, "placeholder");
-
-        return jsonObject.toString();
-    }
-
-    /**
-     * Mark an ongoing session acceptable.
+     * Update the ongoing session info with the given UID and condition type, update its
+     * perfetto metadata with the anomaly details, and mark the session as acceptable if the
+     * given condition type is the same as the ongoing session.
      *
      * @param uid The UID of the session
      * @param conditionType The condition type (anomaly type) of the session
+     * @param packageName The package name of the session
+     * @param anomalyDetails The anomaly details to be written to the trace metadata
+     * @param anomalyDurationMillis The duration of the anomaly in milliseconds
      */
-    private void markSessionAcceptable(
-            int uid, @RuleInternal.ConditionTypeInternal String conditionType) {
+    @VisibleForTesting
+    void updateOngoingSessionInfo(
+            int uid,
+            @RuleInternal.ConditionTypeInternal String conditionType,
+            String packageName,
+            PerfettoMetadata.AnomalyDetails anomalyDetails,
+            long anomalyDurationMillis) {
         SessionInfo ongoingSessionInfo = mUidSessionInfoSparseArray.get(uid);
         // Mark the ongoing session as acceptable, if the ongoing session and the incoming
-        // request both have the condition type of Binder Spam.
+        // request both have the same condition type.
         if (ongoingSessionInfo != null && ongoingSessionInfo.conditionType.equals(conditionType)) {
+            long currentTimeRelativeToSessionStart =
+                    System.currentTimeMillis() - ongoingSessionInfo.startTime.toEpochMilli();
+            int anomalyTypeIndex = conditionType.lastIndexOf('.') + 1;
+            String anomalyType = conditionType.substring(anomalyTypeIndex);
+            try {
+                ongoingSessionInfo.perfettoMetadata.addAnomaly(
+                        uid,
+                        packageName,
+                        currentTimeRelativeToSessionStart - anomalyDurationMillis,
+                        currentTimeRelativeToSessionStart,
+                        anomalyType,
+                        anomalyDetails);
+            } catch (JSONException e) {
+                sLog.e("Failed to add anomaly details to metadata", e);
+            }
+
             SessionInfo sessionInfoAcceptingResult =
                     new SessionInfo(
                             ongoingSessionInfo,
@@ -341,7 +358,8 @@ public class ProfilingSessionHelper {
             @RuleInternal.ConditionTypeInternal String conditionType,
             Instant startTime,
             @Nullable AnomalyRequestResult result,
-            boolean shouldAccept) {
+            boolean shouldAccept,
+            @NonNull PerfettoMetadata perfettoMetadata) {
         public SessionInfo(
                 SessionInfo sessionInfo,
                 @Nullable AnomalyRequestResult result,
@@ -353,7 +371,8 @@ public class ProfilingSessionHelper {
                     sessionInfo.conditionType,
                     sessionInfo.startTime,
                     result,
-                    shouldAccept);
+                    shouldAccept,
+                    sessionInfo.perfettoMetadata);
         }
     }
 }
