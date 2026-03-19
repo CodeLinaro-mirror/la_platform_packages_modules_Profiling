@@ -37,7 +37,9 @@ import com.android.internal.annotations.VisibleForTesting;
 import com.android.os.profiling.anomaly.config.ProfilingConcurrencyConfig;
 import com.android.os.profiling.anomaly.ratelimiter.ProfilingRateLimiter;
 import com.android.os.profiling.anomaly.util.LogUtil;
+import com.android.os.profiling.anomaly.wrapper.ExecutorServiceWrapper;
 
+import java.util.concurrent.Executor;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -53,6 +55,7 @@ import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -71,17 +74,23 @@ public class ProfilingSessionHelper {
 
     private final AnomalyProfilingClient mAnomalyProfilingManager;
 
+    private final Executor mIoExecutor;
+
     @VisibleForTesting
     final SparseArray<SessionInfo> mUidSessionInfoSparseArray = new SparseArray<>();
 
     public ProfilingSessionHelper() {
-        this(new AnomalyProfilingManager());
+        this(new AnomalyProfilingManager(),
+                ExecutorServiceWrapper.getIOExecutor());
     }
 
     @VisibleForTesting
-    ProfilingSessionHelper(AnomalyProfilingClient anomalyProfilingManager) {
+    ProfilingSessionHelper(
+            AnomalyProfilingClient anomalyProfilingManager,
+            Executor executor) {
         mAnomalyProfilingManager = anomalyProfilingManager;
         mAnomalyProfilingManager.registerCallback(this::handleSessionResult);
+        mIoExecutor = executor;
     }
 
     @VisibleForTesting
@@ -238,69 +247,23 @@ public class ProfilingSessionHelper {
             return;
         }
 
-        Path resultFilePath = Paths.get(sessionInfo.result.getResultFilePath());
-        // TODO: b/467021367 - use PerfettoMetadata.attachToProfilingResult introduced in
-        // ag/38650931 instead
-        String metadata = sessionInfo.perfettoMetadata.toString();
-        // Zip the trace file and add metadata
-        // TODO: b/485370930 - determine what method to use for bundling file together
-        File zipFile =
-                resultFilePath
-                        .resolveSibling(
-                                sessionInfo.packageName
-                                        + sessionInfo.startTime.toEpochMilli()
-                                        + ".zip")
-                        .toFile();
-        addResultAndMetadataToZipFile(resultFilePath.toFile(), metadata, zipFile);
-        // Delete the result file after adding it to the zip file
-        try {
-            Files.deleteIfExists(resultFilePath);
-        } catch (DirectoryNotEmptyException e) {
-            sLog.e("Unable to delete the result file, directory is not empty (THIS SHOULD NOT"
-                    + " HAPPEN): %s", e);
-        } catch (IOException | SecurityException e) {
-            sLog.e("Unable to delete the result file: %s", e);
-        }
-        int anomalyTypeIndex = sessionInfo.conditionType.lastIndexOf('.') + 1;
-        String anomalyType = sessionInfo.conditionType.substring(anomalyTypeIndex);
-        mAnomalyProfilingManager.sendAnomalyProfile(
-                sessionInfo.uid,
-                sessionInfo.packageName,
-                ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
-                anomalyType,
-                zipFile.getName());
-    }
-
-    /**
-     * Add result and metadata files to a zip file
-     *
-     * @param resultFile A {@link File} to the result trace file
-     * @param metadata A {@link String} of metadata
-     * @param zipFile A {@link File} to the zip file
-     */
-    private void addResultAndMetadataToZipFile(File resultFile, String metadata, File zipFile) {
-        try (FileOutputStream fileOutputStream = new FileOutputStream(zipFile);
-                ZipOutputStream zipOutputStream = new ZipOutputStream(fileOutputStream)) {
-            // Skipping compression here to avoid compressing an already compressed file
-            zipOutputStream.setLevel(NO_COMPRESSION);
-            // Copy the trace file to the zip
-            zipOutputStream.putNextEntry(new ZipEntry(resultFile.getName()));
-            byte[] buffer = new byte[1024];
-            try (FileInputStream fis = new FileInputStream(resultFile)) {
-                int length;
-                while ((length = fis.read(buffer)) > 0) {
-                    zipOutputStream.write(buffer, 0, length);
-                }
+        mIoExecutor.execute(() -> {
+            try {
+                String bundledResultPath =
+                        sessionInfo.perfettoMetadata.attachToProfilingResult(
+                                sessionInfo.result.getResultFilePath());
+                int anomalyTypeIndex = sessionInfo.conditionType.lastIndexOf('.') + 1;
+                String anomalyType = sessionInfo.conditionType.substring(anomalyTypeIndex);
+                mAnomalyProfilingManager.sendAnomalyProfile(
+                        sessionInfo.uid,
+                        sessionInfo.packageName,
+                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
+                        anomalyType,
+                        bundledResultPath);
+            } catch (IOException e) {
+                sLog.e("Unable to attach metadata to profiling result: %s", e);
             }
-            zipOutputStream.closeEntry();
-
-            // Add metadata to the zip
-            zipOutputStream.putNextEntry(new ZipEntry("metadata.json"));
-            zipOutputStream.write(metadata.getBytes(StandardCharsets.UTF_8));
-            zipOutputStream.closeEntry();
-        } catch (IOException e) {
-            sLog.e("Unable to create the zip file: %s", e);
-        }
+        });
     }
 
     /**

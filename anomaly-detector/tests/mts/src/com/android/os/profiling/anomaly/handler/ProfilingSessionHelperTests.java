@@ -46,20 +46,28 @@ import com.android.os.profiling.anomaly.ratelimiter.ProfilingRateLimiter;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 
+import java.io.FileOutputStream;
+import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.concurrent.TimeUnit;
 import java.util.UUID;
 import java.util.function.Consumer;
 
 /** Tests for {@link ProfilingSessionHelper} class */
 @RunWith(AndroidJUnit4.class)
 public class ProfilingSessionHelperTests {
-    @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
+    @Rule(order = 0) public MockitoRule mMockitoRule = MockitoJUnit.rule();
+
+    @Rule(order = 1)
+    public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
     @Mock private AnomalyProfilingClient mAnomalyProfilingManager;
     @Mock private ProfilingRateLimiter mMockProfilingRateLimiter;
@@ -76,6 +84,10 @@ public class ProfilingSessionHelperTests {
 
     private static final String FAKE_INTERFACE_NAME = "fake.interface.name";
     private static final String FAKE_METHOD_NAME = "fakeMethodName";
+
+    private static final String FAKE_RESULT_FILE_NAME = PACKAGE_NAME + ".perfetto-trace";
+    private static final String FAKE_RESULT_CONTENT = "TestContent";
+    private static final String FAKE_RESULT_TAG = "TestTag";
 
     private static final int MAX_SESSION_DURATION_MS = 20000;
 
@@ -96,7 +108,10 @@ public class ProfilingSessionHelperTests {
         mAnomalyDetails =
                 PerfettoMetadata.AnomalyDetails.ofBinderSpam(
                         FAKE_INTERFACE_NAME, FAKE_METHOD_NAME, 1.0, 2.0);
-        mProfilingSessionHelper = new ProfilingSessionHelper(mAnomalyProfilingManager);
+        mProfilingSessionHelper =
+                new ProfilingSessionHelper(
+                        mAnomalyProfilingManager,
+                        r -> r.run());
         when(mMockProfilingRateLimiter.isRequestAllowed(anyInt(), any(), any())).thenReturn(true);
         when(mMockProfilingConcurrencyConfig.getDeviceMaxConcurrentSessions())
                 .thenReturn(CONCURRENT_SESSIONS_LIMIT);
@@ -360,15 +375,21 @@ public class ProfilingSessionHelperTests {
                         new UUID(789L, 456L),
                         UID,
                         ProfilingResult.ERROR_NONE,
-                        "TestPath",
-                        "TestTag",
+                        FAKE_RESULT_FILE_NAME,
+                        FAKE_RESULT_TAG,
                         TRIGGER_TYPE_ANOMALY));
 
         assertThat(mProfilingSessionHelper.mUidSessionInfoSparseArray.contains(UID)).isFalse();
     }
 
     @Test
-    public void handleSessionResult_shouldSendAnomalyProfile() {
+    public void handleSessionResult_shouldSendAnomalyProfile() throws Exception {
+        File fakeResultFile = temporaryFolder.newFile(FAKE_RESULT_FILE_NAME);
+        fakeResultFile.createNewFile();
+        fakeResultFile.setReadable(true);
+        try (FileOutputStream fos = new FileOutputStream(fakeResultFile)) {
+            fos.write(FAKE_RESULT_CONTENT.getBytes(StandardCharsets.UTF_8));
+        }
         Bundle sessionParams = new Bundle();
         sessionParams.putBoolean(KEY_SAMPLE_BINDER_ONLY, true);
         String binderSpamConditionType =
@@ -404,8 +425,8 @@ public class ProfilingSessionHelperTests {
                         new UUID(789L, 456L),
                         UID,
                         ProfilingResult.ERROR_NONE,
-                        "TestPath",
-                        "TestTag",
+                        fakeResultFile.getAbsolutePath(),
+                        FAKE_RESULT_TAG,
                         TRIGGER_TYPE_ANOMALY));
 
         ArgumentCaptor<String> stringArgumentCaptor = ArgumentCaptor.forClass(String.class);
@@ -416,7 +437,7 @@ public class ProfilingSessionHelperTests {
                         eq(TRIGGER_TYPE_ANOMALY),
                         eq(binderSpamConditionType),
                         stringArgumentCaptor.capture());
-        assertThat(stringArgumentCaptor.getValue()).contains(PACKAGE_NAME);
+        assertThat(stringArgumentCaptor.getValue()).contains(FAKE_RESULT_FILE_NAME);
         assertThat(stringArgumentCaptor.getValue()).contains(".zip");
     }
 
