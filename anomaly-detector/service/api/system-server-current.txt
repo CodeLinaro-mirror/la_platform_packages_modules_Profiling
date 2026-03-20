@@ -1,7 +1,6 @@
 // Signature format: 6.0
 // - style=java
 // - flagged-api-inheritance=none
-// - strip-java-lang-prefix=legacy
 // - type-argument-spacing=legacy
 package com.android.os.profiling.anomaly {
 
@@ -17,7 +16,7 @@ package com.android.os.profiling.anomaly.collector {
   @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public interface SignalCollector<T extends com.android.os.profiling.anomaly.collector.SignalCollectorConfig, U extends com.android.os.profiling.anomaly.collector.SignalCollectorData> {
     method @Nullable public U getData(@NonNull com.android.os.profiling.anomaly.collector.SubscriptionId);
     method public void requestUpdate(@NonNull com.android.os.profiling.anomaly.collector.SubscriptionId);
-    method @NonNull public com.android.os.profiling.anomaly.collector.SubscriptionId subscribe(@NonNull T, @NonNull android.os.OutcomeReceiver<U,java.lang.Throwable>);
+    method @NonNull public com.android.os.profiling.anomaly.collector.SubscriptionId subscribe(@NonNull T, @NonNull android.os.OutcomeReceiver<U,Throwable>);
     method public void unsubscribe(@NonNull com.android.os.profiling.anomaly.collector.SubscriptionId);
   }
 

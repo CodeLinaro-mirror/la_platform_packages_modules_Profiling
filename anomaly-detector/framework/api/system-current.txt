@@ -1,7 +1,6 @@
 // Signature format: 6.0
 // - style=java
 // - flagged-api-inheritance=none
-// - strip-java-lang-prefix=legacy
 package android.os.profiling.anomaly {
 
   @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public final class AnomalyDetectorManager {
@@ -9,7 +8,7 @@ package android.os.profiling.anomaly {
   }
 
   @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public final class Rule {
-    method @NonNull public java.util.List<java.lang.Integer> getAnomalyActions();
+    method @NonNull public java.util.List<Integer> getAnomalyActions();
     method @NonNull public String getConditionType();
     method @NonNull public String getName();
     method @NonNull public android.os.Bundle getRuleCondition();
