@@ -67,6 +67,7 @@ import com.android.os.profiling.anomaly.ratelimiter.persistence.ProtoStateStore;
 import com.android.os.profiling.anomaly.ratelimiter.persistence.RateLimiterState;
 import com.android.os.profiling.anomaly.ratelimiter.persistence.RateLimiterStateStore;
 import com.android.os.profiling.anomaly.util.LogUtil;
+import com.android.os.profiling.anomaly.wrapper.ExecutorServiceWrapper;
 import com.android.os.profiling.anomaly.wrapper.ContextSystemServiceFetcher;
 import com.android.server.LocalManagerRegistry;
 import com.android.server.SystemService;
@@ -122,7 +123,7 @@ public final class AnomalyDetectorService extends SystemService {
         super(context);
 
         // Dedicated executor for background I/O operations.
-        mIoExecutor = Executors.newSingleThreadExecutor();
+        mIoExecutor = ExecutorServiceWrapper.getIOExecutor();
 
         File systemDir = new File(Environment.getDataDirectory(), "system");
         mAnomalyServiceDir = new File(systemDir, "anomaly_service");
