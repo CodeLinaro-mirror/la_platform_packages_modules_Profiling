@@ -1,6 +1,5 @@
 // Signature format: 6.0
 // - style=java
-// - flagged-api-inheritance=none
 package com.android.os.profiling.anomaly {
 
   @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public interface AnomalyDetectorManagerLocal {
@@ -55,7 +54,7 @@ package com.android.os.profiling.anomaly.collector.binder {
     method @NonNull public java.time.Duration getTimespan();
   }
 
-  public static final class BinderSpamData.Builder {
+  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public static final class BinderSpamData.Builder {
     ctor public BinderSpamData.Builder();
     method @NonNull public com.android.os.profiling.anomaly.collector.binder.BinderSpamData build();
     method @NonNull public com.android.os.profiling.anomaly.collector.binder.BinderSpamData.Builder setCallCount(int);

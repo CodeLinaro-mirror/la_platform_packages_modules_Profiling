@@ -1,6 +1,5 @@
 // Signature format: 6.0
 // - style=java
-// - flagged-api-inheritance=none
 package android.os.profiling.anomaly {
 
   @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public final class AnomalyDetectorManager {
@@ -20,7 +19,7 @@ package android.os.profiling.anomaly {
     field public static final String CONDITION_TYPE_BINDER_SPAM = "android.os.profiling.anomaly.Rule.binder_spam";
   }
 
-  public static final class Rule.Builder {
+  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public static final class Rule.Builder {
     ctor public Rule.Builder();
     method @NonNull public android.os.profiling.anomaly.Rule.Builder addAnomalyAction(int);
     method @NonNull public android.os.profiling.anomaly.Rule build();
