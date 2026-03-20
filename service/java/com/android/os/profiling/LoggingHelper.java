@@ -201,13 +201,24 @@ public final class LoggingHelper {
 
     /** Log that a result callback was sent to an app. */
     public static void logProfilingResultCallbackSent(
-            int uid, int profilingType, int triggerType, int errorCode) {
+            int uid,
+            int profilingType,
+            int triggerType,
+            int errorCode,
+            long profilingRequestTimeMs) {
+        long requestLatencyMs = -1;
+        // profilingRequestTimeMs can be -1 if the session was restored from a persistent store
+        // that did not include the request time.
+        if (profilingRequestTimeMs != -1) {
+            requestLatencyMs = System.currentTimeMillis() - profilingRequestTimeMs;
+        }
         ProfilingStatsLog.write(
                 ProfilingStatsLog.PROFILING_RESULT_CALLBACK_SENT,
                 uid,
                 profilingTypeToEnumValue(profilingType),
                 triggerTypeToEnumValue(triggerType),
-                errorCodeToEnumValue(errorCode));
+                errorCodeToEnumValue(errorCode),
+                requestLatencyMs);
     }
 
     /** Log that a trigger was registered. */

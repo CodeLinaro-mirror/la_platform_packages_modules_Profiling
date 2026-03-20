@@ -55,19 +55,17 @@ public class RateLimiter extends RateLimiterBase {
 
     public static final long DEFAULT_PERSIST_TO_DISK_FREQUENCY_MS = 0;
 
-    @VisibleForTesting public int mCostJavaHeapDump;
-    @VisibleForTesting public int mCostHeapProfile;
-    @VisibleForTesting public int mCostStackSampling;
-    @VisibleForTesting public int mCostSystemTrace;
-    @VisibleForTesting public int mCostSystemTriggeredSystemTrace;
+    @VisibleForTesting public volatile int mCostJavaHeapDump;
+    @VisibleForTesting public volatile int mCostHeapProfile;
+    @VisibleForTesting public volatile int mCostStackSampling;
+    @VisibleForTesting public volatile int mCostSystemTrace;
+    @VisibleForTesting public volatile int mCostSystemTriggeredSystemTrace;
 
-    @VisibleForTesting public long mPersistToDiskFrequency;
-
-    private final Object mLock = new Object();
+    @VisibleForTesting public volatile long mPersistToDiskFrequency;
 
     /** To be disabled for testing only. */
     @GuardedBy("mLock")
-    private boolean mRateLimiterDisabled = false;
+    private volatile boolean mRateLimiterDisabled = false;
 
     public RateLimiter(HandlerCallback handlerCallback) {
         super(handlerCallback);
@@ -153,9 +151,7 @@ public class RateLimiter extends RateLimiterBase {
 
     /** Whether rate limiter is currently disabled. */
     public boolean isRateLimiterDisabled() {
-        synchronized (mLock) {
-            return mRateLimiterDisabled;
-        }
+        return mRateLimiterDisabled;
     }
 
     /**
@@ -163,80 +159,79 @@ public class RateLimiter extends RateLimiterBase {
      */
     public @RateLimitResult int isProfilingRequestAllowed(
             int uid, int profilingType, boolean isTriggered, @Nullable Bundle params) {
-        synchronized (mLock) {
-            if (mRateLimiterDisabled && !isTriggered) {
-                // Rate limiter is disabled for testing, approve request and don't store cost.
-                // This mechanism applies only to direct requests, not system triggered ones.
-                Log.w(TAG, "Rate limiter disabled, request allowed.");
-                return RATE_LIMIT_RESULT_ALLOWED;
-            }
+        if (mRateLimiterDisabled && !isTriggered) {
+            // Rate limiter is disabled for testing, approve request and don't store cost.
+            // This mechanism applies only to direct requests, not system triggered ones.
+            Log.w(TAG, "Rate limiter disabled, request allowed.");
+            return RATE_LIMIT_RESULT_ALLOWED;
         }
 
         return isProfilingRequestAllowed(uid, getCostForProfiling(profilingType, isTriggered));
     }
 
     public void maybeUpdateConfigs(DeviceConfig.Properties properties) {
-        // If the field is not present in the changed properties then we want the value to stay the
-        // same, so use the current value as the default in the properties.get.
-        mPersistToDiskFrequency =
-                updateLong(
-                        properties,
-                        DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS,
-                        mPersistToDiskFrequency,
-                        DEFAULT_PERSIST_TO_DISK_FREQUENCY_MS);
-        mCostJavaHeapDump =
-                updateInt(
-                        properties,
-                        DeviceConfigHelper.COST_JAVA_HEAP_DUMP,
-                        mCostJavaHeapDump,
-                        DEFAULT_COST_PER_SESSION);
-        mCostHeapProfile =
-                updateInt(
-                        properties,
-                        DeviceConfigHelper.COST_HEAP_PROFILE,
-                        mCostHeapProfile,
-                        DEFAULT_COST_PER_SESSION);
-        mCostStackSampling =
-                updateInt(
-                        properties,
-                        DeviceConfigHelper.COST_STACK_SAMPLING,
-                        mCostStackSampling,
-                        DEFAULT_COST_PER_SESSION);
-        mCostSystemTrace =
-                updateInt(
-                        properties,
-                        DeviceConfigHelper.COST_SYSTEM_TRACE,
-                        mCostSystemTrace,
-                        DEFAULT_COST_PER_SESSION);
-        mCostSystemTriggeredSystemTrace =
-                updateInt(
-                        properties,
-                        DeviceConfigHelper.COST_SYSTEM_TRIGGERED_SYSTEM_TRACE,
-                        mCostSystemTriggeredSystemTrace,
-                        DEFAULT_COST_PER_SYSTEM_TRIGGERED_SESSION);
+        synchronized (mLock) {
+            // If the field is not present in the changed properties then we want the value to stay
+            // the same, so use the current value as the default in the properties.get.
+            mPersistToDiskFrequency =
+                    updateLong(
+                            properties,
+                            DeviceConfigHelper.PERSIST_TO_DISK_FREQUENCY_MS,
+                            mPersistToDiskFrequency,
+                            DEFAULT_PERSIST_TO_DISK_FREQUENCY_MS);
+            mCostJavaHeapDump =
+                    updateInt(
+                            properties,
+                            DeviceConfigHelper.COST_JAVA_HEAP_DUMP,
+                            mCostJavaHeapDump,
+                            DEFAULT_COST_PER_SESSION);
+            mCostHeapProfile =
+                    updateInt(
+                            properties,
+                            DeviceConfigHelper.COST_HEAP_PROFILE,
+                            mCostHeapProfile,
+                            DEFAULT_COST_PER_SESSION);
+            mCostStackSampling =
+                    updateInt(
+                            properties,
+                            DeviceConfigHelper.COST_STACK_SAMPLING,
+                            mCostStackSampling,
+                            DEFAULT_COST_PER_SESSION);
+            mCostSystemTrace =
+                    updateInt(
+                            properties,
+                            DeviceConfigHelper.COST_SYSTEM_TRACE,
+                            mCostSystemTrace,
+                            DEFAULT_COST_PER_SESSION);
+            mCostSystemTriggeredSystemTrace =
+                    updateInt(
+                            properties,
+                            DeviceConfigHelper.COST_SYSTEM_TRIGGERED_SYSTEM_TRACE,
+                            mCostSystemTriggeredSystemTrace,
+                            DEFAULT_COST_PER_SYSTEM_TRIGGERED_SESSION);
 
-        // For max cost values, set a invalid default value and pass through to {@link
-        // RateLimiterBase}
-        // to determine whether to update values.
+            // For max cost values, set a invalid default value and pass through to {@link
+            // RateLimiterBase} to determine whether to update values.
 
-        List<TimeBucket> timeBuckets = new ArrayList<TimeBucket>(3);
-        timeBuckets.add(
-                new TimeBucket(
-                        TIME_HOUR_MS,
-                        properties.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, -1),
-                        properties.getInt(DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, -1)));
-        timeBuckets.add(
-                new TimeBucket(
-                        TIME_DAY_MS,
-                        properties.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, -1),
-                        properties.getInt(DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR, -1)));
-        timeBuckets.add(
-                new TimeBucket(
-                        TIME_WEEK_MS,
-                        properties.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, -1),
-                        properties.getInt(DeviceConfigHelper.MAX_COST_PROCESS_7_DAY, -1)));
+            List<TimeBucket> timeBuckets = new ArrayList<TimeBucket>(3);
+            timeBuckets.add(
+                    new TimeBucket(
+                            TIME_HOUR_MS,
+                            properties.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_1_HOUR, -1),
+                            properties.getInt(DeviceConfigHelper.MAX_COST_PROCESS_1_HOUR, -1)));
+            timeBuckets.add(
+                    new TimeBucket(
+                            TIME_DAY_MS,
+                            properties.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_24_HOUR, -1),
+                            properties.getInt(DeviceConfigHelper.MAX_COST_PROCESS_24_HOUR, -1)));
+            timeBuckets.add(
+                    new TimeBucket(
+                            TIME_WEEK_MS,
+                            properties.getInt(DeviceConfigHelper.MAX_COST_SYSTEM_7_DAY, -1),
+                            properties.getInt(DeviceConfigHelper.MAX_COST_PROCESS_7_DAY, -1)));
 
-        maybeUpdateMaxCosts(timeBuckets);
+            maybeUpdateMaxCosts(timeBuckets);
+        }
     }
 
     /** Update the disable rate limiter flag if present in the provided properties. */

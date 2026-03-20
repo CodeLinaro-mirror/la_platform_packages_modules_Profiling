@@ -35,3 +35,39 @@ java_library {
         "com.android.profiling",
     ],
 }
+
+java_library {
+    name: "anomaly-detector-ratelimiter-proto-lite",
+    sdk_version: "core_current",
+    proto: {
+        type: "lite",
+        include_dirs: [
+            "external/protobuf/src",
+            "external/protobuf/java",
+        ],
+    },
+    srcs: ["com/android/os/profiling/anomaly/ratelimiter/rate_limiter_state.proto"],
+    static_libs: ["libprotobuf-java-lite"],
+    min_sdk_version: "36",
+    apex_available: [
+        "com.android.profiling",
+    ],
+}
+
+java_library {
+    name: "anomaly-detector-ratelimiter-config-proto-lite",
+    sdk_version: "core_current",
+    proto: {
+        type: "lite",
+        include_dirs: [
+            "external/protobuf/src",
+            "external/protobuf/java",
+        ],
+    },
+    srcs: ["com/android/os/profiling/anomaly/ratelimiter/signature_cooldown_config.proto"],
+    static_libs: ["libprotobuf-java-lite"],
+    min_sdk_version: "36",
+    apex_available: [
+        "com.android.profiling",
+    ],
+}
