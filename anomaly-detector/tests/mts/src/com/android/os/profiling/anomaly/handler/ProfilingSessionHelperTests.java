@@ -23,10 +23,13 @@ import static android.os.ProfilingTrigger.TRIGGER_TYPE_ANOMALY;
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import android.os.AnomalyProfilingClient;
 import android.os.AnomalyRequestResult;
@@ -35,6 +38,9 @@ import android.os.ProfilingResult;
 import android.os.profiling.anomaly.RuleInternal;
 
 import androidx.test.runner.AndroidJUnit4;
+
+import com.android.os.profiling.anomaly.config.ProfilingConcurrencyConfig;
+import com.android.os.profiling.anomaly.ratelimiter.ProfilingRateLimiter;
 
 import org.junit.Before;
 import org.junit.Rule;
@@ -54,8 +60,11 @@ public class ProfilingSessionHelperTests {
     @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
 
     @Mock private AnomalyProfilingClient mAnomalyProfilingManager;
+    @Mock private ProfilingRateLimiter mMockProfilingRateLimiter;
+    @Mock private ProfilingConcurrencyConfig mMockProfilingConcurrencyConfig;
 
     private static final int UID = 123;
+    private static final int UID_2 = 456;
 
     private static final String PACKAGE_NAME = "test.package.name";
 
@@ -63,12 +72,17 @@ public class ProfilingSessionHelperTests {
 
     private static final int MAX_SESSION_DURATION_MS = 20000;
 
+    private static final int CONCURRENT_SESSIONS_LIMIT = 1;
+
     private ProfilingSessionHelper mProfilingSessionHelper;
 
     @Before
     public void setUp() {
         doNothing().when(mAnomalyProfilingManager).registerCallback(any(Consumer.class));
         mProfilingSessionHelper = new ProfilingSessionHelper(mAnomalyProfilingManager);
+        when(mMockProfilingRateLimiter.isRequestAllowed(anyInt(), any(), any())).thenReturn(true);
+        when(mMockProfilingConcurrencyConfig.getDeviceMaxConcurrentSessions())
+                .thenReturn(CONCURRENT_SESSIONS_LIMIT);
     }
 
     @Test
@@ -83,7 +97,10 @@ public class ProfilingSessionHelperTests {
                 MAX_SESSION_DURATION_MS,
                 sessionParams,
                 PROFILING_TYPE_STACK_SAMPLING,
-                RuleInternal.CONDITION_TYPE_BINDER_SPAM);
+                RuleInternal.CONDITION_TYPE_BINDER_SPAM,
+                mMockProfilingRateLimiter,
+                /* signature= */ null,
+                mMockProfilingConcurrencyConfig);
 
         verify(mAnomalyProfilingManager)
                 .collectAnomalyProfile(
@@ -109,14 +126,24 @@ public class ProfilingSessionHelperTests {
                 MAX_SESSION_DURATION_MS,
                 sessionParams,
                 PROFILING_TYPE_STACK_SAMPLING,
-                RuleInternal.CONDITION_TYPE_BINDER_SPAM);
+                RuleInternal.CONDITION_TYPE_BINDER_SPAM,
+                mMockProfilingRateLimiter,
+                /* signature= */ null,
+                mMockProfilingConcurrencyConfig);
+
+        assertThat(mProfilingSessionHelper.mUidSessionInfoSparseArray.get(UID).shouldAccept())
+                .isFalse();
+
         mProfilingSessionHelper.requestProfiling(
                 UID,
                 PACKAGE_NAME,
                 MAX_SESSION_DURATION_MS,
                 sessionParams,
                 PROFILING_TYPE_STACK_SAMPLING,
-                RuleInternal.CONDITION_TYPE_BINDER_SPAM);
+                RuleInternal.CONDITION_TYPE_BINDER_SPAM,
+                mMockProfilingRateLimiter,
+                /* signature= */ null,
+                mMockProfilingConcurrencyConfig);
 
         verify(mAnomalyProfilingManager, times(1))
                 .collectAnomalyProfile(
@@ -143,7 +170,10 @@ public class ProfilingSessionHelperTests {
                 MAX_SESSION_DURATION_MS,
                 sessionParams,
                 PROFILING_TYPE_STACK_SAMPLING,
-                FAKE_CONDITION_TYPE);
+                FAKE_CONDITION_TYPE,
+                mMockProfilingRateLimiter,
+                /* signature= */ null,
+                mMockProfilingConcurrencyConfig);
 
         verify(mAnomalyProfilingManager, times(1))
                 .collectAnomalyProfile(
@@ -169,7 +199,10 @@ public class ProfilingSessionHelperTests {
                 MAX_SESSION_DURATION_MS,
                 sessionParams,
                 PROFILING_TYPE_STACK_SAMPLING,
-                RuleInternal.CONDITION_TYPE_BINDER_SPAM);
+                RuleInternal.CONDITION_TYPE_BINDER_SPAM,
+                mMockProfilingRateLimiter,
+                /* signature= */ null,
+                mMockProfilingConcurrencyConfig);
         mProfilingSessionHelper.handleSessionResult(
                 new AnomalyRequestResult(
                         new UUID(789L, 456L),
@@ -180,5 +213,113 @@ public class ProfilingSessionHelperTests {
                         TRIGGER_TYPE_ANOMALY));
 
         assertThat(mProfilingSessionHelper.mUidSessionInfoSparseArray.contains(UID)).isFalse();
+    }
+
+    @Test
+    public void handleSessionResult_shouldSendAnomalyProfile() {
+        Bundle sessionParams = new Bundle();
+        sessionParams.putBoolean(KEY_SAMPLE_BINDER_ONLY, true);
+        String binderSpamConditionType =
+                RuleInternal.CONDITION_TYPE_BINDER_SPAM.substring(
+                        RuleInternal.CONDITION_TYPE_BINDER_SPAM.lastIndexOf('.') + 1);
+
+        mProfilingSessionHelper.requestProfiling(
+                UID,
+                PACKAGE_NAME,
+                MAX_SESSION_DURATION_MS,
+                sessionParams,
+                PROFILING_TYPE_STACK_SAMPLING,
+                RuleInternal.CONDITION_TYPE_BINDER_SPAM,
+                mMockProfilingRateLimiter,
+                /* signature= */ null,
+                mMockProfilingConcurrencyConfig);
+        mProfilingSessionHelper.requestProfiling(
+                UID,
+                PACKAGE_NAME,
+                MAX_SESSION_DURATION_MS,
+                sessionParams,
+                PROFILING_TYPE_STACK_SAMPLING,
+                RuleInternal.CONDITION_TYPE_BINDER_SPAM,
+                mMockProfilingRateLimiter,
+                /* signature= */ null,
+                mMockProfilingConcurrencyConfig);
+        mProfilingSessionHelper.handleSessionResult(
+                new AnomalyRequestResult(
+                        new UUID(789L, 456L),
+                        UID,
+                        ProfilingResult.ERROR_NONE,
+                        "TestPath",
+                        "TestTag",
+                        TRIGGER_TYPE_ANOMALY));
+
+        ArgumentCaptor<String> stringArgumentCaptor = ArgumentCaptor.forClass(String.class);
+        verify(mAnomalyProfilingManager)
+                .sendAnomalyProfile(
+                        eq(UID),
+                        eq(PACKAGE_NAME),
+                        eq(TRIGGER_TYPE_ANOMALY),
+                        eq(binderSpamConditionType),
+                        stringArgumentCaptor.capture());
+        assertThat(stringArgumentCaptor.getValue()).contains(PACKAGE_NAME);
+        assertThat(stringArgumentCaptor.getValue()).contains(".zip");
+    }
+
+    @Test
+    public void requestProfiling_rateLimited_shouldNotStartProfiling() {
+        when(mMockProfilingRateLimiter.isRequestAllowed(anyInt(), any(), any())).thenReturn(false);
+
+        Bundle sessionParams = new Bundle();
+        sessionParams.putBoolean(KEY_SAMPLE_BINDER_ONLY, true);
+
+        mProfilingSessionHelper.requestProfiling(
+                UID,
+                PACKAGE_NAME,
+                MAX_SESSION_DURATION_MS,
+                sessionParams,
+                PROFILING_TYPE_STACK_SAMPLING,
+                RuleInternal.CONDITION_TYPE_BINDER_SPAM,
+                mMockProfilingRateLimiter,
+                /* signature= */ null,
+                mMockProfilingConcurrencyConfig);
+
+        verify(mAnomalyProfilingManager, never())
+                .collectAnomalyProfile(anyInt(), any(), anyInt(), anyInt(), any(), any());
+    }
+
+    @Test
+    public void requestProfiling_concurrencyLimitReached_shouldNotStartProfiling() {
+        when(mMockProfilingConcurrencyConfig.getDeviceMaxConcurrentSessions())
+                .thenReturn(CONCURRENT_SESSIONS_LIMIT);
+
+        // Start one session, which should succeed.
+        mProfilingSessionHelper.requestProfiling(
+                UID,
+                PACKAGE_NAME,
+                MAX_SESSION_DURATION_MS,
+                new Bundle(),
+                PROFILING_TYPE_STACK_SAMPLING,
+                RuleInternal.CONDITION_TYPE_BINDER_SPAM,
+                mMockProfilingRateLimiter,
+                /* signature= */ null,
+                mMockProfilingConcurrencyConfig);
+
+        verify(mAnomalyProfilingManager, times(1))
+                .collectAnomalyProfile(anyInt(), any(), anyInt(), anyInt(), any(), any());
+
+        // Attempt to start a second session, which should be denied due to the concurrency limit.
+        mProfilingSessionHelper.requestProfiling(
+                UID_2,
+                PACKAGE_NAME,
+                MAX_SESSION_DURATION_MS,
+                new Bundle(),
+                PROFILING_TYPE_STACK_SAMPLING,
+                RuleInternal.CONDITION_TYPE_BINDER_SPAM,
+                mMockProfilingRateLimiter,
+                /* signature= */ null,
+                mMockProfilingConcurrencyConfig);
+
+        // Verify that collectAnomalyProfile was not called a second time.
+        verify(mAnomalyProfilingManager, times(1))
+                .collectAnomalyProfile(anyInt(), any(), anyInt(), anyInt(), any(), any());
     }
 }
