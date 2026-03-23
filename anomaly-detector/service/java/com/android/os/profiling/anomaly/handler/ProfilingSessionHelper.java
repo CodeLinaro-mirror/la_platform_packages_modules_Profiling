@@ -39,6 +39,7 @@ import com.android.os.profiling.anomaly.wrapper.ExecutorServiceWrapper;
 
 import org.json.JSONException;
 
+import java.io.File;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.Map;
@@ -239,23 +240,24 @@ public class ProfilingSessionHelper {
             return;
         }
 
-        mIoExecutor.execute(() -> {
-            try {
-                String bundledResultPath =
-                        sessionInfo.perfettoMetadata.attachToProfilingResult(
-                                sessionInfo.result.getResultFilePath());
-                int anomalyTypeIndex = sessionInfo.conditionType.lastIndexOf('.') + 1;
-                String anomalyType = sessionInfo.conditionType.substring(anomalyTypeIndex);
-                mAnomalyProfilingManager.sendAnomalyProfile(
-                        sessionInfo.uid,
-                        sessionInfo.packageName,
-                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
-                        anomalyType,
-                        bundledResultPath);
-            } catch (IOException e) {
-                sLog.e("Unable to attach metadata to profiling result: %s", e);
-            }
-        });
+        mIoExecutor.execute(
+                () -> {
+                    try {
+                        String bundledResultPath =
+                                sessionInfo.perfettoMetadata.attachToProfilingResult(
+                                        sessionInfo.result.getResultFilePath());
+                        int anomalyTypeIndex = sessionInfo.conditionType.lastIndexOf('.') + 1;
+                        String anomalyType = sessionInfo.conditionType.substring(anomalyTypeIndex);
+                        mAnomalyProfilingManager.sendAnomalyProfile(
+                                sessionInfo.uid,
+                                sessionInfo.packageName,
+                                ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
+                                anomalyType,
+                                new File(bundledResultPath).getName());
+                    } catch (IOException e) {
+                        sLog.e("Unable to attach metadata to profiling result: %s", e);
+                    }
+                });
     }
 
     /**

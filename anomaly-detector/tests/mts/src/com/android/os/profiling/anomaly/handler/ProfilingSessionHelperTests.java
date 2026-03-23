@@ -439,8 +439,9 @@ public class ProfilingSessionHelperTests {
                         eq(TRIGGER_TYPE_ANOMALY),
                         eq(binderSpamConditionType),
                         stringArgumentCaptor.capture());
-        assertThat(stringArgumentCaptor.getValue()).contains(FAKE_RESULT_FILE_NAME);
-        assertThat(stringArgumentCaptor.getValue()).contains(".zip");
+        assertThat(stringArgumentCaptor.getValue())
+                .isEqualTo(FAKE_RESULT_FILE_NAME + "-metadata.zip");
+        assertThat(stringArgumentCaptor.getValue()).doesNotContain("/");
     }
 
     @Test
