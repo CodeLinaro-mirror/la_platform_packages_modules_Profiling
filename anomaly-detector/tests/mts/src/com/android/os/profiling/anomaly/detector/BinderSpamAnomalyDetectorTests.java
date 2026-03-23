@@ -40,6 +40,7 @@ import androidx.test.runner.AndroidJUnit4;
 import com.android.modules.utils.testing.ExtendedMockitoRule;
 import com.android.os.AtomsProto;
 import com.android.os.profiling.anomaly.attribute.BinderSpamDetailsAttribute;
+import com.android.os.profiling.anomaly.attribute.ProfilingParamsAttribute;
 import com.android.os.profiling.anomaly.attribute.RateLimitSignatureAttribute;
 import com.android.os.profiling.anomaly.attribute.SummaryAttribute;
 import com.android.os.profiling.anomaly.attribute.UidAttribute;
@@ -82,6 +83,8 @@ public final class BinderSpamAnomalyDetectorTests {
     private static final String TEST_RULE_NAME_2 = "test_rule_2";
     private static final int TEST_CALL_LIMIT = 100;
     private static final int TEST_CALL_LIMIT_2 = 200;
+    private static final long TEST_CALL_INTERVAL_MILLIS = 1000L;
+    private static final long TEST_PROFILING_SESSION_DURATION_MILLIS = 5000L;
     private static final String BINDER_SPAM_INTERFACE_KEY = "binder_spam.interface";
     private static final String BINDER_SPAM_METHOD_KEY = "binder_spam.method";
 
@@ -465,6 +468,64 @@ public final class BinderSpamAnomalyDetectorTests {
         mReceiver.onResult(data);
 
         verify(mMockListener, never()).onAnomalyDetected(any());
+    }
+
+    @Test
+    public void onDataAvailable_withCustomProfilingSessionDuration_reportHasCorrectDuration() {
+        Bundle condition = new Bundle();
+        condition.putString(
+                RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME, TEST_INTERFACE);
+        condition.putString(RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME, TEST_METHOD);
+        condition.putInt(RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT, TEST_CALL_LIMIT);
+        condition.putLong(
+                RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS,
+                TEST_CALL_INTERVAL_MILLIS);
+        condition.putLong(
+                RuleInternal.BUNDLE_KEY_PROFILING_SESSION_DURATION_MILLIS,
+                TEST_PROFILING_SESSION_DURATION_MILLIS);
+
+        RuleInternal rule =
+                new RuleInternal.Builder()
+                        .setName(TEST_RULE_NAME)
+                        .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
+                        .setRuleCondition(condition)
+                        .addAnomalyAction(RuleInternal.ACTION_TYPE_COLLECT_PROFILE)
+                        .build();
+
+        setupRule(rule);
+
+        mReceiver.onResult(createBinderSpamData(TEST_CALL_LIMIT + 1, Duration.ofSeconds(1)));
+
+        verify(mMockListener).onAnomalyDetected(mReportCaptor.capture());
+        AnomalyReport report = mReportCaptor.getValue();
+        ProfilingParamsAttribute profilingParams = report.get(ProfilingParamsAttribute.class);
+        assertThat(profilingParams).isNotNull();
+        assertThat(profilingParams.maxSessionDurationMs())
+                .isEqualTo(TEST_PROFILING_SESSION_DURATION_MILLIS);
+    }
+
+    @Test
+    public void onDataAvailable_withoutCustomProfilingSessionDuration_usesDefaultDuration() {
+        RuleInternal rule =
+                new RuleInternal.Builder()
+                        .setName(TEST_RULE_NAME)
+                        .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
+                        .setRuleCondition(
+                                createRuleWithPerSecondRate(TEST_RULE_NAME, TEST_CALL_LIMIT)
+                                        .getRuleCondition())
+                        .addAnomalyAction(RuleInternal.ACTION_TYPE_COLLECT_PROFILE)
+                        .build();
+
+        setupRule(rule);
+
+        mReceiver.onResult(createBinderSpamData(TEST_CALL_LIMIT + 1, Duration.ofSeconds(1)));
+
+        verify(mMockListener).onAnomalyDetected(mReportCaptor.capture());
+        AnomalyReport report = mReportCaptor.getValue();
+        ProfilingParamsAttribute profilingParams = report.get(ProfilingParamsAttribute.class);
+        assertThat(profilingParams).isNotNull();
+        assertThat(profilingParams.maxSessionDurationMs())
+                .isEqualTo(BinderSpamAnomalyDetector.DEFAULT_PROFILING_SESSION_DURATION_MILLIS);
     }
 
     @Test

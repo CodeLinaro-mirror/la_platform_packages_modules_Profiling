@@ -27,7 +27,7 @@ import com.android.os.profiling.anomaly.core.AnomalyAttribute;
  * @hide
  */
 public record ProfilingParamsAttribute(
-        int maxSessionDurationMs,
+        long maxSessionDurationMs,
         @ProfilingManager.ProfilingType int profilingType,
         Bundle sessionParams)
         implements AnomalyAttribute {}

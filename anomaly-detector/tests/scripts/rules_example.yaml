@@ -38,6 +38,7 @@ rules:
     condition_type: "binder_spam"
     anomaly_actions:
       - 1
+      - 2
     params:
       binder_interface_name:
         type: "string"
@@ -51,3 +52,6 @@ rules:
       binder_call_interval_millis:
         type: "long"
         value: 30000
+      profiling_session_duration_millis:
+        type: "long"
+        value: 10000

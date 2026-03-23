@@ -161,7 +161,7 @@ public class ProfilingSessionHelper {
     public void requestProfiling(
             int uid,
             String packageName,
-            int maxSessionDurationMs,
+            long maxSessionDurationMs,
             Bundle sessionParams,
             @ProfilingManager.ProfilingType int profilingType,
             @RuleInternal.ConditionTypeInternal String conditionType,
@@ -188,7 +188,7 @@ public class ProfilingSessionHelper {
         }
 
         Bundle params = new Bundle();
-        params.putInt(KEY_DURATION_MS, maxSessionDurationMs);
+        params.putLong(KEY_DURATION_MS, maxSessionDurationMs);
         params.putAll(sessionParams);
         UUID sessionId =
                 mAnomalyProfilingManager.collectAnomalyProfile(
