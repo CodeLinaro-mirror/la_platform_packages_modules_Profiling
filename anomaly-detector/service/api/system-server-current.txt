@@ -1,12 +1,9 @@
 // Signature format: 6.0
 // - style=java
-// - flagged-api-inheritance=none
-// - strip-java-lang-prefix=legacy
-// - type-argument-spacing=legacy
 package com.android.os.profiling.anomaly {
 
   @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public interface AnomalyDetectorManagerLocal {
-    method public <T extends com.android.os.profiling.anomaly.collector.SignalCollectorConfig, U extends com.android.os.profiling.anomaly.collector.SignalCollectorData> void registerSignalCollector(@NonNull Class<T>, @NonNull Class<U>, @NonNull com.android.os.profiling.anomaly.collector.SignalCollector<T,U>);
+    method public <T extends com.android.os.profiling.anomaly.collector.SignalCollectorConfig, U extends com.android.os.profiling.anomaly.collector.SignalCollectorData> void registerSignalCollector(@NonNull Class<T>, @NonNull Class<U>, @NonNull com.android.os.profiling.anomaly.collector.SignalCollector<T, U>);
     method public <T extends com.android.os.profiling.anomaly.collector.SignalCollectorConfig, U extends com.android.os.profiling.anomaly.collector.SignalCollectorData> void unregisterSignalCollector(@NonNull Class<T>, @NonNull Class<U>);
   }
 
@@ -17,7 +14,7 @@ package com.android.os.profiling.anomaly.collector {
   @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public interface SignalCollector<T extends com.android.os.profiling.anomaly.collector.SignalCollectorConfig, U extends com.android.os.profiling.anomaly.collector.SignalCollectorData> {
     method @Nullable public U getData(@NonNull com.android.os.profiling.anomaly.collector.SubscriptionId);
     method public void requestUpdate(@NonNull com.android.os.profiling.anomaly.collector.SubscriptionId);
-    method @NonNull public com.android.os.profiling.anomaly.collector.SubscriptionId subscribe(@NonNull T, @NonNull android.os.OutcomeReceiver<U,java.lang.Throwable>);
+    method @NonNull public com.android.os.profiling.anomaly.collector.SubscriptionId subscribe(@NonNull T, @NonNull android.os.OutcomeReceiver<U, Throwable>);
     method public void unsubscribe(@NonNull com.android.os.profiling.anomaly.collector.SubscriptionId);
   }
 
@@ -57,7 +54,7 @@ package com.android.os.profiling.anomaly.collector.binder {
     method @NonNull public java.time.Duration getTimespan();
   }
 
-  public static final class BinderSpamData.Builder {
+  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public static final class BinderSpamData.Builder {
     ctor public BinderSpamData.Builder();
     method @NonNull public com.android.os.profiling.anomaly.collector.binder.BinderSpamData build();
     method @NonNull public com.android.os.profiling.anomaly.collector.binder.BinderSpamData.Builder setCallCount(int);
