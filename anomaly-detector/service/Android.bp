@@ -52,6 +52,7 @@ java_defaults {
         "anomaly-detector-ratelimiter-proto-lite",
         "anomaly-detector-ratelimiter-config-proto-lite",
         "libprotobuf-java-lite",
+        "modules-utils-build",
         "modules-utils-shell-command-handler",
         "util-profiling",
     ],

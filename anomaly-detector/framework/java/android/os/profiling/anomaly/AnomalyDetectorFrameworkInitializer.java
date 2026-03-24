@@ -22,6 +22,8 @@ import android.app.SystemServiceRegistry;
 import android.content.Context;
 import android.os.profiling.anomaly.flags.Flags;
 
+import com.android.modules.utils.build.SdkLevel;
+
 /**
  * Class for performing registration for anomaly detector service.
  *
@@ -40,6 +42,10 @@ public final class AnomalyDetectorFrameworkInitializer {
      *     SystemServiceRegistry}
      */
     public static void registerServiceWrappers() {
+        // AnomalyDetector service should only be enabled beyond C.
+        if (!SdkLevel.isAtLeastC()) {
+            return;
+        }
         SystemServiceRegistry.registerContextAwareService(
                 Context.ANOMALY_DETECTOR_SERVICE,
                 AnomalyDetectorManager.class,
