@@ -53,11 +53,10 @@ import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 
-import java.io.FileOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.concurrent.TimeUnit;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -115,6 +114,9 @@ public class ProfilingSessionHelperTests {
         when(mMockProfilingRateLimiter.isRequestAllowed(anyInt(), any(), any())).thenReturn(true);
         when(mMockProfilingConcurrencyConfig.getDeviceMaxConcurrentSessions())
                 .thenReturn(CONCURRENT_SESSIONS_LIMIT);
+        when(mAnomalyProfilingManager.collectAnomalyProfile(
+                        anyInt(), any(), anyInt(), anyInt(), any(), any()))
+                .thenReturn(UUID.randomUUID());
     }
 
     @Test

@@ -22,6 +22,7 @@ import android.os.OutcomeReceiver;
 import android.os.profiling.anomaly.RuleInternal.ConditionTypeInternal;
 
 import com.android.internal.annotations.GuardedBy;
+import com.android.internal.annotations.VisibleForTesting;
 import com.android.os.profiling.anomaly.ratelimiter.persistence.RateLimiterState;
 import com.android.os.profiling.anomaly.ratelimiter.persistence.RateLimiterStateStore;
 import com.android.os.profiling.anomaly.util.LogUtil;
@@ -51,6 +52,7 @@ public final class ProfilingRateLimiterImpl implements ProfilingRateLimiter {
     private final RateLimiterClock mClock;
     private final RateLimiterConfig mConfig;
     private final Handler mHandler;
+    private final Runnable mWriteStateRunnable = this::writeState;
 
     // In-memory cache of the state to avoid constant disk I/O.
     @GuardedBy("mStateLock")
@@ -190,9 +192,13 @@ public final class ProfilingRateLimiterImpl implements ProfilingRateLimiter {
             sLog.w("State not loaded, skipping write.");
             return;
         }
+
+        long now = mClock.currentTimeMillis();
+        evictOldTimestampsLocked(mState, now);
+
         mStateDirty = true;
-        mHandler.removeCallbacks(this::writeState);
-        mHandler.postDelayed(this::writeState, mConfig.getPersistenceDelayMillis());
+        mHandler.removeCallbacks(mWriteStateRunnable);
+        mHandler.postDelayed(mWriteStateRunnable, mConfig.getPersistenceDelayMillis());
     }
 
     private void writeState() {
@@ -205,6 +211,15 @@ public final class ProfilingRateLimiterImpl implements ProfilingRateLimiter {
             mStateDirty = false;
         }
         mStateStore.writeState(stateToWrite);
+    }
+
+    @GuardedBy("mStateLock")
+    private void evictOldTimestampsLocked(RateLimiterState state, long now) {
+        long maxCoolDown = mConfig.getMaxCoolDownForEvictionMillis();
+        state.getUidTimestamps().values().removeIf(timestamp -> (now - timestamp) > maxCoolDown);
+        state.getSignatureTimestamps()
+                .values()
+                .removeIf(timestamp -> (now - timestamp) > maxCoolDown);
     }
 
     @GuardedBy("mStateLock")
@@ -221,6 +236,10 @@ public final class ProfilingRateLimiterImpl implements ProfilingRateLimiter {
     @GuardedBy("mStateLock")
     private boolean isUidCoolDownActive(int uid, long now) {
         long coolDownMillis = mConfig.getUidCoolDownMillis();
+        if (coolDownMillis <= 0) {
+            return false;
+        }
+
         Long lastRequestTime = mState.getUidTimestamps().get(uid);
         if (lastRequestTime == null) {
             return false; // No previous request for this UID.
@@ -233,6 +252,10 @@ public final class ProfilingRateLimiterImpl implements ProfilingRateLimiter {
     private boolean isSignatureCoolDownActive(
             int uid, String conditionType, Map<String, String> signature, long now) {
         long coolDownMillis = mConfig.getSignatureCoolDownMillis(conditionType, signature);
+        if (coolDownMillis <= 0) {
+            return false;
+        }
+
         String signatureKey = generateCanonicalKey(uid, signature);
         Long lastRequestTime = mState.getSignatureTimestamps().get(signatureKey);
         if (lastRequestTime == null) {
@@ -260,7 +283,8 @@ public final class ProfilingRateLimiterImpl implements ProfilingRateLimiter {
         scheduleWriteStateLocked();
     }
 
-    private static String generateCanonicalKey(int uid, Map<String, String> signature) {
+    @VisibleForTesting
+    static String generateCanonicalKey(int uid, Map<String, String> signature) {
         if (signature == null || signature.isEmpty()) {
             return String.valueOf(uid);
         }
