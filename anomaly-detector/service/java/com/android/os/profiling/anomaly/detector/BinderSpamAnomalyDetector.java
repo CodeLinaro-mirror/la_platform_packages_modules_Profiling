@@ -82,8 +82,7 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
     @GuardedBy("mLock")
     private SignalCollector<BinderSpamConfigList, BinderSpamData> mCollector;
 
-    // TODO: b/483173066 - Make this configurable.
-    private static final int MAX_SESSION_DURATION_MS = 20000;
+    @VisibleForTesting static final long DEFAULT_PROFILING_SESSION_DURATION_MILLIS = 20000L;
 
     /**
      * Constructs a new BinderSpamAnomalyDetector.
@@ -320,6 +319,12 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
                     data.getMethodName(),
                     callCount,
                     timespan.toMillis());
+            long maxSessionDurationMs =
+                    mRule.getRuleCondition()
+                            .getLong(
+                                    RuleInternal.BUNDLE_KEY_PROFILING_SESSION_DURATION_MILLIS,
+                                    BinderSpamAnomalyDetector
+                                            .DEFAULT_PROFILING_SESSION_DURATION_MILLIS);
 
             return new AnomalyReportImpl.Builder(mRule)
                     .addAttribute(new UidAttribute(data.getCallingUid()))
@@ -334,7 +339,7 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
                                     mWindowSize))
                     .addAttribute(
                             new ProfilingParamsAttribute(
-                                    MAX_SESSION_DURATION_MS,
+                                    maxSessionDurationMs,
                                     PROFILING_TYPE_STACK_SAMPLING,
                                     sessionParams))
                     .addAttribute(

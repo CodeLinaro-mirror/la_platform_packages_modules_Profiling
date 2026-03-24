@@ -34,6 +34,7 @@ import java.util.List;
 public final class RuleInternalTests {
 
     private static final String TEST_NAME = "test_rule_name";
+    private static final long TEST_PROFILING_DURATION_MS = 5000L;
 
     private Bundle createBinderSpamBundle() {
         Bundle bundle = new Bundle();
@@ -460,5 +461,58 @@ public final class RuleInternalTests {
                         .build();
 
         assertThat(rule.getName()).isEmpty();
+    }
+
+    @Test
+    public void buildRule_withOptionalProfileDuration_buildsSuccessfully() {
+        Bundle conditionBundle = createBinderSpamBundle();
+        conditionBundle.putLong(
+                RuleInternal.BUNDLE_KEY_PROFILING_SESSION_DURATION_MILLIS,
+                TEST_PROFILING_DURATION_MS);
+
+        RuleInternal rule =
+                new RuleInternal.Builder()
+                        .setName(TEST_NAME)
+                        .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
+                        .setRuleCondition(conditionBundle)
+                        .addAnomalyAction(RuleInternal.ACTION_TYPE_COLLECT_PROFILE)
+                        .build();
+
+        assertThat(rule).isNotNull();
+        assertBundlesEqual(conditionBundle, rule.getRuleCondition());
+    }
+
+    @Test
+    public void buildRule_binderSpamWrongTypeProfileDuration_throwsIllegalArgumentException() {
+        Bundle conditionBundle = createBinderSpamBundle();
+        conditionBundle.putInt(
+                RuleInternal.BUNDLE_KEY_PROFILING_SESSION_DURATION_MILLIS,
+                (int) TEST_PROFILING_DURATION_MS); // Wrong type (should be Long)
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        new RuleInternal.Builder()
+                                .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
+                                .setRuleCondition(conditionBundle)
+                                .addAnomalyAction(RuleInternal.ACTION_TYPE_COLLECT_PROFILE)
+                                .build());
+    }
+
+    @Test
+    public void buildRule_withProfileDurationWithoutProfileAction_throwsIllegalArgumentException() {
+        Bundle conditionBundle = createBinderSpamBundle();
+        conditionBundle.putLong(
+                RuleInternal.BUNDLE_KEY_PROFILING_SESSION_DURATION_MILLIS,
+                TEST_PROFILING_DURATION_MS);
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        new RuleInternal.Builder()
+                                .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
+                                .setRuleCondition(conditionBundle)
+                                .addAnomalyAction(RuleInternal.ACTION_TYPE_LOG)
+                                .build());
     }
 }
