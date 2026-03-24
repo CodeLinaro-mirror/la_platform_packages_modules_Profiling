@@ -39,8 +39,17 @@ import java.util.Set;
 public class RuleInternal {
     private static final String RULE_KEY_PREFIX = "android.os.profiling.anomaly.Rule.";
 
+    /**
+     * The integer values for @IntDef definitions
+     *
+     * <p>The integer value 0 - 1000 is reserved for Android Platform use.
+     */
     /** Action to write a detailed report of the anomaly to the system log. */
     public static final int ACTION_TYPE_LOG = 1;
+
+    // TODO: b/482942778 - Also add this to the Rule class
+    /** Action to collect a profile of the package the anomaly originated from. */
+    public static final int ACTION_TYPE_COLLECT_PROFILE = 2;
 
     /**
      * Condition type for monitoring excessive Binder Inter-Process Calls (IPCs), also known as
@@ -266,9 +275,12 @@ public class RuleInternal {
      */
     @Target(ElementType.TYPE_USE)
     @Retention(RetentionPolicy.SOURCE)
+    // LINT.IfChange(supported_actions)
     @IntDef({
         ACTION_TYPE_LOG,
+        ACTION_TYPE_COLLECT_PROFILE,
     })
+    // LINT.ThenChange(/anomaly-detector/tests/scripts/generate_anomaly_rules.py:supported_actions)
     // TODO(b/416804300): Add default and other action once finalized.
     public @interface AnomalyActionTypeInternal {}
 
@@ -279,9 +291,11 @@ public class RuleInternal {
      */
     @Target(ElementType.TYPE_USE)
     @Retention(RetentionPolicy.SOURCE)
+    // LINT.IfChange(supported_condition_types)
     @StringDef({
         CONDITION_TYPE_BINDER_SPAM,
     })
+    // LINT.ThenChange(/anomaly-detector/tests/scripts/generate_anomaly_rules.py:supported_condition_types)
     public @interface ConditionTypeInternal {}
 
     /**

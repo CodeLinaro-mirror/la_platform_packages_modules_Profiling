@@ -48,6 +48,7 @@ import com.android.os.profiling.anomaly.internal.AnomalyHandlerRegistryImpl;
 import com.android.os.profiling.anomaly.internal.RuleStorageImpl;
 import com.android.os.profiling.anomaly.internal.SignalCollectorRegistryImpl;
 import com.android.os.profiling.anomaly.util.LogUtil;
+import com.android.os.profiling.anomaly.wrapper.ContextSystemServiceFetcher;
 import com.android.server.LocalManagerRegistry;
 import com.android.server.SystemService;
 
@@ -125,7 +126,8 @@ public final class AnomalyDetectorService extends SystemService {
         }
 
         mSignalCollectorRegistry = new SignalCollectorRegistryImpl();
-        AnomalyHandlerRegistry handlerRegistry = new AnomalyHandlerRegistryImpl();
+        AnomalyHandlerRegistry handlerRegistry =
+                new AnomalyHandlerRegistryImpl(new ContextSystemServiceFetcher(context));
 
         // Manually create the set of all known detector factories.
         // This is the central place to register a new detector with the system.
@@ -146,7 +148,6 @@ public final class AnomalyDetectorService extends SystemService {
         mLocalManager = new Local();
     }
 
-    /** {@inheritDoc} */
     @Override
     public void onStart() {
         sLog.i("onStart()");
@@ -156,7 +157,6 @@ public final class AnomalyDetectorService extends SystemService {
         publishBinderService(Context.ANOMALY_DETECTOR_SERVICE, mBinderService);
     }
 
-    /** {@inheritDoc} */
     @Override
     public void onBootPhase(int phase) {
         if (phase == SystemService.PHASE_SYSTEM_SERVICES_READY) {
@@ -250,7 +250,6 @@ public final class AnomalyDetectorService extends SystemService {
      * This would typically implement an updated AnomalyDetectorManagerLocal interface.
      */
     private final class Local implements AnomalyDetectorManagerLocal {
-        /** {@inheritDoc} */
         @Override
         public <T extends SignalCollectorConfig, U extends SignalCollectorData>
                 void registerSignalCollector(
@@ -258,7 +257,6 @@ public final class AnomalyDetectorService extends SystemService {
             mSignalCollectorRegistry.registerSignalCollector(configType, dataType, collector);
         }
 
-        /** {@inheritDoc} */
         @Override
         public <T extends SignalCollectorConfig, U extends SignalCollectorData>
                 void unregisterSignalCollector(Class<T> configType, Class<U> dataType) {
