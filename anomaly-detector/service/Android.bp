@@ -62,7 +62,7 @@ java_defaults {
     apex_available: [
         "com.android.profiling",
     ],
-    min_sdk_version: "36",
+    min_sdk_version: "37",
 }
 
 // Java library version of service implementation without jarjar rules used for testing
