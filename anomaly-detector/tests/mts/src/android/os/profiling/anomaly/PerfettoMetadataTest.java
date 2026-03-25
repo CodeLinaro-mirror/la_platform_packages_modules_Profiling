@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package android.profiling.cts;
+package android.os.profiling.anomaly;
 
 import static com.google.common.truth.Truth.assertThat;
 
@@ -42,8 +42,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-// TODO(b/473875650): Drop this test class when we have actual integration tests that verifies API
-// behavior in ProfilingService.
 @RunWith(AndroidJUnit4.class)
 public class PerfettoMetadataTest {
 
