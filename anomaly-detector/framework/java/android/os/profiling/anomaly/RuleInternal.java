@@ -64,9 +64,7 @@ public class RuleInternal {
      * #BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT}, and {@link
      * #BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS}.
      */
-    // LINT.IfChange(anomaly_binder_spam_tag)
     public static final String CONDITION_TYPE_BINDER_SPAM = RULE_KEY_PREFIX + "binder_spam";
-    // LINT.ThenChange(LoggingHelper.java:anomaly_binder_spam_tag)
 
     /**
      * {@link Bundle} key for the fully qualified name of the AIDL interface to monitor.

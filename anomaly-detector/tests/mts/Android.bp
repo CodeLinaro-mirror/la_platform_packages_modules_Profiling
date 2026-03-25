@@ -29,7 +29,7 @@ android_test {
         "ctstestrunner-axt",
         "cts-wm-util",
         "framework-configinfrastructure.stubs.module_lib",
-        "service-anomaly-detector-no-jarjar",
+        "service-anomaly-detector.impl",
         "StatsdTestUtils",
         "statsdprotolite",
         "anomaly-detector-aconfig-flags-lib",

@@ -51,8 +51,6 @@ import android.util.Log;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 
-import com.android.modules.utils.build.SdkLevel;
-
 import com.google.common.truth.Expect;
 
 import org.junit.After;
@@ -129,8 +127,6 @@ public class ProfilingMemoryLimiterTests {
     @Test
     @RequiresFlagsEnabled({Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW})
     public void testMemoryAnomalyTrigger() throws Exception {
-        // Anomaly trigger was added in C.
-        assumeTrue(SdkLevel.isAtLeastC());
         assumeTrue(limiterEnabled());
 
         // Create a receiver to capture the broadcast intent sent by the test app.

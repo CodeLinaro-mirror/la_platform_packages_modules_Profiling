@@ -21,10 +21,7 @@ package {
 
 android_test {
     name: "CtsProfilingModuleTests",
-    defaults: [
-        "cts_defaults",
-        "modules-utils-extended-mockito-rule-defaults",
-    ],
+    defaults: ["cts_defaults"],
     data: [
         ":CtsProfilingTestApp",
     ],
@@ -42,7 +39,6 @@ android_test {
         "anomaly-detector-aconfig-flags-lib",
         "frameworks-base-testutils",
         "util-profiling",
-        "mockito-target-extended-minus-junit4",
     ],
     libs: [
         "android.test.runner.stubs.system",

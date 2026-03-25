@@ -19,7 +19,6 @@ package com.android.os.profiling.anomaly;
 import static android.Manifest.permission.CONFIGURE_ANOMALY_DETECTOR;
 
 import android.annotation.FlaggedApi;
-import android.annotation.NonNull;
 import android.annotation.PermissionManuallyEnforced;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -30,7 +29,6 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.OutcomeReceiver;
-import android.os.ParcelFileDescriptor;
 import android.os.profiling.anomaly.IAnomalyDetectorService;
 import android.os.profiling.anomaly.RuleInternal;
 import android.os.profiling.anomaly.RuleInternal.AnomalyActionTypeInternal;
@@ -67,17 +65,13 @@ import com.android.os.profiling.anomaly.ratelimiter.persistence.ProtoStateStore;
 import com.android.os.profiling.anomaly.ratelimiter.persistence.RateLimiterState;
 import com.android.os.profiling.anomaly.ratelimiter.persistence.RateLimiterStateStore;
 import com.android.os.profiling.anomaly.util.LogUtil;
-import com.android.os.profiling.anomaly.wrapper.ExecutorServiceWrapper;
 import com.android.os.profiling.anomaly.wrapper.ContextSystemServiceFetcher;
 import com.android.server.LocalManagerRegistry;
 import com.android.server.SystemService;
 
 import java.io.File;
 import java.io.FileDescriptor;
-import java.io.IOException;
 import java.io.PrintWriter;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Executor;
@@ -95,8 +89,6 @@ import java.util.concurrent.Executors;
  */
 @FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE)
 public final class AnomalyDetectorService extends SystemService {
-    static final String FULL_BINDER_SPAM_DETECTION_CONFIG_FILE_NAME =
-            "anomaly_detection.full_binder_spam_detection";
     private static final String TAG = "AnomalyDetectorService";
     private static final LogUtil sLog = new LogUtil(TAG);
 
@@ -107,8 +99,6 @@ public final class AnomalyDetectorService extends SystemService {
 
     @VisibleForTesting final AnomalyDetectorControllerImpl mController;
     @VisibleForTesting final ProfilingRateLimiter mProfilingRateLimiter;
-    private final Executor mIoExecutor;
-    private final File mAnomalyServiceDir;
 
     /**
      * Constructs a new AnomalyDetectorService.
@@ -123,19 +113,19 @@ public final class AnomalyDetectorService extends SystemService {
         super(context);
 
         // Dedicated executor for background I/O operations.
-        mIoExecutor = ExecutorServiceWrapper.getIOExecutor();
+        Executor ioExecutor = Executors.newSingleThreadExecutor();
 
         File systemDir = new File(Environment.getDataDirectory(), "system");
-        mAnomalyServiceDir = new File(systemDir, "anomaly_service");
+        File anomalyServiceDir = new File(systemDir, "anomaly_service");
         RuleStorage ruleStorage;
         RateLimiterStateStore rateLimiterStateStore;
-        if (mAnomalyServiceDir.exists() || mAnomalyServiceDir.mkdirs()) {
-            File rulesFile = new File(mAnomalyServiceDir, "rules.pb");
-            ruleStorage = new RuleStorageImpl(rulesFile, mIoExecutor);
-            File rateLimiterFile = new File(mAnomalyServiceDir, "rate_limiter_state.pb");
-            rateLimiterStateStore = new ProtoStateStore(rateLimiterFile, mIoExecutor);
+        if (anomalyServiceDir.exists() || anomalyServiceDir.mkdirs()) {
+            File rulesFile = new File(anomalyServiceDir, "rules.pb");
+            ruleStorage = new RuleStorageImpl(rulesFile, ioExecutor);
+            File rateLimiterFile = new File(anomalyServiceDir, "rate_limiter_state.pb");
+            rateLimiterStateStore = new ProtoStateStore(rateLimiterFile, ioExecutor);
         } else {
-            sLog.e("Failed to create directory: " + mAnomalyServiceDir.getPath());
+            sLog.e("Failed to create directory: " + anomalyServiceDir.getPath());
             // Create a no-op storage if the directory cannot be created.
             ruleStorage =
                     new RuleStorage() {
@@ -202,7 +192,7 @@ public final class AnomalyDetectorService extends SystemService {
                         handlerRegistry,
                         anomalyDetectorRegistry,
                         Executors.newCachedThreadPool());
-        mBinderService = new BinderService(context, mController, mAnomalyServiceDir.toPath());
+        mBinderService = new BinderService(context, mController);
         mLocalManager = new Local();
     }
 
@@ -233,22 +223,6 @@ public final class AnomalyDetectorService extends SystemService {
         if (phase == SystemService.PHASE_SYSTEM_SERVICES_READY) {
             mController.onSystemServicesReady();
         }
-
-        if (phase == SystemService.PHASE_BOOT_COMPLETED) {
-            mIoExecutor.execute(
-                    () -> {
-                        try {
-                            Files.deleteIfExists(
-                                    mAnomalyServiceDir
-                                            .toPath()
-                                            .resolve(FULL_BINDER_SPAM_DETECTION_CONFIG_FILE_NAME));
-                        } catch (IOException e) {
-                            sLog.e(
-                                    "Failed to delete the full binder spam detection config file",
-                                    e);
-                        }
-                    });
-        }
     }
 
     /** Implementation of the IAnomalyDetectorService binder service. */
@@ -257,13 +231,10 @@ public final class AnomalyDetectorService extends SystemService {
         private final Context mContext;
 
         final AnomalyDetectorController mController;
-        private final Path mAnomalyServiceDir;
 
-        BinderService(
-                Context context, AnomalyDetectorController controller, Path anomalyServiceDir) {
+        BinderService(Context context, AnomalyDetectorController controller) {
             mContext = context;
             mController = controller;
-            mAnomalyServiceDir = anomalyServiceDir;
         }
 
         /**
@@ -299,23 +270,6 @@ public final class AnomalyDetectorService extends SystemService {
                                     + r.getRuleCondition());
                 }
             }
-        }
-
-        @Override
-        // Permission has been enforced by the caller, see Binder#onShellCommand()
-        @PermissionManuallyEnforced
-        public int handleShellCommand(
-                @NonNull ParcelFileDescriptor in,
-                @NonNull ParcelFileDescriptor out,
-                @NonNull ParcelFileDescriptor err,
-                @NonNull String[] args) {
-            return new AnomalyDetectorShellCommandHandler(mAnomalyServiceDir)
-                    .exec(
-                            this,
-                            in.getFileDescriptor(),
-                            out.getFileDescriptor(),
-                            err.getFileDescriptor(),
-                            args);
         }
 
         /**

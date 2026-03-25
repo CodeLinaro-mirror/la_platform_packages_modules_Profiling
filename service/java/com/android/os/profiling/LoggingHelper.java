@@ -78,16 +78,10 @@ public final class LoggingHelper {
     public static final int PROFILING_TAG_UNSPECIFIED = 0;
     public static final int PROFILING_TAG_USER_SPECIFIED = 1;
     public static final int PROFILING_TAG_ANOMALY_MEMORY_LIMIT = 2;
-    public static final int PROFILING_TAG_ANOMALY_BINDER_SPAM = 3;
 
     // LINT.IfChange(anomaly_memory_limit_tag)
     public static final String ANOMALY_MEMORY_LIMIT_TAG = "MEMORY_LIMIT";
     // LINT.ThenChange(ProfilingService.java:anomaly_memory_limit_tag)
-
-    // LINT.IfChange(anomaly_binder_spam_tag)
-    // We only care about the tag suffix from RuleInternal.java:anomaly_binder_spam_tag.
-    public static final String ANOMALY_BINDER_SPAM_TAG = "binder_spam";
-    // LINT.ThenChange(RuleInternal.java:anomaly_binder_spam_tag)
 
     @IntDef(
             prefix = {"REQUEST_RESULT_"},
@@ -171,7 +165,6 @@ public final class LoggingHelper {
                 PROFILING_TAG_UNSPECIFIED,
                 PROFILING_TAG_USER_SPECIFIED,
                 PROFILING_TAG_ANOMALY_MEMORY_LIMIT,
-                PROFILING_TAG_ANOMALY_BINDER_SPAM,
             })
     @Retention(RetentionPolicy.SOURCE)
     public @interface ProfilingTag {}
@@ -346,14 +339,12 @@ public final class LoggingHelper {
      * frameworks/proto_logging/stats/enums/profiling/enums.proto:ProfilingTag
      */
     private static @ProfilingTag int profilingTagToEnumValue(@Nullable String tag) {
-        // LINT.IfChange(profiling_tags)
         if (tag == null) {
             return PROFILING_TAG_UNSPECIFIED;
         }
-
+        // LINT.IfChange(profiling_tags)
         return switch (tag) {
             case ANOMALY_MEMORY_LIMIT_TAG -> PROFILING_TAG_ANOMALY_MEMORY_LIMIT;
-            case ANOMALY_BINDER_SPAM_TAG -> PROFILING_TAG_ANOMALY_BINDER_SPAM;
             default -> PROFILING_TAG_USER_SPECIFIED;
         };
         // LINT.ThenChange(/frameworks/proto_logging/stats/enums/profiling/enums.proto:profiling_tags)

@@ -24,7 +24,6 @@ import android.os.ProfilingTrigger;
 import android.text.TextUtils;
 
 import com.android.internal.annotations.VisibleForTesting;
-import com.android.os.profiling.anomaly.attribute.AnomalyDetailsAttribute;
 import com.android.os.profiling.anomaly.attribute.ProfilingParamsAttribute;
 import com.android.os.profiling.anomaly.attribute.RateLimitSignatureAttribute;
 import com.android.os.profiling.anomaly.attribute.UidAttribute;
@@ -99,12 +98,6 @@ public final class ProfileAnomalyHandler implements AnomalyHandler {
             return;
         }
 
-        AnomalyDetailsAttribute anomalyDetailsAttribute = report.get(AnomalyDetailsAttribute.class);
-        if (anomalyDetailsAttribute == null) {
-            sLog.e("No anomaly details attribute in AnomalyReport");
-            return;
-        }
-
         String packageName = getRegisteredPackageNameFromUid(uidAttribute.uid());
         if (TextUtils.isEmpty(packageName)) {
             return;
@@ -129,9 +122,7 @@ public final class ProfileAnomalyHandler implements AnomalyHandler {
                 report.getRule().getConditionType(),
                 mProfilingRateLimiter,
                 signature,
-                mProfilingConcurrencyConfig,
-                anomalyDetailsAttribute.anomalyDetails(),
-                anomalyDetailsAttribute.durationMillis());
+                mProfilingConcurrencyConfig);
     }
 
     /**
