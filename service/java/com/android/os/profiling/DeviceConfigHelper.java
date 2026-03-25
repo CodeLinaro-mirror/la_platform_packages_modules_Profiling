@@ -172,6 +172,18 @@ public final class DeviceConfigHelper {
     public static final String MAX_COST_SYSTEM_7_DAY = "max_cost_system_7_day";
     public static final String MAX_COST_PROCESS_7_DAY = "max_cost_process_7_day";
 
+    // Memory Anomaly Rate Limiter configs.
+    // Max number of memory anomaly profiling requests allowed across the whole system within 3
+    // hours.
+    public static final String MEMORY_ANOMALY_RATE_LIMIT_SYSTEM_QUANTITY =
+            "memory_anomaly_rate_limit_system_quantity";
+    public static final int DEFAULT_MEMORY_ANOMALY_RATE_LIMIT_SYSTEM_QUANTITY = 2;
+
+    // Max number of memory anomaly profiling requests allowed per process within 3 days.
+    public static final String MEMORY_ANOMALY_RATE_LIMIT_PROCESS_QUANTITY =
+            "memory_anomaly_rate_limit_process_quantity";
+    public static final int DEFAULT_MEMORY_ANOMALY_RATE_LIMIT_PROCESS_QUANTITY = 1;
+
     // Perfetto configs
     public static final String PERFETTO_DESTROY_TIMEOUT_MS = "perfetto_destroy_timeout_ms";
 
@@ -305,6 +317,14 @@ public final class DeviceConfigHelper {
                 COST_SYSTEM_TRACE,
                 COST_SYSTEM_TRIGGERED_SYSTEM_TRACE,
                 PERSIST_TO_DISK_FREQUENCY_MS);
+    }
+
+    /** Get all properties related to memory anomaly rate limiter. */
+    public static DeviceConfig.Properties getAllMemoryAnomalyRateLimiterProperties() {
+        return DeviceConfig.getProperties(
+                NAMESPACE,
+                MEMORY_ANOMALY_RATE_LIMIT_SYSTEM_QUANTITY,
+                MEMORY_ANOMALY_RATE_LIMIT_PROCESS_QUANTITY);
     }
 
     /**
