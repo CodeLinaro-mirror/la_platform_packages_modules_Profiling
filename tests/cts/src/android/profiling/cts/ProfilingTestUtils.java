@@ -287,6 +287,12 @@ public final class ProfilingTestUtils {
         deleteDeviceConfig(
                 DeviceConfigHelper.NAMESPACE,
                 DeviceConfigHelper.PROFILING_TRIGGER_COLD_START_TRACE_DURATION_MS);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MEMORY_ANOMALY_RATE_LIMIT_SYSTEM_QUANTITY);
+        deleteDeviceConfig(
+                DeviceConfigHelper.NAMESPACE,
+                DeviceConfigHelper.MEMORY_ANOMALY_RATE_LIMIT_PROCESS_QUANTITY);
         // LINT.ThenChange(/service/java/com/android/os/profiling/DeviceConfigHelper.java:configs)
     }
 

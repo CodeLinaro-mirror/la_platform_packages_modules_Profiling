@@ -16,7 +16,12 @@
 
 package android.os.profiling;
 
+import static android.os.profiling.DeviceConfigHelper.updateInt;
+
 import android.profiling.utils.RateLimiterBase;
+import android.provider.DeviceConfig;
+
+import com.android.internal.annotations.VisibleForTesting;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,9 +38,8 @@ public class MemoryAnomalyRateLimiter extends RateLimiterBase {
 
     private static final long RATE_LIMIT_PROCESS_TIME_RANGE_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 
-    private static final int RATE_LIMIT_SYSTEM_QUANTITY = 2;
-
-    private static final int RATE_LIMIT_PROCESS_QUANTITY = 1;
+    private volatile int mSystemLimit;
+    private volatile int mProcessLimit;
 
     private static final int RATE_LIMIT_COST = 1;
 
@@ -45,25 +49,20 @@ public class MemoryAnomalyRateLimiter extends RateLimiterBase {
 
     @Override
     protected List<TimeBucket> getTimeBuckets() {
-        List<TimeBucket> timeBuckets = new ArrayList<TimeBucket>(2);
+        DeviceConfig.Properties properties =
+                DeviceConfigHelper.getAllMemoryAnomalyRateLimiterProperties();
 
-        // Add a system only bucket using max val for process max cost so that it is effectively
-        // disabled.
-        timeBuckets.add(
-                new TimeBucket(
-                        RATE_LIMIT_SYSTEM_TIME_RANGE_MS,
-                        RATE_LIMIT_SYSTEM_QUANTITY,
-                        Integer.MAX_VALUE));
+        mSystemLimit =
+                properties.getInt(
+                        DeviceConfigHelper.MEMORY_ANOMALY_RATE_LIMIT_SYSTEM_QUANTITY,
+                        DeviceConfigHelper.DEFAULT_MEMORY_ANOMALY_RATE_LIMIT_SYSTEM_QUANTITY);
 
-        // Add a process only bucket using max val for system max cost so that it is effectively
-        // disabled.
-        timeBuckets.add(
-                new TimeBucket(
-                        RATE_LIMIT_PROCESS_TIME_RANGE_MS,
-                        Integer.MAX_VALUE,
-                        RATE_LIMIT_PROCESS_QUANTITY));
+        mProcessLimit =
+                properties.getInt(
+                        DeviceConfigHelper.MEMORY_ANOMALY_RATE_LIMIT_PROCESS_QUANTITY,
+                        DeviceConfigHelper.DEFAULT_MEMORY_ANOMALY_RATE_LIMIT_PROCESS_QUANTITY);
 
-        return timeBuckets;
+        return buildTimeBuckets(mSystemLimit, mProcessLimit);
     }
 
     @Override
@@ -84,5 +83,56 @@ public class MemoryAnomalyRateLimiter extends RateLimiterBase {
     /** Check if profiling request is allowed by rate limiting. */
     public @RateLimitResult int isProfilingRequestAllowed(int uid) {
         return isProfilingRequestAllowed(uid, RATE_LIMIT_COST);
+    }
+
+    /**
+     * Updates the configuration values based on the provided DeviceConfig properties.
+     *
+     * @param properties The DeviceConfig.Properties object containing potential updates.
+     */
+    public void maybeUpdateConfigs(DeviceConfig.Properties properties) {
+        synchronized (mLock) {
+            mSystemLimit =
+                    updateInt(
+                            properties,
+                            DeviceConfigHelper.MEMORY_ANOMALY_RATE_LIMIT_SYSTEM_QUANTITY,
+                            mSystemLimit,
+                            DeviceConfigHelper.DEFAULT_MEMORY_ANOMALY_RATE_LIMIT_SYSTEM_QUANTITY);
+
+            mProcessLimit =
+                    updateInt(
+                            properties,
+                            DeviceConfigHelper.MEMORY_ANOMALY_RATE_LIMIT_PROCESS_QUANTITY,
+                            mProcessLimit,
+                            DeviceConfigHelper.DEFAULT_MEMORY_ANOMALY_RATE_LIMIT_PROCESS_QUANTITY);
+
+            maybeUpdateMaxCosts(buildTimeBuckets(mSystemLimit, mProcessLimit));
+        }
+    }
+
+    /** For testing only. Update max per system and process costs. */
+    @VisibleForTesting
+    public void setMaxCosts(int systemQuantity, int processQuantity) {
+        synchronized (mLock) {
+            mSystemLimit = systemQuantity;
+            mProcessLimit = processQuantity;
+            maybeUpdateMaxCosts(buildTimeBuckets(mSystemLimit, mProcessLimit));
+        }
+    }
+
+    private List<TimeBucket> buildTimeBuckets(int systemLimit, int processLimit) {
+        List<TimeBucket> timeBuckets = new ArrayList<TimeBucket>(2);
+
+        // Add a system only bucket using max val for process max cost so that it is effectively
+        // disabled.
+        timeBuckets.add(
+                new TimeBucket(RATE_LIMIT_SYSTEM_TIME_RANGE_MS, systemLimit, Integer.MAX_VALUE));
+
+        // Add a process only bucket using max val for system max cost so that it is effectively
+        // disabled.
+        timeBuckets.add(
+                new TimeBucket(RATE_LIMIT_PROCESS_TIME_RANGE_MS, Integer.MAX_VALUE, processLimit));
+
+        return timeBuckets;
     }
 }
