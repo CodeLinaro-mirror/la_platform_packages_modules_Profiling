@@ -3036,7 +3036,7 @@ public final class ProfilingServiceTests {
                 ArgumentCaptor.forClass(TracingSession.class);
         verify(mProfilingService, times(1))
                 .advanceTracingSession(sessionCaptor.capture(), eq(TracingState.APPROVED));
-        assertEquals("MEMORY_LIMIT", sessionCaptor.getValue().getTag());
+        assertEquals("memory_limit", sessionCaptor.getValue().getTag());
     }
 
     /** Test that the memory limit anomaly rate limiter works as expected. */
@@ -3091,7 +3091,7 @@ public final class ProfilingServiceTests {
                         new Bundle(),
                         FAKE_UID,
                         APP_PACKAGE_NAME,
-                        "MEMORY_LIMIT",
+                        "memory_limit",
                         KEY_MOST_SIG_BITS,
                         KEY_LEAST_SIG_BITS,
                         ProfilingTrigger.TRIGGER_TYPE_ANOMALY);

@@ -117,7 +117,7 @@ public class ProfilingService extends IProfilingService.Stub {
             "Rate limiter disabled manually via adb.";
 
     // LINT.IfChange(anomaly_memory_limit_tag)
-    private static final String ANOMALY_MEMORY_LIMIT_TAG = "MEMORY_LIMIT";
+    private static final String ANOMALY_MEMORY_LIMIT_TAG = "memory_limit";
     // LINT.ThenChange(LoggingHelper.java:anomaly_memory_limit_tag)
 
     private static final String MEMORY_LIMIT_METADATA_HIGHLIGHT_REASON = "memory_limit";
