@@ -3042,7 +3042,8 @@ public final class ProfilingServiceTests {
     /** Test that the memory limit anomaly rate limiter works as expected. */
     @Test
     public void testMemoryLimiterAnomalyRateLimiter() {
-        // This rate limiter does not support any overrides, so nothing to override.
+        // Override the defaults for predictable testing.
+        overrideMemoryAnomalyRateLimiterDefaults(/* systemQuantity= */ 2, /* processQuantity= */ 1);
 
         // Check that the first request for a given uid passes.
         assertEquals(
@@ -3063,6 +3064,20 @@ public final class ProfilingServiceTests {
         assertEquals(
                 MemoryAnomalyRateLimiter.RATE_LIMIT_RESULT_BLOCKED_SYSTEM,
                 mMemoryAnomalyRateLimiter.isProfilingRequestAllowed(FAKE_UID_3));
+
+        // Test overriding again.
+        overrideMemoryAnomalyRateLimiterDefaults(/* systemQuantity= */ 4, /* processQuantity= */ 2);
+
+        // Second request for FAKE_UID should now pass. Note that the total system cost is now 3.
+        assertEquals(
+                MemoryAnomalyRateLimiter.RATE_LIMIT_RESULT_ALLOWED,
+                mMemoryAnomalyRateLimiter.isProfilingRequestAllowed(FAKE_UID));
+
+        // Third request for FAKE_UID should now fail. The system limit was set to 4 to ensure
+        // it does not fail system rate limiting before hitting process rate limiting.
+        assertEquals(
+                MemoryAnomalyRateLimiter.RATE_LIMIT_RESULT_BLOCKED_PROCESS,
+                mMemoryAnomalyRateLimiter.isProfilingRequestAllowed(FAKE_UID));
     }
 
     /** Test that the memory limit anomaly result is bundled with metadata. */
@@ -3194,6 +3209,10 @@ public final class ProfilingServiceTests {
         mRateLimiter.mCostSystemTrace = costSystemTrace;
         mRateLimiter.mCostSystemTriggeredSystemTrace = costSystemTriggeredSystemProfiling;
         mRateLimiter.mPersistToDiskFrequency = persistToDiskFrequency;
+    }
+
+    private void overrideMemoryAnomalyRateLimiterDefaults(int systemQuantity, int processQuantity) {
+        mMemoryAnomalyRateLimiter.setMaxCosts(systemQuantity, processQuantity);
     }
 
     private void confirmRateLimiterEntriesEqual(

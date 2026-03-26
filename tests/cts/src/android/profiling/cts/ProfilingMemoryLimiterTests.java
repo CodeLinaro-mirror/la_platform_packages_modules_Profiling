@@ -142,8 +142,8 @@ public class ProfilingMemoryLimiterTests {
         startActivityWithAction(ACTION_REGISTER_AND_ALLOCATE_MEMORY);
         String pid = executeShellCmd("pidof " + STUB_PACKAGE_NAME).trim();
 
-        // Set a 5% limit to trigger the anomaly quickly.
-        executeShellCmd("am memory-limiter manual %s 5", pid);
+        // Set a 10MB limit to trigger the anomaly quickly.
+        executeShellCmd("am memory-limiter manual %s 10", pid);
 
         Log.d(TAG, "Waiting for broadcast receiver");
         if (!mResultReceiverFilter.waitForBroadcast()) {
