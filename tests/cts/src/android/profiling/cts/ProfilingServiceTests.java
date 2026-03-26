@@ -2972,6 +2972,43 @@ public final class ProfilingServiceTests {
         assertThat(throwable.getMessage()).isEqualTo(NOT_SYSTEM_CALLER_SECURITY_EXCEPTION);
     }
 
+    /**
+     * Test that sendAnomalyProfile correctly sets the profiling start time in the session and moves
+     * the session to queue.
+     */
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    public void testSendAnomalyProfile_setsStartTime() {
+        doNothing().when(mProfilingService).enforceSystemCaller();
+        mProfilingService.mQueuedTracingResults.clear();
+
+        // Set up a TestLooperManager to control the handler thread.
+        mLooperManager = setupTestLooper(mProfilingService);
+
+        String fileName = "some_file_name";
+
+        // Call sendAnomalyProfile.
+        mProfilingService.sendAnomalyProfile(
+                KEY_MOST_SIG_BITS,
+                KEY_LEAST_SIG_BITS,
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
+                REQUEST_TAG,
+                fileName);
+
+        // Run the handler callbacks.
+        executePendingMessages();
+
+        // Verify that the session was added to the queue and has a non-zero start time.
+        List<TracingSession> queuedSessions = mProfilingService.mQueuedTracingResults.get(FAKE_UID);
+        assertThat(queuedSessions).isNotNull();
+        assertThat(queuedSessions).hasSize(1);
+        TracingSession session = queuedSessions.get(0);
+        expect.that(session.getProfilingStartTimeMs()).isAtLeast(1L);
+        expect.that(session.getFileName()).isEqualTo(fileName);
+    }
+
     @Test
     @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
     public void testCollectAnomalyProfile_failSecurityException() {
