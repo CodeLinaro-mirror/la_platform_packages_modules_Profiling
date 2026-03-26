@@ -16,3 +16,4 @@ rule android.os.profiling.anomaly.flags.*FeatureFlags* android.os.profiling.anom
 rule android.os.profiling.anomaly.flags.FeatureFlags* android.os.profiling.anomaly.jarjar.@0
 rule android.os.profiling.anomaly.flags.FeatureFlags android.os.profiling.anomaly.jarjar.@0
 rule android.os.profiling.anomaly.flags.Flags android.os.profiling.anomaly.jarjar.@0
+rule com.android.modules.utils.build.* android.os.profiling.anomaly.jarjar.@0
