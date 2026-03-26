@@ -5,7 +5,14 @@ flag {
    name: "anomaly_detector_core"
    namespace: "backstage_power"
    is_exported: true
-   description: "Flag for the anomaly detection service"
+   description: "Flag used for initial development of the anomaly detection service"
+   bug: "418225779"
+}
+flag {
+   name: "anomaly_detector_core_c"
+   namespace: "backstage_power"
+   is_exported: true
+   description: "Flag for the anomaly detection service in the Android CinnamonBun release"
    bug: "418225779"
 }
 flag {
