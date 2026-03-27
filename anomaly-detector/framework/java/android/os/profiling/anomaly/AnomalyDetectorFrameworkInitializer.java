@@ -29,7 +29,7 @@ import com.android.modules.utils.build.SdkLevel;
  *
  * @hide
  */
-@FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE)
+@FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
 @SystemApi(client = Client.MODULE_LIBRARIES)
 public final class AnomalyDetectorFrameworkInitializer {
     private AnomalyDetectorFrameworkInitializer() {}

@@ -40,7 +40,7 @@ import java.util.Objects;
  * @hide
  */
 @SystemApi(client = SYSTEM_SERVER)
-@FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE)
+@FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
 public final class BinderSpamConfig {
     /** The qualified name of the AIDL interface (e.g. android.app.IActivityManager). */
     private final String mInterfaceName;

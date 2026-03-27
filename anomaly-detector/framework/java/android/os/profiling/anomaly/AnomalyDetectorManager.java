@@ -38,7 +38,7 @@ import java.util.Set;
  *
  * @hide
  */
-@FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE)
+@FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
 @SystemApi
 @SystemService(Context.ANOMALY_DETECTOR_SERVICE)
 public final class AnomalyDetectorManager {

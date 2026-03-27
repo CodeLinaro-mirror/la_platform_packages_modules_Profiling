@@ -2,7 +2,7 @@
 // - style=java
 package com.android.os.profiling.anomaly {
 
-  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public interface AnomalyDetectorManagerLocal {
+  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core_c") public interface AnomalyDetectorManagerLocal {
     method public <T extends com.android.os.profiling.anomaly.collector.SignalCollectorConfig, U extends com.android.os.profiling.anomaly.collector.SignalCollectorData> void registerSignalCollector(@NonNull Class<T>, @NonNull Class<U>, @NonNull com.android.os.profiling.anomaly.collector.SignalCollector<T, U>);
     method public <T extends com.android.os.profiling.anomaly.collector.SignalCollectorConfig, U extends com.android.os.profiling.anomaly.collector.SignalCollectorData> void unregisterSignalCollector(@NonNull Class<T>, @NonNull Class<U>);
   }
@@ -11,20 +11,20 @@ package com.android.os.profiling.anomaly {
 
 package com.android.os.profiling.anomaly.collector {
 
-  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public interface SignalCollector<T extends com.android.os.profiling.anomaly.collector.SignalCollectorConfig, U extends com.android.os.profiling.anomaly.collector.SignalCollectorData> {
+  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core_c") public interface SignalCollector<T extends com.android.os.profiling.anomaly.collector.SignalCollectorConfig, U extends com.android.os.profiling.anomaly.collector.SignalCollectorData> {
     method @Nullable public U getData(@NonNull com.android.os.profiling.anomaly.collector.SubscriptionId);
     method public void requestUpdate(@NonNull com.android.os.profiling.anomaly.collector.SubscriptionId);
     method @NonNull public com.android.os.profiling.anomaly.collector.SubscriptionId subscribe(@NonNull T, @NonNull android.os.OutcomeReceiver<U, Throwable>);
     method public void unsubscribe(@NonNull com.android.os.profiling.anomaly.collector.SubscriptionId);
   }
 
-  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public interface SignalCollectorConfig {
+  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core_c") public interface SignalCollectorConfig {
   }
 
-  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public interface SignalCollectorData {
+  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core_c") public interface SignalCollectorData {
   }
 
-  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public final class SubscriptionId {
+  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core_c") public final class SubscriptionId {
     method @NonNull public static com.android.os.profiling.anomaly.collector.SubscriptionId generateNew();
   }
 
@@ -32,19 +32,19 @@ package com.android.os.profiling.anomaly.collector {
 
 package com.android.os.profiling.anomaly.collector.binder {
 
-  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public final class BinderSpamConfig {
+  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core_c") public final class BinderSpamConfig {
     method @NonNull public int[] getCallerImportanceList();
     method @NonNull public String getInterfaceName();
     method @NonNull public String getMethodName();
     method @NonNull public int[] getUids();
   }
 
-  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public final class BinderSpamConfigList implements com.android.os.profiling.anomaly.collector.SignalCollectorConfig {
+  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core_c") public final class BinderSpamConfigList implements com.android.os.profiling.anomaly.collector.SignalCollectorConfig {
     ctor public BinderSpamConfigList(@NonNull java.util.List<com.android.os.profiling.anomaly.collector.binder.BinderSpamConfig>);
     method @NonNull public java.util.List<com.android.os.profiling.anomaly.collector.binder.BinderSpamConfig> getConfigs();
   }
 
-  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public final class BinderSpamData implements com.android.os.profiling.anomaly.collector.SignalCollectorData {
+  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core_c") public final class BinderSpamData implements com.android.os.profiling.anomaly.collector.SignalCollectorData {
     method public int getCallCount();
     method public int getCallerImportance();
     method public int getCallingUid();
@@ -54,7 +54,7 @@ package com.android.os.profiling.anomaly.collector.binder {
     method @NonNull public java.time.Duration getTimespan();
   }
 
-  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public static final class BinderSpamData.Builder {
+  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core_c") public static final class BinderSpamData.Builder {
     ctor public BinderSpamData.Builder();
     method @NonNull public com.android.os.profiling.anomaly.collector.binder.BinderSpamData build();
     method @NonNull public com.android.os.profiling.anomaly.collector.binder.BinderSpamData.Builder setCallCount(int);
