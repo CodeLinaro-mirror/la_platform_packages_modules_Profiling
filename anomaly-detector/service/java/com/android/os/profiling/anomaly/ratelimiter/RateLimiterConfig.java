@@ -56,4 +56,10 @@ public interface RateLimiterConfig {
      * after it has been modified.
      */
     long getPersistenceDelayMillis();
+
+    /**
+     * Returns the maximum cool-down duration in milliseconds before an entry in the rate limiter
+     * state is considered expired and is safe to be evicted.
+     */
+    long getMaxCoolDownForEvictionMillis();
 }

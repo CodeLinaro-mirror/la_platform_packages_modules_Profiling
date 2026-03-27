@@ -18,8 +18,6 @@ package com.android.os.profiling.anomaly.handler;
 
 import static android.os.ProfilingManager.KEY_DURATION_MS;
 
-import static java.util.zip.Deflater.NO_COMPRESSION;
-
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.os.AnomalyProfilingClient;
@@ -39,25 +37,14 @@ import com.android.os.profiling.anomaly.ratelimiter.ProfilingRateLimiter;
 import com.android.os.profiling.anomaly.util.LogUtil;
 import com.android.os.profiling.anomaly.wrapper.ExecutorServiceWrapper;
 
-import java.util.concurrent.Executor;
 import org.json.JSONException;
-import org.json.JSONObject;
 
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.DirectoryNotEmptyException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
+import java.util.concurrent.Executor;
 
 /**
  * A helper class that helps the anomaly detector to communicate with Profiling manager, so it can
@@ -159,7 +146,8 @@ public class ProfilingSessionHelper {
      *
      * @param uid The UID of the process to profile.
      * @param packageName The package name associated with the process.
-     * @param maxSessionDurationMs The maximum duration for the profiling session in milliseconds.
+     * @param maxSessionDurationMillis The maximum duration for the profiling session in
+     *     milliseconds.
      * @param sessionParams A {@link Bundle} of additional parameters for the profiling session.
      * @param profilingType The type of profiling to perform, as defined in {@link
      *     ProfilingManager.ProfilingType}.
@@ -196,37 +184,42 @@ public class ProfilingSessionHelper {
                 sLog.i("Concurrency limit reached. Denying profiling request for UID " + uid);
                 return;
             }
-        }
+            if (!profilingRateLimiter.isRequestAllowed(uid, conditionType, signature)) {
+                sLog.i("Profiling request for UID " + uid + " was rate-limited.");
+                return;
+            }
 
-        if (!profilingRateLimiter.isRequestAllowed(uid, conditionType, signature)) {
-            sLog.i("Profiling request for UID " + uid + " was rate-limited.");
-            return;
-        }
-
-        Bundle params = new Bundle();
-        params.putLong(KEY_DURATION_MS, maxSessionDurationMillis);
-        params.putAll(sessionParams);
-        UUID sessionId =
-                mAnomalyProfilingManager.collectAnomalyProfile(
-                        uid,
-                        packageName,
-                        profilingType,
-                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
-                        /* tag= */ null,
-                        params);
-        SessionInfo sessionInfo =
-                new SessionInfo(
-                        sessionId,
-                        uid,
-                        packageName,
-                        conditionType,
-                        Instant.ofEpochMilli(System.currentTimeMillis()),
-                        /* result= */ null,
-                        // TODO: b/485962021 - make the accept/reject logic of sessions configurable
-                        /* shouldAccept= */ !conditionType.equals(
-                                RuleInternal.CONDITION_TYPE_BINDER_SPAM),
-                        new PerfettoMetadata());
-        synchronized (mLock) {
+            Bundle params = new Bundle();
+            params.putLong(KEY_DURATION_MS, maxSessionDurationMillis);
+            params.putAll(sessionParams);
+            UUID sessionId =
+                    mAnomalyProfilingManager.collectAnomalyProfile(
+                            uid,
+                            packageName,
+                            profilingType,
+                            ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
+                            /* tag= */ null,
+                            params);
+            if (sessionId == null) {
+                sLog.w(
+                        "Failed to start profiling for UID "
+                                + uid
+                                + ". collectAnomalyProfile returned null.");
+                return;
+            }
+            SessionInfo sessionInfo =
+                    new SessionInfo(
+                            sessionId,
+                            uid,
+                            packageName,
+                            conditionType,
+                            Instant.ofEpochMilli(System.currentTimeMillis()),
+                            /* result= */ null,
+                            // TODO: b/485962021 - make the accept/reject logic of sessions
+                            // configurable
+                            /* shouldAccept= */ !conditionType.equals(
+                                    RuleInternal.CONDITION_TYPE_BINDER_SPAM),
+                            new PerfettoMetadata());
             mUidSessionInfoSparseArray.put(uid, sessionInfo);
         }
     }
@@ -247,29 +240,30 @@ public class ProfilingSessionHelper {
             return;
         }
 
-        mIoExecutor.execute(() -> {
-            try {
-                String bundledResultPath =
-                        sessionInfo.perfettoMetadata.attachToProfilingResult(
-                                sessionInfo.result.getResultFilePath());
-                int anomalyTypeIndex = sessionInfo.conditionType.lastIndexOf('.') + 1;
-                String anomalyType = sessionInfo.conditionType.substring(anomalyTypeIndex);
-                mAnomalyProfilingManager.sendAnomalyProfile(
-                        sessionInfo.uid,
-                        sessionInfo.packageName,
-                        ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
-                        anomalyType,
-                        bundledResultPath);
-            } catch (IOException e) {
-                sLog.e("Unable to attach metadata to profiling result: %s", e);
-            }
-        });
+        mIoExecutor.execute(
+                () -> {
+                    try {
+                        String bundledResultPath =
+                                sessionInfo.perfettoMetadata.attachToProfilingResult(
+                                        sessionInfo.result.getResultFilePath());
+                        int anomalyTypeIndex = sessionInfo.conditionType.lastIndexOf('.') + 1;
+                        String anomalyType = sessionInfo.conditionType.substring(anomalyTypeIndex);
+                        mAnomalyProfilingManager.sendAnomalyProfile(
+                                sessionInfo.uid,
+                                sessionInfo.packageName,
+                                ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
+                                anomalyType,
+                                new File(bundledResultPath).getName());
+                    } catch (IOException e) {
+                        sLog.e("Unable to attach metadata to profiling result: %s", e);
+                    }
+                });
     }
 
     /**
-     * Update the ongoing session info with the given UID and condition type, update its
-     * perfetto metadata with the anomaly details, and mark the session as acceptable if the
-     * given condition type is the same as the ongoing session.
+     * Update the ongoing session info with the given UID and condition type, update its perfetto
+     * metadata with the anomaly details, and mark the session as acceptable if the given condition
+     * type is the same as the ongoing session.
      *
      * @param uid The UID of the session
      * @param conditionType The condition type (anomaly type) of the session

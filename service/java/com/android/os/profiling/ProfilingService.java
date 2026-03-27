@@ -465,6 +465,7 @@ public class ProfilingService extends IProfilingService.Stub {
                     public void onPropertiesChanged(@NonNull DeviceConfig.Properties properties) {
                         synchronized (mLock) {
                             getRateLimiter().maybeUpdateConfigs(properties);
+                            getMemoryAnomalyRateLimiter().maybeUpdateConfigs(properties);
                             Configs.maybeUpdateConfigs(properties);
 
                             mPerfettoDestroyTimeoutMs =
