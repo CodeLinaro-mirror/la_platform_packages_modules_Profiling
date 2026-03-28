@@ -81,7 +81,7 @@ public final class LoggingHelper {
     public static final int PROFILING_TAG_ANOMALY_BINDER_SPAM = 3;
 
     // LINT.IfChange(anomaly_memory_limit_tag)
-    public static final String ANOMALY_MEMORY_LIMIT_TAG = "MEMORY_LIMIT";
+    public static final String ANOMALY_MEMORY_LIMIT_TAG = "memory_limit";
     // LINT.ThenChange(ProfilingService.java:anomaly_memory_limit_tag)
 
     // LINT.IfChange(anomaly_binder_spam_tag)
