@@ -39,6 +39,7 @@ import android.os.profiling.anomaly.flags.Flags;
 import android.util.ArraySet;
 
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.modules.utils.build.SdkLevel;
 import com.android.os.profiling.anomaly.collector.SignalCollector;
 import com.android.os.profiling.anomaly.collector.SignalCollectorConfig;
 import com.android.os.profiling.anomaly.collector.SignalCollectorData;
@@ -67,8 +68,8 @@ import com.android.os.profiling.anomaly.ratelimiter.persistence.ProtoStateStore;
 import com.android.os.profiling.anomaly.ratelimiter.persistence.RateLimiterState;
 import com.android.os.profiling.anomaly.ratelimiter.persistence.RateLimiterStateStore;
 import com.android.os.profiling.anomaly.util.LogUtil;
-import com.android.os.profiling.anomaly.wrapper.ExecutorServiceWrapper;
 import com.android.os.profiling.anomaly.wrapper.ContextSystemServiceFetcher;
+import com.android.os.profiling.anomaly.wrapper.ExecutorServiceWrapper;
 import com.android.server.LocalManagerRegistry;
 import com.android.server.SystemService;
 
@@ -208,6 +209,10 @@ public final class AnomalyDetectorService extends SystemService {
 
     @Override
     public void onStart() {
+        // AnomalyDetector service should only be enabled beyond C.
+        if (!SdkLevel.isAtLeastC()) {
+            return;
+        }
         sLog.i("onStart()");
 
         LocalManagerRegistry.addManager(AnomalyDetectorManagerLocal.class, mLocalManager);
@@ -230,6 +235,11 @@ public final class AnomalyDetectorService extends SystemService {
 
     @Override
     public void onBootPhase(int phase) {
+        // AnomalyDetector service should only be enabled beyond C.
+        if (!SdkLevel.isAtLeastC()) {
+            return;
+        }
+
         if (phase == SystemService.PHASE_SYSTEM_SERVICES_READY) {
             mController.onSystemServicesReady();
         }

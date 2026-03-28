@@ -117,7 +117,7 @@ public class ProfilingService extends IProfilingService.Stub {
             "Rate limiter disabled manually via adb.";
 
     // LINT.IfChange(anomaly_memory_limit_tag)
-    private static final String ANOMALY_MEMORY_LIMIT_TAG = "MEMORY_LIMIT";
+    private static final String ANOMALY_MEMORY_LIMIT_TAG = "memory_limit";
     // LINT.ThenChange(LoggingHelper.java:anomaly_memory_limit_tag)
 
     private static final String MEMORY_LIMIT_METADATA_HIGHLIGHT_REASON = "memory_limit";
@@ -2944,6 +2944,14 @@ public class ProfilingService extends IProfilingService.Stub {
                                                 keyLeastSigBits,
                                                 triggerType);
                                 session.setFileName(resultFileName);
+
+                                // Since sendAnomalyProfile is used for results that have already
+                                // been collected, we need to set the profiling start time here
+                                // as it bypasses startProfiling where it is typically set.
+                                // Without a start time, the session may be immediately cleaned
+                                // up as expired.
+                                session.setProfilingStartTimeMs(System.currentTimeMillis());
+
                                 moveSessionToQueue(session, true);
                                 advanceTracingSession(session, TracingState.PROFILING_FINISHED);
                             }
