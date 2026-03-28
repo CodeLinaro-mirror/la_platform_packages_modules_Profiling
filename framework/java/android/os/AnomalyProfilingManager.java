@@ -102,7 +102,7 @@ public final class AnomalyProfilingManager implements AnomalyProfilingClient {
     public @interface AnomalyTriggerType {}
 
     public AnomalyProfilingManager() {
-        if (!android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()) {
+        if (!android.os.profiling.anomaly.flags.Flags.anomalyDetectorCoreC()) {
             throw new IllegalStateException(
                     "Attempting to use AnomalyProfilingManager with flag off.");
         }

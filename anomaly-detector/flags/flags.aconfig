@@ -4,7 +4,7 @@ container: "com.android.profiling"
 flag {
    name: "anomaly_detector_core"
    namespace: "backstage_power"
-   is_exported: true
+   is_exported: false
    description: "Flag used for initial development of the anomaly detection service"
    bug: "418225779"
 }

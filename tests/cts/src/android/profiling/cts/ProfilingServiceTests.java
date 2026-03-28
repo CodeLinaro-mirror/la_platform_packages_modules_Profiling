@@ -2902,7 +2902,7 @@ public final class ProfilingServiceTests {
     }
 
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testRegisterAnomalyCallbacks_failSecurityException() {
         Throwable throwable =
                 assertThrows(
@@ -2928,7 +2928,7 @@ public final class ProfilingServiceTests {
     }
 
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testIsTriggerRegistered_failSecurityException() {
         Throwable throwable =
                 assertThrows(
@@ -2939,7 +2939,7 @@ public final class ProfilingServiceTests {
     }
 
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testSendAnomalyProfile_failSecurityException() {
         Throwable throwable =
                 assertThrows(
@@ -2977,7 +2977,7 @@ public final class ProfilingServiceTests {
      * the session to queue.
      */
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testSendAnomalyProfile_setsStartTime() {
         doNothing().when(mProfilingService).enforceSystemCaller();
         mProfilingService.mQueuedTracingResults.clear();
@@ -3010,7 +3010,7 @@ public final class ProfilingServiceTests {
     }
 
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testCollectAnomalyProfile_failSecurityException() {
         Throwable throwable =
                 assertThrows(
@@ -3052,7 +3052,7 @@ public final class ProfilingServiceTests {
      * limiter and proceeding with the session.
      */
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testMemoryLimiterAnomaly_execution() {
         // Register for anomaly trigger.
         mProfilingService.addTrigger(
@@ -3119,7 +3119,7 @@ public final class ProfilingServiceTests {
 
     /** Test that the memory limit anomaly result is bundled with metadata. */
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testMemoryLimiterAnomaly_bundling() throws Exception {
         // Create a session for memory limit anomaly.
         TracingSession session =
