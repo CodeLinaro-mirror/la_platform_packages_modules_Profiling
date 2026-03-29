@@ -72,5 +72,5 @@ java_sdk_library {
     apex_available: [
         "com.android.profiling",
     ],
-    min_sdk_version: "36",
+    min_sdk_version: "37",
 }
