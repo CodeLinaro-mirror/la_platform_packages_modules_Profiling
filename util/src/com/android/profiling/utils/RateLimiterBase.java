@@ -47,23 +47,30 @@ public abstract class RateLimiterBase {
     public static final int RATE_LIMIT_RESULT_BLOCKED_SYSTEM = 2;
 
     /** List of collections of run costs and entries from different time ranges. */
-    @VisibleForTesting public List<EntryGroupWrapper> mPastRuns;
+    @VisibleForTesting public volatile List<EntryGroupWrapper> mPastRuns;
 
     private final HandlerCallback mHandlerCallback;
 
     private Runnable mPersistRunnable = null;
-    private boolean mPersistScheduled = false;
+    private final AtomicBoolean mPersistScheduled = new AtomicBoolean(false);
 
-    private long mLastPersistedTimestampMs;
+    private volatile long mLastPersistedTimestampMs = 0L;
+
+    protected final Object mLock = new Object();
+    /**
+     * Lock used specifically for serializing disk I/O operations to prevent concurrent writes to
+     * the same {@link AtomicFile}, which is not thread-safe.
+     */
+    private final Object mWriteLock = new Object();
 
     /**
      * The path to the directory which includes the historical rate limiter data file as specified
      * in {@link #mPersistFile}.
      */
-    @VisibleForTesting public File mPersistStoreDir;
+    @VisibleForTesting public volatile File mPersistStoreDir = null;
 
     /** The historical rate limiter data file, persisted in the storage. */
-    @VisibleForTesting public File mPersistFile;
+    @VisibleForTesting public volatile File mPersistFile = null;
 
     @VisibleForTesting public AtomicBoolean mDataLoaded = new AtomicBoolean();
 
@@ -90,28 +97,31 @@ public abstract class RateLimiterBase {
      * return {@link #RATE_LIMIT_RESULT_BLOCKED_SYSTEM}.
      */
     public void initialize() {
-        List<TimeBucket> timeBuckets = getTimeBuckets();
-        if (timeBuckets.size() == 0) {
-            throw new IllegalArgumentException(
-                    "Rate limiter instance needs to have at least 1 time bucket");
-        }
-        mPastRuns = new ArrayList<EntryGroupWrapper>(timeBuckets.size());
-        long lastTimeBucketSizeMs = 0;
-        for (int i = 0; i < timeBuckets.size(); i++) {
-            mPastRuns.add(new EntryGroupWrapper(timeBuckets.get(i)));
-
-            // Validate the order.
-            long currentTimeBucketSizeMs = mPastRuns.get(i).mTimeRangeMs;
-            if (currentTimeBucketSizeMs <= lastTimeBucketSizeMs) {
+        synchronized (mLock) {
+            List<TimeBucket> timeBuckets = getTimeBuckets();
+            if (timeBuckets.size() == 0) {
                 throw new IllegalArgumentException(
-                        "Time buckets must be provided with times ordered smallest to largest.");
+                        "Rate limiter instance needs to have at least 1 time bucket");
             }
-            lastTimeBucketSizeMs = currentTimeBucketSizeMs;
+            mPastRuns = new ArrayList<EntryGroupWrapper>(timeBuckets.size());
+            long lastTimeBucketSizeMs = 0;
+            for (int i = 0; i < timeBuckets.size(); i++) {
+                mPastRuns.add(new EntryGroupWrapper(timeBuckets.get(i), mLock));
+
+                // Validate the order.
+                long currentTimeBucketSizeMs = mPastRuns.get(i).mTimeRangeMs;
+                if (currentTimeBucketSizeMs <= lastTimeBucketSizeMs) {
+                    throw new IllegalArgumentException(
+                            "Time buckets must be provided with times ordered smallest to"
+                                + " largest.");
+                }
+                lastTimeBucketSizeMs = currentTimeBucketSizeMs;
+            }
+
+            mLastPersistedTimestampMs = System.currentTimeMillis();
+
+            setupFromPersistedData();
         }
-
-        mLastPersistedTimestampMs = System.currentTimeMillis();
-
-        setupFromPersistedData();
     }
 
     /**
@@ -145,16 +155,18 @@ public abstract class RateLimiterBase {
 
         final long currentTimeMillis = System.currentTimeMillis();
         int status = RATE_LIMIT_RESULT_ALLOWED;
-        for (int i = 0; i < mPastRuns.size(); i++) {
-            status = mPastRuns.get(i).isProfilingAllowed(uid, cost, currentTimeMillis);
-            if (status != RATE_LIMIT_RESULT_ALLOWED) {
-                return status;
+        synchronized (mLock) {
+            for (int i = 0; i < mPastRuns.size(); i++) {
+                status = mPastRuns.get(i).isProfilingAllowed(uid, cost, currentTimeMillis);
+                if (status != RATE_LIMIT_RESULT_ALLOWED) {
+                    return status;
+                }
             }
-        }
 
-        // Request is allowed, iterate through again to record the cost and then return result.
-        for (int i = 0; i < mPastRuns.size(); i++) {
-            mPastRuns.get(i).add(uid, cost, currentTimeMillis);
+            // Request is allowed, iterate through again to record the cost and then return result.
+            for (int i = 0; i < mPastRuns.size(); i++) {
+                mPastRuns.get(i).add(uid, cost, currentTimeMillis);
+            }
         }
         maybePersistToDisk();
         return status;
@@ -174,18 +186,20 @@ public abstract class RateLimiterBase {
      */
     @VisibleForTesting
     public void maybePersistToDisk() {
-        if (mPersistScheduled) {
+        if (mPersistScheduled.get()) {
             // We're already waiting on a scheduled persist job, do nothing.
             return;
         }
 
-        if (getPersistToDiskFrequencyMs() == 0
-                || (System.currentTimeMillis() - mLastPersistedTimestampMs
-                        >= getPersistToDiskFrequencyMs())) {
-            // If persist frequency is 0 or if it's already been longer than persist frequency since
-            // the last persist then persist immediately.
-            persistToDisk();
-        } else {
+        long frequency = getPersistToDiskFrequencyMs();
+        if (frequency != 0
+                && (System.currentTimeMillis() - mLastPersistedTimestampMs < frequency)) {
+
+            if (!mPersistScheduled.compareAndSet(false, true)) {
+                // Someone else scheduled it while we were checking.
+                return;
+            }
+
             // Schedule the persist job.
             if (mPersistRunnable == null) {
                 mPersistRunnable =
@@ -193,17 +207,18 @@ public abstract class RateLimiterBase {
                             @Override
                             public void run() {
                                 persistToDisk();
-                                mPersistScheduled = false;
+                                mPersistScheduled.set(false);
                             }
                         };
             }
-            mPersistScheduled = true;
-            long persistDelay =
-                    mLastPersistedTimestampMs
-                            + getPersistToDiskFrequencyMs()
-                            - System.currentTimeMillis();
+            long persistDelay = mLastPersistedTimestampMs + frequency - System.currentTimeMillis();
             mHandlerCallback.obtainHandler().postDelayed(mPersistRunnable, persistDelay);
+            return;
         }
+
+        // If we got here then either persist frequency is 0 or it has already been longer than
+        // persist frequency since the last persist. Persist immediately.
+        persistToDisk();
     }
 
     /**
@@ -214,48 +229,67 @@ public abstract class RateLimiterBase {
     public void persistToDisk() {
         // Check if file exists
         try {
-            if (mPersistFile == null) {
-                // Try again to create the necessary files.
-                if (!setupPersistDir()) {
-                    // No file, nowhere to save.
-                    if (DEBUG) Log.d(TAG, "Failed setting up persist files so nowhere to save to.");
-                    return;
+            synchronized (mLock) {
+                if (mPersistFile == null) {
+                    // Try again to create the necessary files.
+                    if (!setupPersistDir()) {
+                        // No file, nowhere to save.
+                        if (DEBUG) {
+                            Log.d(TAG, "Failed setting up persist files so nowhere to save to.");
+                        }
+                        return;
+                    }
                 }
-            }
 
-            if (!mPersistFile.exists()) {
-                // File doesn't exist, try to create it.
-                mPersistFile.createNewFile();
+                if (!mPersistFile.exists()) {
+                    // File doesn't exist, try to create it.
+                    mPersistFile.createNewFile();
+                }
             }
         } catch (Exception e) {
             if (DEBUG) Log.d(TAG, "Exception accessing persisted records", e);
             return;
         }
 
-        // Persist using the longest time range entry group only as this will contain all records
-        // for the smaller groups.
-        EntryGroupWrapper pastRunsLongestTimeRange = mPastRuns.get(mPastRuns.size() - 1);
+        byte[] protoBytes;
+        synchronized (mLock) {
+            // Persist using the longest time range entry group only as this will contain all
+            // records for the smaller groups.
+            EntryGroupWrapper pastRunsLongestTimeRange = mPastRuns.get(mPastRuns.size() - 1);
 
-        // Clean up old records to reduce extraneous writes
-        pastRunsLongestTimeRange.cleanUpOldRecords();
+            // Clean up old records to reduce extraneous writes
+            pastRunsLongestTimeRange.cleanUpOldRecords();
 
-        // Generate proto for records.
-        RateLimiterRecordsWrapper outerWrapper =
-                RateLimiterRecordsWrapper.newBuilder()
-                        .setRecords(pastRunsLongestTimeRange.toProto())
-                        .build();
+            // Generate proto for records.
+            RateLimiterRecordsWrapper outerWrapper =
+                    RateLimiterRecordsWrapper.newBuilder()
+                            .setRecords(pastRunsLongestTimeRange.toProto())
+                            .build();
 
-        // Write to disk
-        byte[] protoBytes = outerWrapper.toByteArray();
-        AtomicFile persistFile = new AtomicFile(mPersistFile);
-        FileOutputStream out = null;
-        try {
-            out = persistFile.startWrite();
-            out.write(protoBytes);
-            persistFile.finishWrite(out);
-        } catch (IOException e) {
-            if (DEBUG) Log.d(TAG, "Exception writing records", e);
-            persistFile.failWrite(out);
+            protoBytes = outerWrapper.toByteArray();
+        }
+
+        // Write to disk. Use mWriteLock to serialize I/O and avoid concurrent AtomicFile conflicts.
+        synchronized (mWriteLock) {
+            AtomicFile persistFile;
+            synchronized (mLock) {
+                if (mPersistFile == null) {
+                    return;
+                }
+                persistFile = new AtomicFile(mPersistFile);
+            }
+            FileOutputStream out = null;
+            try {
+                out = persistFile.startWrite();
+                out.write(protoBytes);
+                persistFile.finishWrite(out);
+                synchronized (mLock) {
+                    mLastPersistedTimestampMs = System.currentTimeMillis();
+                }
+            } catch (IOException e) {
+                if (DEBUG) Log.d(TAG, "Exception writing records", e);
+                persistFile.failWrite(out);
+            }
         }
     }
 
@@ -265,102 +299,109 @@ public abstract class RateLimiterBase {
      */
     @VisibleForTesting
     public void setupFromPersistedData() {
-        // Setup persist files
-        try {
-            if (!setupPersistDir()) {
-                // If setup directory and file was unsuccessful then we won't be able to persist
-                // records, return and leave feature disabled entirely.
-                if (DEBUG) Log.d(TAG, "Failed to setup persist directory/files. Feature disabled.");
+        synchronized (mLock) {
+            // Setup persist files
+            try {
+                if (!setupPersistDir()) {
+                    // If setup directory and file was unsuccessful then we won't be able to persist
+                    // records, return and leave feature disabled entirely.
+                    if (DEBUG) {
+                        Log.d(TAG, "Failed to setup persist directory/files. Feature disabled.");
+                    }
+                    mDataLoaded.set(false);
+                    return;
+                }
+            } catch (SecurityException e) {
+                // Can't access files.
+                if (DEBUG) {
+                    Log.d(TAG, "Failed to setup persist directory/files. Feature disabled.", e);
+                }
                 mDataLoaded.set(false);
                 return;
             }
-        } catch (SecurityException e) {
-            // Can't access files.
-            if (DEBUG) Log.d(TAG, "Failed to setup persist directory/files. Feature disabled.", e);
-            mDataLoaded.set(false);
-            return;
-        }
 
-        // Check if file exists
-        try {
-            if (!mPersistFile.exists()) {
-                // No file, nothing to load. This is an expected state for before the feature has
-                // ever been used so mark ready to use and return.
-                if (DEBUG) Log.d(TAG, "Persist file does not exist, skipping load from disk.");
+            // Check if file exists
+            try {
+                if (!mPersistFile.exists()) {
+                    // No file, nothing to load. This is an expected state for before the feature
+                    // has ever been used so mark ready to use and return.
+                    if (DEBUG) Log.d(TAG, "Persist file does not exist, skipping load from disk.");
+                    mDataLoaded.set(true);
+                    return;
+                }
+            } catch (SecurityException e) {
+                // Can't access file.
+                if (DEBUG) Log.d(TAG, "Exception accessing persist file", e);
+                mDataLoaded.set(false);
+                return;
+            }
+
+            // Read the file
+            AtomicFile persistFile = new AtomicFile(mPersistFile);
+            byte[] bytes;
+            try {
+                bytes = persistFile.readFully();
+            } catch (IOException e) {
+                if (DEBUG) Log.d(TAG, "Exception reading persist file", e);
+                // We already handled no file case above and empty file would not result in
+                // exception so this is a problem reading the file. Attempt remediation.
+                if (handleBadFile()) {
+                    // Successfully remediated bad state! Mark ready to use.
+                    mDataLoaded.set(true);
+                } else {
+                    // Failed to remediate bad state. Feature disabled.
+                    mDataLoaded.set(false);
+                }
+                // Return either way as {@link handleBadFile} handles the entirety of remediating
+                // the bad state and the remainder of this method is no longer applicable.
+                return;
+            }
+            if (bytes.length == 0) {
+                // Empty file, nothing to load. This is an expected state for before the feature
+                // persists so mark ready to use and return.
+                if (DEBUG) Log.d(TAG, "Persist file is empty, skipping load from disk.");
                 mDataLoaded.set(true);
                 return;
             }
-        } catch (SecurityException e) {
-            // Can't access file.
-            if (DEBUG) Log.d(TAG, "Exception accessing persist file", e);
-            mDataLoaded.set(false);
-            return;
-        }
 
-        // Read the file
-        AtomicFile persistFile = new AtomicFile(mPersistFile);
-        byte[] bytes;
-        try {
-            bytes = persistFile.readFully();
-        } catch (IOException e) {
-            if (DEBUG) Log.d(TAG, "Exception reading persist file", e);
-            // We already handled no file case above and empty file would not result in exception
-            // so this is a problem reading the file. Attempt remediation.
-            if (handleBadFile()) {
-                // Successfully remediated bad state! Mark ready to use.
-                mDataLoaded.set(true);
-            } else {
-                // Failed to remediate bad state. Feature disabled.
-                mDataLoaded.set(false);
+            // Parse file bytes to proto
+            RateLimiterRecordsWrapper outerWrapper;
+            try {
+                outerWrapper = RateLimiterRecordsWrapper.parseFrom(bytes);
+            } catch (Exception e) {
+                // Failed to parse. Attempt remediation.
+                if (DEBUG) Log.d(TAG, "Error parsing proto from persisted bytes", e);
+                if (handleBadFile()) {
+                    // Successfully remediated bad state! Mark ready to use.
+                    mDataLoaded.set(true);
+                } else {
+                    // Failed to remediate bad state. Feature disabled.
+                    mDataLoaded.set(false);
+                }
+                // Return either way as {@link handleBadFile} handles the entirety of remediating
+                // the bad state and the remainder of this method is no longer applicable.
+                return;
             }
-            // Return either way as {@link handleBadFile} handles the entirety of remediating the
-            // bad state and the remainder of this method is no longer applicable.
-            return;
-        }
-        if (bytes.length == 0) {
-            // Empty file, nothing to load. This is an expected state for before the feature
-            // persists so mark ready to use and return.
-            if (DEBUG) Log.d(TAG, "Persist file is empty, skipping load from disk.");
-            mDataLoaded.set(true);
-            return;
-        }
 
-        // Parse file bytes to proto
-        RateLimiterRecordsWrapper outerWrapper;
-        try {
-            outerWrapper = RateLimiterRecordsWrapper.parseFrom(bytes);
-        } catch (Exception e) {
-            // Failed to parse. Attempt remediation.
-            if (DEBUG) Log.d(TAG, "Error parsing proto from persisted bytes", e);
-            if (handleBadFile()) {
-                // Successfully remediated bad state! Mark ready to use.
-                mDataLoaded.set(true);
-            } else {
-                // Failed to remediate bad state. Feature disabled.
-                mDataLoaded.set(false);
-            }
-            // Return either way as {@link handleBadFile} handles the entirety of remediating the
-            // bad state and the remainder of this method is no longer applicable.
-            return;
-        }
-
-        // Populate in memory records stores
-        RateLimiterRecordsWrapper.EntryGroupWrapper weekGroupWrapper = outerWrapper.getRecords();
-        final long currentTimeMillis = System.currentTimeMillis();
-        for (int i = 0; i < weekGroupWrapper.getEntriesCount(); i++) {
-            RateLimiterRecordsWrapper.EntryGroupWrapper.Entry entry =
-                    weekGroupWrapper.getEntries(i);
-            // Check if this timestamp fits the time range for each records collection.
-            for (int j = 0; j < mPastRuns.size(); j++) {
-                EntryGroupWrapper pastRuns = mPastRuns.get(j);
-                if (entry.getTimestamp() > currentTimeMillis - pastRuns.mTimeRangeMs) {
-                    pastRuns.add(entry.getUid(), entry.getCost(), entry.getTimestamp());
+            // Populate in memory records stores
+            RateLimiterRecordsWrapper.EntryGroupWrapper weekGroupWrapper =
+                    outerWrapper.getRecords();
+            final long currentTimeMillis = System.currentTimeMillis();
+            for (int i = 0; i < weekGroupWrapper.getEntriesCount(); i++) {
+                RateLimiterRecordsWrapper.EntryGroupWrapper.Entry entry =
+                        weekGroupWrapper.getEntries(i);
+                // Check if this timestamp fits the time range for each records collection.
+                for (int j = 0; j < mPastRuns.size(); j++) {
+                    EntryGroupWrapper pastRuns = mPastRuns.get(j);
+                    if (entry.getTimestamp() > currentTimeMillis - pastRuns.mTimeRangeMs) {
+                        pastRuns.add(entry.getUid(), entry.getCost(), entry.getTimestamp());
+                    }
                 }
             }
-        }
 
-        // Success!
-        mDataLoaded.set(true);
+            // Success!
+            mDataLoaded.set(true);
+        }
     }
 
     /**
@@ -376,57 +417,65 @@ public abstract class RateLimiterBase {
      */
     @VisibleForTesting
     public boolean handleBadFile() {
-        if (mPersistFile == null) {
-            // This should not happen, if there is no file how can it have been determined to be
-            // bad?
-            if (DEBUG) Log.d(TAG, "Attempted to remediate a bad file but the file doesn't exist.");
-            return false;
-        }
-
-        try {
-            // Delete the bad file, we won't likely have better luck reading it a second time.
-            mPersistFile.delete();
-            if (DEBUG) Log.d(TAG, "Deleted persist file which could not be parsed.");
-        } catch (SecurityException e) {
-            // Can't delete file so we can't recover from this state.
-            if (DEBUG) Log.d(TAG, "Failed to delete persist file", e);
-            return false;
-        }
-
-        try {
-            if (!setupPersistDir()) {
-                // If setup files was unsuccessful then we won't be able to persist files.
-                if (DEBUG) Log.d(TAG, "Failed to setup persist directory/files. Feature disabled.");
+        synchronized (mLock) {
+            if (mPersistFile == null) {
+                // This should not happen, if there is no file how can it have been determined to
+                // be bad?
+                if (DEBUG) {
+                    Log.d(TAG, "Attempted to remediate a bad file but the file doesn't exist.");
+                }
                 return false;
             }
-            mPersistFile.createNewFile();
-            if (!mPersistFile.exists()) {
-                // If creating the file failed then we won't be able to persist.
-                if (DEBUG) Log.d(TAG, "Failed to create persist file. Feature disabled.");
+
+            try {
+                // Delete the bad file, we won't likely have better luck reading it a second time.
+                mPersistFile.delete();
+                if (DEBUG) Log.d(TAG, "Deleted persist file which could not be parsed.");
+            } catch (SecurityException e) {
+                // Can't delete file so we can't recover from this state.
+                if (DEBUG) Log.d(TAG, "Failed to delete persist file", e);
                 return false;
             }
-        } catch (SecurityException | IOException e) {
-            // Can't access/setup files.
-            if (DEBUG) Log.d(TAG, "Failed to setup persist directory/files. Feature disabled.", e);
-            return false;
+
+            try {
+                if (!setupPersistDir()) {
+                    // If setup files was unsuccessful then we won't be able to persist files.
+                    if (DEBUG) {
+                        Log.d(TAG, "Failed to setup persist directory/files. Feature disabled.");
+                    }
+                    return false;
+                }
+                mPersistFile.createNewFile();
+                if (!mPersistFile.exists()) {
+                    // If creating the file failed then we won't be able to persist.
+                    if (DEBUG) Log.d(TAG, "Failed to create persist file. Feature disabled.");
+                    return false;
+                }
+            } catch (SecurityException | IOException e) {
+                // Can't access/setup files.
+                if (DEBUG) {
+                    Log.d(TAG, "Failed to setup persist directory/files. Feature disabled.", e);
+                }
+                return false;
+            }
+
+            // If we made it this far then we have successfully deleted the bad file and created a
+            // new useable one - the feature is now ready to be used!
+            // However, we may have lost some records from the bad file, so add some fake records
+            // for the current time with a very high cost, this effectively disables the feature
+            // for the duration of rate limiting (1 week) to err on the cautious side regarding the
+            // potentially lost records.
+            final long timestamp = System.currentTimeMillis();
+            for (int i = 0; i < mPastRuns.size(); i++) {
+                mPastRuns.get(i).add(-1 /*fake uid*/, Integer.MAX_VALUE, timestamp);
+            }
+
+            // Now persist the fake records.
+            maybePersistToDisk();
+
+            // Finally, return true as we successfully remediated the bad file state.
+            return true;
         }
-
-        // If we made it this far then we have successfully deleted the bad file and created a new
-        // useable one - the feature is now ready to be used!
-        // However, we may have lost some records from the bad file, so add some fake records for
-        // the current time with a very high cost, this effectively disables the feature for the
-        // duration of rate limiting (1 week) to err on the cautious side regarding the potentially
-        // lost records.
-        final long timestamp = System.currentTimeMillis();
-        for (int i = 0; i < mPastRuns.size(); i++) {
-            mPastRuns.get(i).add(-1 /*fake uid*/, Integer.MAX_VALUE, timestamp);
-        }
-
-        // Now persist the fake records.
-        maybePersistToDisk();
-
-        // Finally, return true as we successfully remediated the bad file state.
-        return true;
     }
 
     /**
@@ -436,8 +485,9 @@ public abstract class RateLimiterBase {
      * within the list - only the cost values may differ. Cost values of <= 0 will result in the
      * previous value being retained.
      */
-    public void maybeUpdateMaxCosts(List<TimeBucket> timeBuckets) {
-        if (timeBuckets.size() != mPastRuns.size()) {
+    protected void maybeUpdateMaxCosts(List<TimeBucket> timeBuckets) {
+        // If mPastRuns is not yet initialized then there's nothing to update.
+        if (mPastRuns == null || timeBuckets.size() != mPastRuns.size()) {
             return;
         }
 
@@ -480,7 +530,7 @@ public abstract class RateLimiterBase {
     }
 
     public static final class EntryGroupWrapper {
-        private final Object mLock = new Object();
+        private final Object mLock;
 
         @GuardedBy("mLock")
         final Queue<CollectionEntry> mEntries;
@@ -493,7 +543,8 @@ public abstract class RateLimiterBase {
         int mMaxCostPerUid;
         int mTotalCost;
 
-        EntryGroupWrapper(TimeBucket timeBucket) {
+        EntryGroupWrapper(TimeBucket timeBucket, Object lock) {
+            mLock = lock;
             synchronized (mLock) {
                 mMaxCost = timeBucket.mMaxCostSystem;
                 mMaxCostPerUid = timeBucket.mMaxCostProcess;

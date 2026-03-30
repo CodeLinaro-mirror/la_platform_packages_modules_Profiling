@@ -21,7 +21,9 @@ import android.os.ProfilingTriggersWrapper;
 
 public final class ProfilingTriggerData {
 
+    // LINT.IfChange(TriggerTypes)
     public static final int TRIGGER_ALL = -1;
+    // LINT.ThenChange(packages/modules/Profiling/framework/java/android/os/ProfilingManager.java)
 
     // LINT.IfChange(params)
     private final int mUid;

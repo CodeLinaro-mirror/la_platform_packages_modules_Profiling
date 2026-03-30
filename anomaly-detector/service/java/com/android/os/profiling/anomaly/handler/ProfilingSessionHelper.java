@@ -32,6 +32,8 @@ import android.os.profiling.anomaly.RuleInternal;
 import android.util.SparseArray;
 
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.os.profiling.anomaly.config.ProfilingConcurrencyConfig;
+import com.android.os.profiling.anomaly.ratelimiter.ProfilingRateLimiter;
 import com.android.os.profiling.anomaly.util.LogUtil;
 
 import org.json.JSONException;
@@ -42,9 +44,12 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryNotEmptyException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -120,20 +125,49 @@ public class ProfilingSessionHelper {
     }
 
     /**
-     * Start collecting a trace through ProfilingManager for the given UID and package name. If a
-     * session is already ongoing, mark the session as acceptable, which allows it to be delivered
-     * to the package in question when the profiling session is completed.
+     * Attempts to start a profiling session for a given UID and package name.
      *
-     * @param uid The UID to collect the trace for
-     * @param packageName The package name to collect the trace for
+     * <p>This method performs several checks before initiating profiling:
+     *
+     * <ol>
+     *   <li><b>Concurrency Checks:</b>
+     *       <ul>
+     *         <li>A device-wide limit on the number of concurrent profiling sessions is enforced. A
+     *             new session is denied if this limit is reached.
+     *         <li>If a session is already running for the specified UID, a new one is not started.
+     *             Instead, for certain anomaly types like Binder Spam, the existing session may be
+     *             marked as "acceptable" to ensure its results are processed.
+     *       </ul>
+     *   <li><b>Rate Limiting:</b> The request is checked against the {@link ProfilingRateLimiter}.
+     *       If the request is denied (e.g., due to exceeding device-wide limits or being within a
+     *       cool-down period), the method logs the event and returns without starting a session.
+     * </ol>
+     *
+     * <p>If all checks pass, it proceeds to call the {@link AnomalyProfilingClient} to start the
+     * profiling trace and records the new session's information for tracking.
+     *
+     * @param uid The UID of the process to profile.
+     * @param packageName The package name associated with the process.
+     * @param maxSessionDurationMs The maximum duration for the profiling session in milliseconds.
+     * @param sessionParams A {@link Bundle} of additional parameters for the profiling session.
+     * @param profilingType The type of profiling to perform, as defined in {@link
+     *     ProfilingManager.ProfilingType}.
+     * @param conditionType The type of anomaly that triggered this request, as defined in {@link
+     *     RuleInternal.ConditionTypeInternal}.
+     * @param profilingRateLimiter The rate limiter instance to check if the request is allowed.
+     * @param signature A map of key-value pairs representing the specific anomaly signature, used
+     *     for fine-grained rate-limiting. May be {@code null}.
      */
     public void requestProfiling(
             int uid,
             String packageName,
-            int maxSessionDurationMs,
+            long maxSessionDurationMs,
             Bundle sessionParams,
             @ProfilingManager.ProfilingType int profilingType,
-            @RuleInternal.ConditionTypeInternal String conditionType) {
+            @RuleInternal.ConditionTypeInternal String conditionType,
+            ProfilingRateLimiter profilingRateLimiter,
+            @Nullable Map<String, String> signature,
+            ProfilingConcurrencyConfig profilingConcurrencyConfig) {
         synchronized (mLock) {
             if (mUidSessionInfoSparseArray.contains(uid)) {
                 markSessionAcceptable(uid, conditionType);
@@ -141,12 +175,21 @@ public class ProfilingSessionHelper {
                 // a new session should not be started.
                 return;
             }
+            if (mUidSessionInfoSparseArray.size()
+                    >= profilingConcurrencyConfig.getDeviceMaxConcurrentSessions()) {
+                sLog.i("Concurrency limit reached. Denying profiling request for UID " + uid);
+                return;
+            }
+        }
+
+        if (!profilingRateLimiter.isRequestAllowed(uid, conditionType, signature)) {
+            sLog.i("Profiling request for UID " + uid + " was rate-limited.");
+            return;
         }
 
         Bundle params = new Bundle();
-        params.putInt(KEY_DURATION_MS, maxSessionDurationMs);
+        params.putLong(KEY_DURATION_MS, maxSessionDurationMs);
         params.putAll(sessionParams);
-        // TODO: b/477968969 - check with rate limiter before starting the profiling session
         UUID sessionId =
                 mAnomalyProfilingManager.collectAnomalyProfile(
                         uid,
@@ -200,6 +243,23 @@ public class ProfilingSessionHelper {
                                             + ".zip")
                             .toFile();
             addResultAndMetadataToZipFile(resultFilePath.toFile(), metadata, zipFile);
+            // Delete the result file after adding it to the zip file
+            try {
+            Files.deleteIfExists(resultFilePath);
+            } catch (DirectoryNotEmptyException e) {
+                sLog.e("Unable to delete the result file, directory is not empty (THIS SHOULD NOT"
+                        + " HAPPEN): %s", e);
+            } catch (IOException | SecurityException e) {
+                sLog.e("Unable to delete the result file: %s", e);
+            }
+            int anomalyTypeIndex = sessionInfo.conditionType.lastIndexOf('.') + 1;
+            String anomalyType = sessionInfo.conditionType.substring(anomalyTypeIndex);
+            mAnomalyProfilingManager.sendAnomalyProfile(
+                    sessionInfo.uid,
+                    sessionInfo.packageName,
+                    ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
+                    anomalyType,
+                    zipFile.getName());
         } catch (JSONException e) {
             sLog.e("Failed to generate metadata from SessionInfo", e);
         }
