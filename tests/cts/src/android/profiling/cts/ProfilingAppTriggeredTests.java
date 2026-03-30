@@ -51,6 +51,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Bundle;
+import android.os.Process;
 import android.os.ProfilingResult;
 import android.os.ProfilingTrigger;
 import android.os.profiling.Flags;
@@ -96,6 +97,7 @@ public class ProfilingAppTriggeredTests {
 
     private Instrumentation mInstrumentation;
     private ResultReceiverFilter mResultReceiverFilter;
+    private int mTestRunningUserId;
 
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
@@ -105,6 +107,7 @@ public class ProfilingAppTriggeredTests {
     @Before
     public void setup() {
         mInstrumentation = InstrumentationRegistry.getInstrumentation();
+        mTestRunningUserId = Process.myUserHandle().getIdentifier();
     }
 
     @After
@@ -115,7 +118,7 @@ public class ProfilingAppTriggeredTests {
             mResultReceiverFilter.unregister();
         }
 
-        executeShellCmd("am force-stop " + STUB_PACKAGE_NAME);
+        executeShellCmd("am force-stop --user %d %s", mTestRunningUserId, STUB_PACKAGE_NAME);
     }
 
     @Test
@@ -257,7 +260,10 @@ public class ProfilingAppTriggeredTests {
                 ProfilingTrigger.TRIGGER_TYPE_KILL_FORCE_STOP,
                 // This command invokes ActivityManagerService.forceStopPackage(), which sends
                 // ProfilingTrigger.TRIGGER_KILL_FORCE_STOP.
-                () -> executeShellCmd("am force-stop " + STUB_PACKAGE_NAME));
+                () ->
+                        executeShellCmd(
+                                "am force-stop --user %d %s",
+                                mTestRunningUserId, STUB_PACKAGE_NAME));
     }
 
     @Test
@@ -357,10 +363,10 @@ public class ProfilingAppTriggeredTests {
      *
      * @param action The action to be passed to the activity.
      */
-    private static void startActivityWithAction(int action, String packageName) {
+    private void startActivityWithAction(int action, String packageName) {
         executeShellCmd(
-                "am start -W -n %s/%s --ei %s %d",
-                packageName, SIMPLE_ACTIVITY, ACTION_KEY, action);
+                "am start --user %d -W -n %s/%s --ei %s %d",
+                mTestRunningUserId, packageName, SIMPLE_ACTIVITY, ACTION_KEY, action);
 
         Log.d(TAG, "Waiting for process to start: " + packageName);
         waitForCondition(
