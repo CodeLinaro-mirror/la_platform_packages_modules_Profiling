@@ -111,7 +111,7 @@ public final class ProfilingTrigger {
      * is registered by more than one package with the same user id
      * (see {@link PackageManager#getPackagesForUid(int)}).
      */
-    @FlaggedApi(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @FlaggedApi(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public static final int TRIGGER_TYPE_ANOMALY = 8;
 
     /**
@@ -152,8 +152,9 @@ public final class ProfilingTrigger {
      * <p>The tag returned with the {@link ProfilingResult#getTag()} will contain additional
      * information about the app compatibility issues.
      */
-    @FlaggedApi(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @FlaggedApi(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public static final int TRIGGER_TYPE_APP_COMPAT = 11;
+
     // LINT.ThenChange(/service/java/com/android/os/profiling/LoggingHelper.java:trigger_types)
 
     /** @hide */
@@ -289,12 +290,12 @@ public final class ProfilingTrigger {
                 || (Flags.profilingTriggerKillRecents() && triggerType == TRIGGER_TYPE_KILL_RECENTS)
                 || (Flags.profiling25q4() && triggerType == TRIGGER_TYPE_KILL_TASK_MANAGER)
                 || (Flags.profilingTriggerOom() && triggerType == TRIGGER_TYPE_OOM)
-                || (android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()
+                || (android.os.profiling.anomaly.flags.Flags.anomalyDetectorCoreC()
                         && triggerType == TRIGGER_TYPE_ANOMALY)
                 || (Flags.profilingTriggerKillExcessiveCpuUsage()
                         && triggerType == TRIGGER_TYPE_KILL_EXCESSIVE_CPU_USAGE)
                 || (Flags.profilingTriggerColdStart() && triggerType == TRIGGER_TYPE_COLD_START)
-                || (android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()
+                || (android.os.profiling.anomaly.flags.Flags.anomalyDetectorCoreC()
                         && triggerType == TRIGGER_TYPE_APP_COMPAT);
     }
 
@@ -304,7 +305,7 @@ public final class ProfilingTrigger {
      * @hide
      */
     public static boolean isAnomalyTriggerType(int triggerType) {
-        if (!android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()) {
+        if (!android.os.profiling.anomaly.flags.Flags.anomalyDetectorCoreC()) {
             // If the flag is off then it can't be an anomaly trigger.
             return false;
         } else if (triggerType == ProfilingTrigger.TRIGGER_TYPE_ANOMALY

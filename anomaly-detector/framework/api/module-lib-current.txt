@@ -2,7 +2,7 @@
 // - style=java
 package android.os.profiling.anomaly {
 
-  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public final class AnomalyDetectorFrameworkInitializer {
+  @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core_c") public final class AnomalyDetectorFrameworkInitializer {
     method public static void registerServiceWrappers();
   }
 

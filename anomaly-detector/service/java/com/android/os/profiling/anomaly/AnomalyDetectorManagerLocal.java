@@ -34,7 +34,7 @@ import com.android.os.profiling.anomaly.collector.SignalCollectorData;
  * @hide
  */
 @SystemApi(client = SYSTEM_SERVER)
-@FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE)
+@FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
 public interface AnomalyDetectorManagerLocal {
     /**
      * Registers a new {@link SignalCollector} with the AnomalyDetector service. This method allows

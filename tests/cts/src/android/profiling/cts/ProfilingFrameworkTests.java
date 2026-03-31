@@ -1868,7 +1868,7 @@ public final class ProfilingFrameworkTests {
      */
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testAnomalyProfilingManagerIsTriggerRegistered() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
@@ -1918,7 +1918,7 @@ public final class ProfilingFrameworkTests {
      */
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testAnomalyProfilingManagerSendResultSuccess() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
@@ -1996,7 +1996,7 @@ public final class ProfilingFrameworkTests {
      */
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testAnomalyProfilingManagerCollectAndReturnBackgroundProfilingSuccess()
             throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
@@ -2053,7 +2053,7 @@ public final class ProfilingFrameworkTests {
      */
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testAnomalyProfilingManagerCollectAndReturnNewProfilingSuccess() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
@@ -2102,7 +2102,7 @@ public final class ProfilingFrameworkTests {
      */
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testAnomalyProfilingManagerCollectAndSendBackgroundProfilingSuccess()
             throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
@@ -2163,7 +2163,7 @@ public final class ProfilingFrameworkTests {
      */
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testAnomalyProfilingManagerCollectAndSendNewProfilingSuccess_triggerAnomaly()
             throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
@@ -2215,7 +2215,7 @@ public final class ProfilingFrameworkTests {
      */
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testAnomalyProfilingManagerCollectAndSendNewProfilingSuccess_triggerAppCompat()
             throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
@@ -2266,7 +2266,7 @@ public final class ProfilingFrameworkTests {
      */
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testAnomalyProfilingManagerNewProfilingTriggerNotRegisteredFail() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
@@ -2316,7 +2316,7 @@ public final class ProfilingFrameworkTests {
      */
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testAnomalyProfilingManagerBackgroundTraceTriggerNotRegisteredFail()
             throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
@@ -2374,7 +2374,7 @@ public final class ProfilingFrameworkTests {
      */
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testAnomalyProfilingManagerBackgroundProfilingNotRunningFail() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
@@ -2428,7 +2428,7 @@ public final class ProfilingFrameworkTests {
      */
     @SuppressWarnings("GuardedBy") // Suppress warning for mProfilingManager lock.
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testAnomalyProfilingMemoryRuntimeLimit() throws Exception {
         if (mProfilingManager == null) throw new TestException("mProfilingManager can not be null");
 
@@ -2466,7 +2466,7 @@ public final class ProfilingFrameworkTests {
     }
 
     @Test
-    @RequiresFlagsDisabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsDisabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testIsAnomalyTriggerType_flagOff() {
         // When the flag is off, no trigger type should be returned as anomaly type.
         assertThat(ProfilingTrigger.isAnomalyTriggerType(ProfilingTrigger.TRIGGER_TYPE_ANOMALY))
@@ -2478,7 +2478,7 @@ public final class ProfilingFrameworkTests {
     }
 
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testIsAnomalyTriggerType() {
         // With the flag on, ANOMALY and APP_COMPAT should be identified as anomaly type.
         assertThat(ProfilingTrigger.isAnomalyTriggerType(ProfilingTrigger.TRIGGER_TYPE_ANOMALY))

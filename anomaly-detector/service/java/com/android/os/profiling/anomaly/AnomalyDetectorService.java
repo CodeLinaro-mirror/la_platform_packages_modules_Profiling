@@ -88,13 +88,13 @@ import java.util.concurrent.Executors;
  * Anomaly Detector Service.
  *
  * <p>This entire service is part of a feature controlled by the {@link
- * Flags#FLAG_ANOMALY_DETECTOR_CORE} flag. It is started by the SystemServer only when this flag is
- * enabled. As a result, the entire class is annotated with {@link FlaggedApi} to signify that its
- * existence and all of its APIs are conditional upon this feature flag.
+ * Flags#FLAG_ANOMALY_DETECTOR_CORE_C} flag. It is started by the SystemServer only when this flag
+ * is enabled. As a result, the entire class is annotated with {@link FlaggedApi} to signify that
+ * its existence and all of its APIs are conditional upon this feature flag.
  *
  * @hide
  */
-@FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE)
+@FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
 public final class AnomalyDetectorService extends SystemService {
     static final String FULL_BINDER_SPAM_DETECTION_CONFIG_FILE_NAME =
             "anomaly_detection.full_binder_spam_detection";
