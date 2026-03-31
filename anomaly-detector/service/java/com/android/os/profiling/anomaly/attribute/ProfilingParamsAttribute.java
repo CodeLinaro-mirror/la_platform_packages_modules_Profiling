@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The Android Open Source Project
+ * Copyright (C) 2026 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,24 +14,20 @@
  * limitations under the License.
  */
 
-package com.android.os.profiling.anomaly.wrapper;
+package com.android.os.profiling.anomaly.attribute;
 
-import android.app.ActivityManager;
-import android.content.pm.PackageManager;
+import android.os.Bundle;
+import android.os.ProfilingManager;
+
+import com.android.os.profiling.anomaly.core.AnomalyAttribute;
 
 /**
- * Interface to abstract system service access.
+ * An attribute that contains parameters used for starting a profiling session with ProfilingManager
  *
  * @hide
  */
-public interface SystemServiceFetcher {
-    /**
-     * @return The {@link ActivityManager} system service.
-     */
-    ActivityManager getActivityManager();
-
-    /**
-     * @return The {@link PackageManager} system service.
-     */
-    PackageManager getPackageManager();
-}
+public record ProfilingParamsAttribute(
+        int maxSessionDurationMs,
+        @ProfilingManager.ProfilingType int profilingType,
+        Bundle sessionParams)
+        implements AnomalyAttribute {}

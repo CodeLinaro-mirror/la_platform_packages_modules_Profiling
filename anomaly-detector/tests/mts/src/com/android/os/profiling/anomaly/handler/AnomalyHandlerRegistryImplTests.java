@@ -24,27 +24,33 @@ import android.os.profiling.anomaly.RuleInternal.AnomalyActionTypeInternal;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.os.profiling.anomaly.internal.AnomalyHandlerRegistryImpl;
+import com.android.os.profiling.anomaly.wrapper.SystemServiceFetcher;
 
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mock;
 
 /** Tests for {@link AnomalyHandlerRegistryImpl}. */
 @RunWith(AndroidJUnit4.class)
 public final class AnomalyHandlerRegistryImplTests {
     @AnomalyActionTypeInternal private static final int UNREGISTERED_ACTION = 999;
 
+    @Mock private SystemServiceFetcher mContextSystemServiceFetcher;
+
     private AnomalyHandlerRegistryImpl mRegistry;
 
     @Before
     public void setUp() {
-        mRegistry = new AnomalyHandlerRegistryImpl();
+        mRegistry = new AnomalyHandlerRegistryImpl(mContextSystemServiceFetcher);
     }
 
     @Test
     public void constructor_registersDefaultHandlers() {
         assertThat(mRegistry.getHandler(RuleInternal.ACTION_TYPE_LOG))
                 .isInstanceOf(LogAnomalyHandler.class);
+        assertThat(mRegistry.getHandler(RuleInternal.ACTION_TYPE_COLLECT_PROFILE))
+                .isInstanceOf(ProfileAnomalyHandler.class);
     }
 
     @Test

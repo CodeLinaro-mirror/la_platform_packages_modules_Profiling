@@ -60,7 +60,6 @@ public final class SubscriptionId {
         return new SubscriptionId(UUID.randomUUID());
     }
 
-    /** {@inheritDoc} */
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -69,13 +68,11 @@ public final class SubscriptionId {
         return mUuid.equals(that.mUuid);
     }
 
-    /** {@inheritDoc} */
     @Override
     public int hashCode() {
         return mUuid.hashCode();
     }
 
-    /** {@inheritDoc} */
     @Override
     public String toString() {
         return mUuid.toString();
