@@ -46,7 +46,7 @@ import java.util.Collections;
 
 /** Cts tests for {@link AnomalyDetectorManager}. */
 @RunWith(AndroidJUnit4.class)
-@RequiresFlagsEnabled(Flags.FLAG_ANOMALY_DETECTOR_CORE)
+@RequiresFlagsEnabled(Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
 public final class AnomalyDetectorManagerTest {
     @org.junit.Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();

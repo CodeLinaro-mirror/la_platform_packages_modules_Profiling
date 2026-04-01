@@ -40,9 +40,9 @@ package android.os {
   @FlaggedApi("android.os.profiling.system_triggered_profiling_new") public final class ProfilingTrigger {
     method public int getRateLimitingPeriodHours();
     method public int getTriggerType();
-    field @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public static final int TRIGGER_TYPE_ANOMALY = 8; // 0x8
+    field @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core_c") public static final int TRIGGER_TYPE_ANOMALY = 8; // 0x8
     field public static final int TRIGGER_TYPE_ANR = 2; // 0x2
-    field @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core") public static final int TRIGGER_TYPE_APP_COMPAT = 11; // 0xb
+    field @FlaggedApi("android.os.profiling.anomaly.flags.anomaly_detector_core_c") public static final int TRIGGER_TYPE_APP_COMPAT = 11; // 0xb
     field public static final int TRIGGER_TYPE_APP_FULLY_DRAWN = 1; // 0x1
     field @FlaggedApi("android.os.profiling.profiling_25q4") public static final int TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE = 3; // 0x3
     field @FlaggedApi("android.os.profiling.profiling_trigger_cold_start") public static final int TRIGGER_TYPE_COLD_START = 10; // 0xa

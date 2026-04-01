@@ -91,7 +91,7 @@ public class ProfilingMemoryLimiterTests {
         // Ensure profiling is enabled and allow all apps (bypass debuggable check for test).
         executeShellCmd("device_config put profiling system_triggered_profiling_new true");
         executeShellCmd("device_config put profiling system_triggered_profiling_all_apps true");
-        ProfilingTestUtils.overrideDeviceConfig("backstage_power", "anomaly_detector_core", true);
+        ProfilingTestUtils.overrideDeviceConfig("backstage_power", "anomaly_detector_core_c", true);
 
         // Initialize the trigger first. This follows a "set-and-restart" pattern to verify that
         // profiling triggers (configured via addProfilingTriggers) correctly persist for the UID
