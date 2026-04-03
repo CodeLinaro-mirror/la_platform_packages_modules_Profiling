@@ -302,6 +302,10 @@ public final class PerfettoMetadata {
                 zos.write(metadataBytes);
                 zos.closeEntry();
             }
+
+            // Delete the original profiling result.
+            Files.deleteIfExists(profilingResult);
+
             return outputFilePath.toString();
         } catch (IOException | RuntimeException e) {
             Slog.e(TAG, "Failed to create profiling result and metadata bundle!", e);

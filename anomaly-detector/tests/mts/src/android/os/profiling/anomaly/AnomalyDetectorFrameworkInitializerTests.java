@@ -17,6 +17,7 @@
 package android.os.profiling.anomaly;
 
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assume.assumeTrue;
 
 import android.os.profiling.anomaly.flags.Flags;
 import android.platform.test.annotations.RequiresFlagsEnabled;
@@ -25,17 +26,25 @@ import android.platform.test.flag.junit.DeviceFlagsValueProvider;
 
 import androidx.test.runner.AndroidJUnit4;
 
+import com.android.modules.utils.build.SdkLevel;
+
+import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
 /** Tests the implementation of the {@link AnomalyDetectorFrameworkInitializer} APIs. */
 @RunWith(AndroidJUnit4.class)
-@RequiresFlagsEnabled(Flags.FLAG_ANOMALY_DETECTOR_CORE)
+@RequiresFlagsEnabled(Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
 public final class AnomalyDetectorFrameworkInitializerTests {
 
     @Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
+
+    @Before
+    public void setUp() {
+        assumeTrue(SdkLevel.isAtLeastC());
+    }
 
     /**
      * Verifies that calling {@link AnomalyDetectorFrameworkInitializer#registerServiceWrappers}
