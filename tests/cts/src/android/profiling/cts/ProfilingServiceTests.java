@@ -2902,7 +2902,7 @@ public final class ProfilingServiceTests {
     }
 
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testRegisterAnomalyCallbacks_failSecurityException() {
         Throwable throwable =
                 assertThrows(
@@ -2928,7 +2928,7 @@ public final class ProfilingServiceTests {
     }
 
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testIsTriggerRegistered_failSecurityException() {
         Throwable throwable =
                 assertThrows(
@@ -2939,7 +2939,7 @@ public final class ProfilingServiceTests {
     }
 
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testSendAnomalyProfile_failSecurityException() {
         Throwable throwable =
                 assertThrows(
@@ -2972,8 +2972,45 @@ public final class ProfilingServiceTests {
         assertThat(throwable.getMessage()).isEqualTo(NOT_SYSTEM_CALLER_SECURITY_EXCEPTION);
     }
 
+    /**
+     * Test that sendAnomalyProfile correctly sets the profiling start time in the session and moves
+     * the session to queue.
+     */
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
+    public void testSendAnomalyProfile_setsStartTime() {
+        doNothing().when(mProfilingService).enforceSystemCaller();
+        mProfilingService.mQueuedTracingResults.clear();
+
+        // Set up a TestLooperManager to control the handler thread.
+        mLooperManager = setupTestLooper(mProfilingService);
+
+        String fileName = "some_file_name";
+
+        // Call sendAnomalyProfile.
+        mProfilingService.sendAnomalyProfile(
+                KEY_MOST_SIG_BITS,
+                KEY_LEAST_SIG_BITS,
+                FAKE_UID,
+                APP_PACKAGE_NAME,
+                ProfilingTrigger.TRIGGER_TYPE_ANOMALY,
+                REQUEST_TAG,
+                fileName);
+
+        // Run the handler callbacks.
+        executePendingMessages();
+
+        // Verify that the session was added to the queue and has a non-zero start time.
+        List<TracingSession> queuedSessions = mProfilingService.mQueuedTracingResults.get(FAKE_UID);
+        assertThat(queuedSessions).isNotNull();
+        assertThat(queuedSessions).hasSize(1);
+        TracingSession session = queuedSessions.get(0);
+        expect.that(session.getProfilingStartTimeMs()).isAtLeast(1L);
+        expect.that(session.getFileName()).isEqualTo(fileName);
+    }
+
+    @Test
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testCollectAnomalyProfile_failSecurityException() {
         Throwable throwable =
                 assertThrows(
@@ -3015,7 +3052,7 @@ public final class ProfilingServiceTests {
      * limiter and proceeding with the session.
      */
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testMemoryLimiterAnomaly_execution() {
         // Register for anomaly trigger.
         mProfilingService.addTrigger(
@@ -3036,13 +3073,14 @@ public final class ProfilingServiceTests {
                 ArgumentCaptor.forClass(TracingSession.class);
         verify(mProfilingService, times(1))
                 .advanceTracingSession(sessionCaptor.capture(), eq(TracingState.APPROVED));
-        assertEquals("MEMORY_LIMIT", sessionCaptor.getValue().getTag());
+        assertEquals("memory_limit", sessionCaptor.getValue().getTag());
     }
 
     /** Test that the memory limit anomaly rate limiter works as expected. */
     @Test
     public void testMemoryLimiterAnomalyRateLimiter() {
-        // This rate limiter does not support any overrides, so nothing to override.
+        // Override the defaults for predictable testing.
+        overrideMemoryAnomalyRateLimiterDefaults(/* systemQuantity= */ 2, /* processQuantity= */ 1);
 
         // Check that the first request for a given uid passes.
         assertEquals(
@@ -3063,11 +3101,25 @@ public final class ProfilingServiceTests {
         assertEquals(
                 MemoryAnomalyRateLimiter.RATE_LIMIT_RESULT_BLOCKED_SYSTEM,
                 mMemoryAnomalyRateLimiter.isProfilingRequestAllowed(FAKE_UID_3));
+
+        // Test overriding again.
+        overrideMemoryAnomalyRateLimiterDefaults(/* systemQuantity= */ 4, /* processQuantity= */ 2);
+
+        // Second request for FAKE_UID should now pass. Note that the total system cost is now 3.
+        assertEquals(
+                MemoryAnomalyRateLimiter.RATE_LIMIT_RESULT_ALLOWED,
+                mMemoryAnomalyRateLimiter.isProfilingRequestAllowed(FAKE_UID));
+
+        // Third request for FAKE_UID should now fail. The system limit was set to 4 to ensure
+        // it does not fail system rate limiting before hitting process rate limiting.
+        assertEquals(
+                MemoryAnomalyRateLimiter.RATE_LIMIT_RESULT_BLOCKED_PROCESS,
+                mMemoryAnomalyRateLimiter.isProfilingRequestAllowed(FAKE_UID));
     }
 
     /** Test that the memory limit anomaly result is bundled with metadata. */
     @Test
-    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE)
+    @RequiresFlagsEnabled(android.os.profiling.anomaly.flags.Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
     public void testMemoryLimiterAnomaly_bundling() throws Exception {
         // Create a session for memory limit anomaly.
         TracingSession session =
@@ -3076,7 +3128,7 @@ public final class ProfilingServiceTests {
                         new Bundle(),
                         FAKE_UID,
                         APP_PACKAGE_NAME,
-                        "MEMORY_LIMIT",
+                        "memory_limit",
                         KEY_MOST_SIG_BITS,
                         KEY_LEAST_SIG_BITS,
                         ProfilingTrigger.TRIGGER_TYPE_ANOMALY);
@@ -3136,8 +3188,7 @@ public final class ProfilingServiceTests {
         }
 
         // Verify original file was deleted.
-        // TODO(b/489806709): Verify the file is deleted.
-        // assertFalse("Original file should be deleted", resultFile.exists());
+        assertFalse("Original file should be deleted", resultFile.exists());
     }
 
     private File createAndConfirmFileExists(File directory, String fileName) throws Exception {
@@ -3195,6 +3246,10 @@ public final class ProfilingServiceTests {
         mRateLimiter.mCostSystemTrace = costSystemTrace;
         mRateLimiter.mCostSystemTriggeredSystemTrace = costSystemTriggeredSystemProfiling;
         mRateLimiter.mPersistToDiskFrequency = persistToDiskFrequency;
+    }
+
+    private void overrideMemoryAnomalyRateLimiterDefaults(int systemQuantity, int processQuantity) {
+        mMemoryAnomalyRateLimiter.setMaxCosts(systemQuantity, processQuantity);
     }
 
     private void confirmRateLimiterEntriesEqual(

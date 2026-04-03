@@ -25,8 +25,9 @@ filegroup {
     ],
 }
 
-java_sdk_library {
-    name: "service-anomaly-detector",
+// Common properties for both system service library versions (device and test)
+java_defaults {
+    name: "service-anomaly-detector_common_defaults",
     defaults: [
         "framework-system-server-module-defaults",
         "framework-system-server-module-optimize-defaults",
@@ -51,20 +52,36 @@ java_sdk_library {
         "anomaly-detector-ratelimiter-proto-lite",
         "anomaly-detector-ratelimiter-config-proto-lite",
         "libprotobuf-java-lite",
+        "modules-utils-build",
+        "modules-utils-shell-command-handler",
+        "util-profiling",
     ],
-    jarjar_rules: "jarjar-rules.txt",
     lint: {
         strict_updatability_linting: true,
     },
     apex_available: [
         "com.android.profiling",
     ],
+    min_sdk_version: "37",
+}
+
+// Java library version of service implementation without jarjar rules used for testing
+java_library {
+    name: "service-anomaly-detector-no-jarjar",
+    defaults: ["service-anomaly-detector_common_defaults"],
+    visibility: [
+        "//packages/modules/Profiling/anomaly-detector/tests/mts:__subpackages__",
+    ],
+}
+
+java_sdk_library {
+    name: "service-anomaly-detector",
+    defaults: ["service-anomaly-detector_common_defaults"],
+    jarjar_rules: "jarjar-rules.txt",
     impl_library_visibility: [
         "//frameworks/base/services/signalcollector",
         "//frameworks/base/services/tests/servicestests",
-        "//packages/modules/Profiling/anomaly-detector/tests:__subpackages__",
     ],
-    min_sdk_version: "36",
     installable: true,
 }
 

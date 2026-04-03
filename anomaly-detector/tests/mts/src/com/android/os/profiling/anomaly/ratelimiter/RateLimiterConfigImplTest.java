@@ -51,6 +51,8 @@ public class RateLimiterConfigImplTest {
             RateLimiterConfigImpl.DEFAULT_DEVICE_FREQUENCY_MAX_COUNT + 1;
     private static final long TEST_UID_COOL_DOWN_MILLIS =
             RateLimiterConfigImpl.DEFAULT_UID_COOL_DOWN_MILLIS + 1000;
+    private static final long TEST_MAX_COOLDOWN_FOR_EVICTION_MILLIS =
+            RateLimiterConfigImpl.DEFAULT_MAX_COOLDOWN_FOR_EVICTION_MILLIS + 1000;
     private static final String ANY_CONDITION_TYPE = "any";
     private static final String TEST_CONDITION_TYPE = "test_type";
     private static final String TEST_RULE_NAME = "test_rule";
@@ -88,6 +90,8 @@ public class RateLimiterConfigImplTest {
                 .isEqualTo(RateLimiterConfigImpl.DEFAULT_DEVICE_FREQUENCY_MAX_COUNT);
         assertThat(mRateLimiterConfig.getUidCoolDownMillis())
                 .isEqualTo(RateLimiterConfigImpl.DEFAULT_UID_COOL_DOWN_MILLIS);
+        assertThat(mRateLimiterConfig.getMaxCoolDownForEvictionMillis())
+                .isEqualTo(RateLimiterConfigImpl.DEFAULT_MAX_COOLDOWN_FOR_EVICTION_MILLIS);
         assertThat(
                         mRateLimiterConfig.getSignatureCoolDownMillis(
                                 ANY_CONDITION_TYPE, Collections.emptyMap()))
@@ -107,6 +111,9 @@ public class RateLimiterConfigImplTest {
                         .setLong(
                                 RateLimiterConfigImpl.KEY_UID_COOL_DOWN_MILLIS,
                                 TEST_UID_COOL_DOWN_MILLIS)
+                        .setLong(
+                                RateLimiterConfigImpl.KEY_MAX_COOLDOWN_FOR_EVICTION_MILLIS,
+                                TEST_MAX_COOLDOWN_FOR_EVICTION_MILLIS)
                         .build();
 
         when(mMockPropertiesProvider.getProperties()).thenReturn(properties);
@@ -119,6 +126,8 @@ public class RateLimiterConfigImplTest {
         assertThat(mRateLimiterConfig.getDeviceFrequencyMaxCount())
                 .isEqualTo(TEST_DEVICE_FREQUENCY_MAX_COUNT);
         assertThat(mRateLimiterConfig.getUidCoolDownMillis()).isEqualTo(TEST_UID_COOL_DOWN_MILLIS);
+        assertThat(mRateLimiterConfig.getMaxCoolDownForEvictionMillis())
+                .isEqualTo(TEST_MAX_COOLDOWN_FOR_EVICTION_MILLIS);
         assertThat(
                         mRateLimiterConfig.getSignatureCoolDownMillis(
                                 ANY_CONDITION_TYPE, Collections.emptyMap()))
@@ -132,6 +141,8 @@ public class RateLimiterConfigImplTest {
                 .isEqualTo(RateLimiterConfigImpl.DEFAULT_DEVICE_FREQUENCY_MAX_COUNT);
         assertThat(mRateLimiterConfig.getUidCoolDownMillis())
                 .isEqualTo(RateLimiterConfigImpl.DEFAULT_UID_COOL_DOWN_MILLIS);
+        assertThat(mRateLimiterConfig.getMaxCoolDownForEvictionMillis())
+                .isEqualTo(RateLimiterConfigImpl.DEFAULT_MAX_COOLDOWN_FOR_EVICTION_MILLIS);
 
         // Simulate a change event with only one property.
         DeviceConfig.Properties newProperties =
@@ -152,6 +163,8 @@ public class RateLimiterConfigImplTest {
                 .isEqualTo(RateLimiterConfigImpl.DEFAULT_DEVICE_FREQUENCY_WINDOW_MILLIS);
         assertThat(mRateLimiterConfig.getUidCoolDownMillis())
                 .isEqualTo(RateLimiterConfigImpl.DEFAULT_UID_COOL_DOWN_MILLIS);
+        assertThat(mRateLimiterConfig.getMaxCoolDownForEvictionMillis())
+                .isEqualTo(RateLimiterConfigImpl.DEFAULT_MAX_COOLDOWN_FOR_EVICTION_MILLIS);
     }
 
     @Test
@@ -162,15 +175,21 @@ public class RateLimiterConfigImplTest {
                         .setInt(
                                 RateLimiterConfigImpl.KEY_DEVICE_FREQUENCY_MAX_COUNT,
                                 TEST_DEVICE_FREQUENCY_MAX_COUNT)
+                        .setLong(
+                                RateLimiterConfigImpl.KEY_MAX_COOLDOWN_FOR_EVICTION_MILLIS,
+                                TEST_MAX_COOLDOWN_FOR_EVICTION_MILLIS)
                         .build();
         mListenerCaptor.getValue().onPropertiesChanged(initialProperties);
         assertThat(mRateLimiterConfig.getDeviceFrequencyMaxCount())
                 .isEqualTo(TEST_DEVICE_FREQUENCY_MAX_COUNT);
+        assertThat(mRateLimiterConfig.getMaxCoolDownForEvictionMillis())
+                .isEqualTo(TEST_MAX_COOLDOWN_FOR_EVICTION_MILLIS);
 
         // 2. Simulate a deletion event (key is present, value is null).
         DeviceConfig.Properties deletionProperties =
                 new DeviceConfig.Properties.Builder(AnomalyDetectorProperties.NAMESPACE)
                         .setString(RateLimiterConfigImpl.KEY_DEVICE_FREQUENCY_MAX_COUNT, null)
+                        .setString(RateLimiterConfigImpl.KEY_MAX_COOLDOWN_FOR_EVICTION_MILLIS, null)
                         .build();
 
         mListenerCaptor.getValue().onPropertiesChanged(deletionProperties);
@@ -178,6 +197,8 @@ public class RateLimiterConfigImplTest {
         // 3. Verify the value has reverted to the hardcoded default.
         assertThat(mRateLimiterConfig.getDeviceFrequencyMaxCount())
                 .isEqualTo(RateLimiterConfigImpl.DEFAULT_DEVICE_FREQUENCY_MAX_COUNT);
+        assertThat(mRateLimiterConfig.getMaxCoolDownForEvictionMillis())
+                .isEqualTo(RateLimiterConfigImpl.DEFAULT_MAX_COOLDOWN_FOR_EVICTION_MILLIS);
     }
 
     @Test
@@ -260,5 +281,49 @@ public class RateLimiterConfigImplTest {
         // Verify the default is still used for other non-matching types.
         assertThat(mRateLimiterConfig.getSignatureCoolDownMillis(OTHER_CONDITION_TYPE, null))
                 .isEqualTo(0);
+    }
+
+    @Test
+    public void getMaxCoolDownForEvictionMillis_returnsMaximumAcrossAllCooldowns() {
+        // Setup base config and UID cooldown
+        DeviceConfig.Properties properties =
+                new DeviceConfig.Properties.Builder(AnomalyDetectorProperties.NAMESPACE)
+                        .setLong(
+                                RateLimiterConfigImpl.KEY_MAX_COOLDOWN_FOR_EVICTION_MILLIS,
+                                TEST_MAX_COOLDOWN_FOR_EVICTION_MILLIS)
+                        .setLong(
+                                RateLimiterConfigImpl.KEY_UID_COOL_DOWN_MILLIS,
+                                TEST_UID_COOL_DOWN_MILLIS)
+                        .build();
+        mListenerCaptor.getValue().onPropertiesChanged(properties);
+
+        // Assume TEST_MAX_COOLDOWN_FOR_EVICTION_MILLIS > TEST_UID_COOL_DOWN_MILLIS for initial
+        // check
+        long currentMax =
+                Math.max(TEST_MAX_COOLDOWN_FOR_EVICTION_MILLIS, TEST_UID_COOL_DOWN_MILLIS);
+        assertThat(mRateLimiterConfig.getMaxCoolDownForEvictionMillis()).isEqualTo(currentMax);
+
+        // Add a signature rule with a larger cooldown
+        long largerCoolDown = currentMax + 5000L;
+        SignatureCoolDownConfigProto proto =
+                SignatureCoolDownConfigProto.newBuilder()
+                        .addRules(
+                                SignatureCoolDownRule.newBuilder()
+                                        .setName(TEST_RULE_NAME)
+                                        .setCoolDownMillis(largerCoolDown)
+                                        .setConditionType(TEST_CONDITION_TYPE)
+                                        .build())
+                        .build();
+        String protoBase64 = Base64.encodeToString(proto.toByteArray(), Base64.NO_WRAP);
+
+        DeviceConfig.Properties newProperties =
+                new DeviceConfig.Properties.Builder(AnomalyDetectorProperties.NAMESPACE)
+                        .setString(
+                                RateLimiterConfigImpl.KEY_SIGNATURE_COOL_DOWN_CONFIG_PROTO,
+                                protoBase64)
+                        .build();
+        mListenerCaptor.getValue().onPropertiesChanged(newProperties);
+
+        assertThat(mRateLimiterConfig.getMaxCoolDownForEvictionMillis()).isEqualTo(largerCoolDown);
     }
 }

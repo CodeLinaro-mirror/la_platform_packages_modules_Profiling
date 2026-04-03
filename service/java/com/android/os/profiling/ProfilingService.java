@@ -117,7 +117,7 @@ public class ProfilingService extends IProfilingService.Stub {
             "Rate limiter disabled manually via adb.";
 
     // LINT.IfChange(anomaly_memory_limit_tag)
-    private static final String ANOMALY_MEMORY_LIMIT_TAG = "MEMORY_LIMIT";
+    private static final String ANOMALY_MEMORY_LIMIT_TAG = "memory_limit";
     // LINT.ThenChange(LoggingHelper.java:anomaly_memory_limit_tag)
 
     private static final String MEMORY_LIMIT_METADATA_HIGHLIGHT_REASON = "memory_limit";
@@ -465,6 +465,7 @@ public class ProfilingService extends IProfilingService.Stub {
                     public void onPropertiesChanged(@NonNull DeviceConfig.Properties properties) {
                         synchronized (mLock) {
                             getRateLimiter().maybeUpdateConfigs(properties);
+                            getMemoryAnomalyRateLimiter().maybeUpdateConfigs(properties);
                             Configs.maybeUpdateConfigs(properties);
 
                             mPerfettoDestroyTimeoutMs =
@@ -2239,7 +2240,7 @@ public class ProfilingService extends IProfilingService.Stub {
         }
 
         if ((Flags.profilingTriggerOom() && triggerType == ProfilingTrigger.TRIGGER_TYPE_OOM)
-                || (android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()
+                || (android.os.profiling.anomaly.flags.Flags.anomalyDetectorCoreC()
                         && triggerType == ProfilingTrigger.TRIGGER_TYPE_ANOMALY)) {
             // Anomaly trigger types are sent from anomaly detector service and include an
             // associated profiling type, therefore they would not trigger this logic. The only
@@ -2308,7 +2309,7 @@ public class ProfilingService extends IProfilingService.Stub {
                     false, /* returnToAnomalyDetectorOnly */
                     callback);
         } else {
-            if (android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()
+            if (android.os.profiling.anomaly.flags.Flags.anomalyDetectorCoreC()
                     && triggerType == ProfilingTrigger.TRIGGER_TYPE_ANOMALY) {
                 // The only supported caller of this method with the anomaly trigger is the memory
                 // limit anomaly case, set the tag to this so that it can be identified as such both
@@ -2731,18 +2732,6 @@ public class ProfilingService extends IProfilingService.Stub {
             @Nullable String tag,
             @Nullable IProfilingTriggerCallback callback) {
         ProfilingTriggerData trigger = getTriggerDataObject(uid, packageName, triggerType);
-
-        if (trigger == null
-                && android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()
-                && triggerType == ProfilingTrigger.TRIGGER_TYPE_ANOMALY
-                && profilingType == ProfilingManager.PROFILING_TYPE_JAVA_HEAP_DUMP
-                && Flags.memoryLimitAnomalyTriggerExperimentDoNotRelease()) {
-            // In order to evaluate perf impact of the memory limit anomaly trigger, create a fake
-            // trigger object if the real one is non-existent, and proceed with that object.
-            // The object will not be saved in this flow so it will only apply to this session.
-            trigger = new ProfilingTriggerData(uid, packageName, triggerType, 0);
-        }
-
         if (trigger == null) {
             // No trigger object, process isn't registered for this trigger.
             performTriggerCallback(
@@ -2895,7 +2884,7 @@ public class ProfilingService extends IProfilingService.Stub {
 
     /** Check whether a trigger is registered to the specified process. */
     public boolean isTriggerRegistered(int uid, @NonNull String packageName, int triggerType) {
-        if (!android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()) {
+        if (!android.os.profiling.anomaly.flags.Flags.anomalyDetectorCoreC()) {
             // If flag is disabled then this method cannot be used.
             Log.e(
                     TAG,
@@ -2923,7 +2912,7 @@ public class ProfilingService extends IProfilingService.Stub {
             int triggerType,
             @Nullable String tag,
             @NonNull String resultFileName) {
-        if (!android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()) {
+        if (!android.os.profiling.anomaly.flags.Flags.anomalyDetectorCoreC()) {
             // If flag is disabled then this method cannot be used.
             Log.e(
                     TAG,
@@ -2955,6 +2944,14 @@ public class ProfilingService extends IProfilingService.Stub {
                                                 keyLeastSigBits,
                                                 triggerType);
                                 session.setFileName(resultFileName);
+
+                                // Since sendAnomalyProfile is used for results that have already
+                                // been collected, we need to set the profiling start time here
+                                // as it bypasses startProfiling where it is typically set.
+                                // Without a start time, the session may be immediately cleaned
+                                // up as expired.
+                                session.setProfilingStartTimeMs(System.currentTimeMillis());
+
                                 moveSessionToQueue(session, true);
                                 advanceTracingSession(session, TracingState.PROFILING_FINISHED);
                             }
@@ -2976,7 +2973,7 @@ public class ProfilingService extends IProfilingService.Stub {
             boolean returnToAnomalyDetectorOnly,
             @Nullable String tag,
             @Nullable Bundle params) {
-        if (!android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()) {
+        if (!android.os.profiling.anomaly.flags.Flags.anomalyDetectorCoreC()) {
             // If flag is disabled then this method cannot be used.
             Log.e(
                     TAG,
@@ -3028,7 +3025,7 @@ public class ProfilingService extends IProfilingService.Stub {
 
     /** Register a callback for anomaly profiling. This may only be called by the system process. */
     public void registerAnomalyCallback(IProfilingAnomalyCallback callback) {
-        if (!android.os.profiling.anomaly.flags.Flags.anomalyDetectorCore()) {
+        if (!android.os.profiling.anomaly.flags.Flags.anomalyDetectorCoreC()) {
             // If flag is disabled then this method cannot be used.
             Log.e(
                     TAG,
