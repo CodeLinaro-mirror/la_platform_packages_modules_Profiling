@@ -2444,8 +2444,9 @@ public final class ProfilingFrameworkTests {
         AppCallback callbackGeneral = new AppCallback();
         mProfilingManager.registerForAllProfilingResults(new ImmediateExecutor(), callbackGeneral);
 
-        // There is no need to override any rate limiting for this test as this trigger type is
-        // exempt from rate limiting.
+        // Override rate limiting for this test as this trigger type is subject to memory anomaly
+        // rate limiting.
+        overrideRateLimiter(true);
 
         // Now fake a the system trigger.
         ProfilingServiceHelper.getInstance()

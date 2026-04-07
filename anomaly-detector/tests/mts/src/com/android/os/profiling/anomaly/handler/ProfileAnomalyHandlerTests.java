@@ -22,7 +22,6 @@ import static android.os.ProfilingTrigger.TRIGGER_TYPE_ANOMALY;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -36,8 +35,11 @@ import android.os.profiling.anomaly.RuleInternal;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.os.profiling.anomaly.attribute.ProfilingParamsAttribute;
+import com.android.os.profiling.anomaly.attribute.RateLimitSignatureAttribute;
 import com.android.os.profiling.anomaly.attribute.UidAttribute;
+import com.android.os.profiling.anomaly.config.ProfilingConcurrencyConfig;
 import com.android.os.profiling.anomaly.core.AnomalyReport;
+import com.android.os.profiling.anomaly.ratelimiter.ProfilingRateLimiter;
 import com.android.os.profiling.anomaly.wrapper.SystemServiceFetcher;
 
 import org.junit.Before;
@@ -48,6 +50,8 @@ import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 
+import java.util.Map;
+
 /** Tests for {@link ProfileAnomalyHandler} */
 @RunWith(AndroidJUnit4.class)
 public class ProfileAnomalyHandlerTests {
@@ -57,7 +61,7 @@ public class ProfileAnomalyHandlerTests {
 
     private static final String PACKAGE_NAME = "test.package.name";
 
-    private static final String PACKAGE_NAME_2 = "package.name2";
+    private static final String PACKAGE_NAME_2 = "test.package.name2";
 
     private static final String[] SINGLE_PACKAGE_NAME_ARRAY = {PACKAGE_NAME};
 
@@ -87,6 +91,9 @@ public class ProfileAnomalyHandlerTests {
 
     @Mock private AnomalyProfilingClient mAnomalyProfilingManager;
 
+    @Mock private ProfilingRateLimiter mProfilingRateLimiter;
+    @Mock private ProfilingConcurrencyConfig mProfilingConcurrencyConfig;
+
     @Mock private RuleInternal mMockRule;
 
     private ProfileAnomalyHandler mHandler;
@@ -95,7 +102,11 @@ public class ProfileAnomalyHandlerTests {
     public void setUp() {
         mHandler =
                 new ProfileAnomalyHandler(
-                        mSystemServiceFetcher, mProfilingSessionHelper, mAnomalyProfilingManager);
+                        mSystemServiceFetcher,
+                        mProfilingSessionHelper,
+                        mAnomalyProfilingManager,
+                        mProfilingRateLimiter,
+                        mProfilingConcurrencyConfig);
         when(mSystemServiceFetcher.getPackageManager()).thenReturn(mPackageManager);
         when(mMockReport.get(ProfilingParamsAttribute.class)).thenReturn(PROFILING_PARAMS);
     }
@@ -119,7 +130,38 @@ public class ProfileAnomalyHandlerTests {
                         anyInt(),
                         any(),
                         anyInt(),
-                        eq(RuleInternal.CONDITION_TYPE_BINDER_SPAM));
+                        eq(RuleInternal.CONDITION_TYPE_BINDER_SPAM),
+                        eq(mProfilingRateLimiter),
+                        eq(null),
+                        eq(mProfilingConcurrencyConfig));
+    }
+
+    @Test
+    public void execute_withRateLimitSignature_shouldPassSignatureToHelper() {
+        when(mMockReport.get(UidAttribute.class)).thenReturn(new UidAttribute(UID));
+        when(mMockRule.getConditionType()).thenReturn(RuleInternal.CONDITION_TYPE_BINDER_SPAM);
+        when(mMockReport.getRule()).thenReturn(mMockRule);
+        when(mPackageManager.getPackagesForUid(UID)).thenReturn(SINGLE_PACKAGE_NAME_ARRAY);
+        when(mAnomalyProfilingManager.isTriggerRegistered(UID, PACKAGE_NAME, TRIGGER_TYPE_ANOMALY))
+                .thenReturn(true);
+
+        Map<String, String> testSignature = Map.of("interface", "ITest", "method", "testMethod");
+        when(mMockReport.get(RateLimitSignatureAttribute.class))
+                .thenReturn(new RateLimitSignatureAttribute(testSignature));
+
+        mHandler.execute(mMockReport);
+
+        verify(mProfilingSessionHelper)
+                .requestProfiling(
+                        eq(UID),
+                        eq(PACKAGE_NAME),
+                        anyInt(),
+                        any(),
+                        anyInt(),
+                        eq(RuleInternal.CONDITION_TYPE_BINDER_SPAM),
+                        eq(mProfilingRateLimiter),
+                        eq(testSignature), // Verify the signature is passed correctly
+                        eq(mProfilingConcurrencyConfig));
     }
 
     @Test
@@ -139,12 +181,7 @@ public class ProfileAnomalyHandlerTests {
 
         verify(mProfilingSessionHelper, never())
                 .requestProfiling(
-                        eq(UID),
-                        anyString(),
-                        anyInt(),
-                        any(),
-                        anyInt(),
-                        eq(RuleInternal.CONDITION_TYPE_BINDER_SPAM));
+                        anyInt(), any(), anyInt(), any(), anyInt(), any(), any(), any(), any());
     }
 
     @Test
@@ -164,12 +201,7 @@ public class ProfileAnomalyHandlerTests {
 
         verify(mProfilingSessionHelper, never())
                 .requestProfiling(
-                        eq(UID),
-                        anyString(),
-                        anyInt(),
-                        any(),
-                        anyInt(),
-                        eq(RuleInternal.CONDITION_TYPE_BINDER_SPAM));
+                        anyInt(), any(), anyInt(), any(), anyInt(), any(), any(), any(), any());
     }
 
     @Test
@@ -183,12 +215,7 @@ public class ProfileAnomalyHandlerTests {
 
         verify(mProfilingSessionHelper, never())
                 .requestProfiling(
-                        anyInt(),
-                        anyString(),
-                        anyInt(),
-                        any(),
-                        anyInt(),
-                        eq(RuleInternal.CONDITION_TYPE_BINDER_SPAM));
+                        anyInt(), any(), anyInt(), any(), anyInt(), any(), any(), any(), any());
     }
 
     @Test
@@ -202,11 +229,6 @@ public class ProfileAnomalyHandlerTests {
 
         verify(mProfilingSessionHelper, never())
                 .requestProfiling(
-                        anyInt(),
-                        anyString(),
-                        anyInt(),
-                        any(),
-                        anyInt(),
-                        eq(RuleInternal.CONDITION_TYPE_BINDER_SPAM));
+                        anyInt(), any(), anyInt(), any(), anyInt(), any(), any(), any(), any());
     }
 }
