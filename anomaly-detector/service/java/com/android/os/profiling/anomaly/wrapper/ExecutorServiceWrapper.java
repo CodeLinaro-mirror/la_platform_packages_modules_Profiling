@@ -14,22 +14,28 @@
  * limitations under the License.
  */
 
-package com.android.os.profiling.anomaly.attribute;
+package com.android.os.profiling.anomaly.wrapper;
 
-import com.android.os.profiling.anomaly.core.AnomalyAttribute;
-
-import java.time.Duration;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
- * An attribute that provides the details of a binder spam anomaly.
+ * A wrapper class for a singleton background {@link ExecutorService}.
  *
  * @hide
  */
-public record BinderSpamDetailsAttribute(
-        String interfaceName,
-        String methodName,
-        int observedCallCount,
-        Duration observedInterval,
-        int thresholdCallCount,
-        Duration thresholdInterval)
-        implements AnomalyAttribute {}
+public class ExecutorServiceWrapper {
+
+    private static final ExecutorService sIOExecutor = Executors.newSingleThreadExecutor();
+
+    // Private constructor to prevent instantiation
+    private ExecutorServiceWrapper() {
+    }
+
+    /**
+     * @return The singleton background executor for I/O operations.
+     */
+    public static ExecutorService getIOExecutor() {
+        return sIOExecutor;
+    }
+}

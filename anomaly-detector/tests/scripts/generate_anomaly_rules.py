@@ -39,8 +39,12 @@ SUPPORTED_CONDITION_TYPES = {
 }
 # LINT.ThenChange(/anomaly-detector/framework/java/android/os/profiling/anomaly/RuleInternal.java:supported_condition_types)
 
+SUPPORTED_OPTIONAL_PARAMS = {
+    "profiling_session_duration_millis": "long",
+}
+
 # LINT.IfChange(supported_actions)
-SUPPORTED_ACTIONS = {1: "ACTION_TYPE_LOG"}
+SUPPORTED_ACTIONS = {1: "ACTION_TYPE_LOG", 2: "ACTION_TYPE_COLLECT_PROFILE"}
 # LINT.ThenChange(/anomaly-detector/framework/java/android/os/profiling/anomaly/RuleInternal.java:supported_actions)
 
 # --- Text Proto Generation ---
@@ -126,7 +130,10 @@ def validate_rule(rule):
 
   # Check for unknown parameters and correct value types
   for param_name, param_value in provided_params.items():
-    if param_name not in expected_params:
+    if (
+        param_name not in expected_params
+        and param_name not in SUPPORTED_OPTIONAL_PARAMS
+    ):
       raise KeyError(
           f"Unknown parameter for '{condition_type}': '{param_name}'"
       )
@@ -141,7 +148,10 @@ def validate_rule(rule):
           " 'value' keys."
       )
 
-    expected_type = expected_params[param_name]
+    expected_type = (
+        expected_params.get(param_name)
+        or SUPPORTED_OPTIONAL_PARAMS.get(param_name)
+    )
     provided_type = param_value["type"]
     if provided_type != expected_type:
       raise ValueError(

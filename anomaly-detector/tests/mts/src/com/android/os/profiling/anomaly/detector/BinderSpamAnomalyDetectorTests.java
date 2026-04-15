@@ -30,6 +30,7 @@ import static org.mockito.Mockito.when;
 
 import android.os.Bundle;
 import android.os.OutcomeReceiver;
+import android.profiling.utils.PerfettoMetadata;
 import android.os.profiling.anomaly.RuleInternal;
 import android.util.StatsEvent;
 import android.util.StatsEventTestUtils;
@@ -39,7 +40,8 @@ import androidx.test.runner.AndroidJUnit4;
 
 import com.android.modules.utils.testing.ExtendedMockitoRule;
 import com.android.os.AtomsProto;
-import com.android.os.profiling.anomaly.attribute.BinderSpamDetailsAttribute;
+import com.android.os.profiling.anomaly.attribute.AnomalyDetailsAttribute;
+import com.android.os.profiling.anomaly.attribute.ProfilingParamsAttribute;
 import com.android.os.profiling.anomaly.attribute.RateLimitSignatureAttribute;
 import com.android.os.profiling.anomaly.attribute.SummaryAttribute;
 import com.android.os.profiling.anomaly.attribute.UidAttribute;
@@ -82,6 +84,8 @@ public final class BinderSpamAnomalyDetectorTests {
     private static final String TEST_RULE_NAME_2 = "test_rule_2";
     private static final int TEST_CALL_LIMIT = 100;
     private static final int TEST_CALL_LIMIT_2 = 200;
+    private static final long TEST_CALL_INTERVAL_MILLIS = 1000L;
+    private static final long TEST_PROFILING_SESSION_DURATION_MILLIS = 5000L;
     private static final String BINDER_SPAM_INTERFACE_KEY = "binder_spam.interface";
     private static final String BINDER_SPAM_METHOD_KEY = "binder_spam.method";
 
@@ -184,6 +188,7 @@ public final class BinderSpamAnomalyDetectorTests {
 
     @Test
     public void onDataAvailable_rateExceedsThreshold_anomalyDetected() throws Exception {
+        // Limit is 100/sec
         setupRule(createRuleWithPerSecondRate(TEST_RULE_NAME, TEST_CALL_LIMIT));
 
         // Actual call rate: 101 calls/sec
@@ -195,13 +200,12 @@ public final class BinderSpamAnomalyDetectorTests {
         verify(mMockListener).onAnomalyDetected(mReportCaptor.capture());
         verifyReport(
                 mReportCaptor.getValue(),
-                new BinderSpamDetailsAttribute(
-                        TEST_INTERFACE,
-                        TEST_METHOD,
-                        totalCalls,
-                        timespan,
-                        TEST_CALL_LIMIT,
-                        Duration.ofSeconds(1)));
+                totalCalls,
+                timespan,
+                TEST_CALL_LIMIT,
+                Duration.ofSeconds(1),
+                TEST_INTERFACE,
+                TEST_METHOD);
         verifyLogAnomalyStatsBinderSpam(data);
     }
 
@@ -225,13 +229,12 @@ public final class BinderSpamAnomalyDetectorTests {
         verify(mMockListener).onAnomalyDetected(mReportCaptor.capture());
         verifyReport(
                 mReportCaptor.getValue(),
-                new BinderSpamDetailsAttribute(
-                        TEST_INTERFACE,
-                        TEST_METHOD,
-                        totalCalls,
-                        timespan,
-                        TEST_CALL_LIMIT,
-                        Duration.ofMinutes(1)));
+                totalCalls,
+                timespan,
+                TEST_CALL_LIMIT,
+                Duration.ofMinutes(1),
+                TEST_INTERFACE,
+                TEST_METHOD);
         verifyLogAnomalyStatsBinderSpam(createBinderSpamData(totalCalls, timespan));
     }
 
@@ -259,13 +262,12 @@ public final class BinderSpamAnomalyDetectorTests {
         verify(mMockListener).onAnomalyDetected(mReportCaptor.capture());
         verifyReport(
                 mReportCaptor.getValue(),
-                new BinderSpamDetailsAttribute(
-                        TEST_INTERFACE,
-                        TEST_METHOD,
-                        totalCalls,
-                        timespan,
-                        TEST_CALL_LIMIT,
-                        Duration.ofMinutes(1)));
+                totalCalls,
+                timespan,
+                TEST_CALL_LIMIT,
+                Duration.ofMinutes(1),
+                TEST_INTERFACE,
+                TEST_METHOD);
         verifyLogAnomalyStatsBinderSpam(createBinderSpamData(totalCalls, timespan));
     }
 
@@ -313,21 +315,22 @@ public final class BinderSpamAnomalyDetectorTests {
         verify(mMockListener).onAnomalyDetected(mReportCaptor.capture());
         verifyReport(
                 mReportCaptor.getValue(),
-                new BinderSpamDetailsAttribute(
-                        TEST_INTERFACE,
-                        TEST_METHOD,
-                        totalCalls,
-                        timespan,
-                        TEST_CALL_LIMIT,
-                        Duration.ofMinutes(1)));
+                totalCalls,
+                timespan,
+                TEST_CALL_LIMIT,
+                Duration.ofMinutes(1),
+                TEST_INTERFACE,
+                TEST_METHOD);
         verifyLogAnomalyStatsBinderSpam(createBinderSpamData(totalCalls, timespan));
     }
 
     @Test
     public void onDataAvailable_multipleRules_lowerThresholdTriggered() throws Exception {
-        RuleInternal rule1 = createRuleWithPerSecondRate(TEST_RULE_NAME, TEST_CALL_LIMIT); // 100
+        // Limit is 100/sec
+        RuleInternal rule1 = createRuleWithPerSecondRate(TEST_RULE_NAME, TEST_CALL_LIMIT);
+        // Limit is 200/sec
         RuleInternal rule2 =
-                createRuleWithPerSecondRate(TEST_RULE_NAME_2, TEST_CALL_LIMIT_2); // 200
+                createRuleWithPerSecondRate(TEST_RULE_NAME_2, TEST_CALL_LIMIT_2);
         setupRules(Set.of(rule1, rule2));
 
         int totalCalls = 150;
@@ -350,13 +353,12 @@ public final class BinderSpamAnomalyDetectorTests {
         assertThat(report.getRule()).isEqualTo(rule1);
         verifyReport(
                 report,
-                new BinderSpamDetailsAttribute(
-                        TEST_INTERFACE,
-                        TEST_METHOD,
-                        totalCalls,
-                        timespan,
-                        TEST_CALL_LIMIT,
-                        Duration.ofSeconds(1)));
+                totalCalls,
+                timespan,
+                TEST_CALL_LIMIT,
+                Duration.ofSeconds(1),
+                TEST_INTERFACE,
+                TEST_METHOD);
         verifyLogAnomalyStatsBinderSpam(data);
     }
 
@@ -468,6 +470,64 @@ public final class BinderSpamAnomalyDetectorTests {
     }
 
     @Test
+    public void onDataAvailable_withCustomProfilingSessionDuration_reportHasCorrectDuration() {
+        Bundle condition = new Bundle();
+        condition.putString(
+                RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME, TEST_INTERFACE);
+        condition.putString(RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME, TEST_METHOD);
+        condition.putInt(RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT, TEST_CALL_LIMIT);
+        condition.putLong(
+                RuleInternal.BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS,
+                TEST_CALL_INTERVAL_MILLIS);
+        condition.putLong(
+                RuleInternal.BUNDLE_KEY_PROFILING_SESSION_DURATION_MILLIS,
+                TEST_PROFILING_SESSION_DURATION_MILLIS);
+
+        RuleInternal rule =
+                new RuleInternal.Builder()
+                        .setName(TEST_RULE_NAME)
+                        .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
+                        .setRuleCondition(condition)
+                        .addAnomalyAction(RuleInternal.ACTION_TYPE_COLLECT_PROFILE)
+                        .build();
+
+        setupRule(rule);
+
+        mReceiver.onResult(createBinderSpamData(TEST_CALL_LIMIT + 1, Duration.ofSeconds(1)));
+
+        verify(mMockListener).onAnomalyDetected(mReportCaptor.capture());
+        AnomalyReport report = mReportCaptor.getValue();
+        ProfilingParamsAttribute profilingParams = report.get(ProfilingParamsAttribute.class);
+        assertThat(profilingParams).isNotNull();
+        assertThat(profilingParams.maxSessionDurationMs())
+                .isEqualTo(TEST_PROFILING_SESSION_DURATION_MILLIS);
+    }
+
+    @Test
+    public void onDataAvailable_withoutCustomProfilingSessionDuration_usesDefaultDuration() {
+        RuleInternal rule =
+                new RuleInternal.Builder()
+                        .setName(TEST_RULE_NAME)
+                        .setConditionType(RuleInternal.CONDITION_TYPE_BINDER_SPAM)
+                        .setRuleCondition(
+                                createRuleWithPerSecondRate(TEST_RULE_NAME, TEST_CALL_LIMIT)
+                                        .getRuleCondition())
+                        .addAnomalyAction(RuleInternal.ACTION_TYPE_COLLECT_PROFILE)
+                        .build();
+
+        setupRule(rule);
+
+        mReceiver.onResult(createBinderSpamData(TEST_CALL_LIMIT + 1, Duration.ofSeconds(1)));
+
+        verify(mMockListener).onAnomalyDetected(mReportCaptor.capture());
+        AnomalyReport report = mReportCaptor.getValue();
+        ProfilingParamsAttribute profilingParams = report.get(ProfilingParamsAttribute.class);
+        assertThat(profilingParams).isNotNull();
+        assertThat(profilingParams.maxSessionDurationMs())
+                .isEqualTo(BinderSpamAnomalyDetector.DEFAULT_PROFILING_SESSION_DURATION_MILLIS);
+    }
+
+    @Test
     public void onSignalCollectorUnregistered_unsubscribesFromCollector() {
         SubscriptionId subscriptionId = SubscriptionId.generateNew();
         when(mMockCollector.subscribe(any(), any())).thenReturn(subscriptionId);
@@ -480,7 +540,14 @@ public final class BinderSpamAnomalyDetectorTests {
         verify(mMockCollector).unsubscribe(subscriptionId);
     }
 
-    private void verifyReport(AnomalyReport report, BinderSpamDetailsAttribute details) {
+    private void verifyReport(
+            AnomalyReport report,
+            int totalCalls,
+            Duration actualTimespan,
+            int thresholdCallCount,
+            Duration thresholdInterval,
+            String interfaceName,
+            String methodName) {
         UidAttribute uidAttribute = report.get(UidAttribute.class);
         assertThat(uidAttribute).isNotNull();
         assertThat(uidAttribute.uid()).isEqualTo(TEST_CALLER_UID);
@@ -490,21 +557,30 @@ public final class BinderSpamAnomalyDetectorTests {
         String summary = summaryAttribute.summary();
         assertThat(summary).isNotNull();
         assertThat(summary).contains("UID " + TEST_CALLER_UID);
-        assertThat(summary).contains(details.observedCallCount() + " calls");
-        assertThat(summary).contains(details.interfaceName());
-        assertThat(summary).contains(details.methodName());
-        assertThat(summary).contains(String.format("%ds", details.observedInterval().toSeconds()));
 
-        assertThat(report.get(BinderSpamDetailsAttribute.class)).isEqualTo(details);
-
+        AnomalyDetailsAttribute actualAnomalyDetailsAttribute =
+                report.get(AnomalyDetailsAttribute.class);
+        assertThat(actualAnomalyDetailsAttribute).isNotNull();
+        assertThat(actualAnomalyDetailsAttribute.durationMillis())
+                .isEqualTo(actualTimespan.toMillis());
+        String actualAnomalyDetailsString =
+                actualAnomalyDetailsAttribute.anomalyDetails().toString();
+        assertThat(actualAnomalyDetailsString).contains(interfaceName);
+        assertThat(actualAnomalyDetailsString).contains(methodName);
+        assertThat(actualAnomalyDetailsString)
+                .contains(String.valueOf(
+                        (int) (thresholdCallCount / (thresholdInterval.toMillis() / 1000.0))));
+        assertThat(actualAnomalyDetailsString)
+                .contains(String.valueOf(
+                        (int) (totalCalls / (actualTimespan.toMillis() / 1000.0))));
         RateLimitSignatureAttribute signatureAttribute =
                 report.get(RateLimitSignatureAttribute.class);
         assertThat(signatureAttribute).isNotNull();
         Map<String, String> signature = signatureAttribute.signature();
         assertThat(signature).isNotNull();
         assertThat(signature).hasSize(2);
-        assertThat(signature).containsEntry(BINDER_SPAM_INTERFACE_KEY, details.interfaceName());
-        assertThat(signature).containsEntry(BINDER_SPAM_METHOD_KEY, details.methodName());
+        assertThat(signature).containsEntry(BINDER_SPAM_INTERFACE_KEY, interfaceName);
+        assertThat(signature).containsEntry(BINDER_SPAM_METHOD_KEY, methodName);
     }
 
     private void verifyLogAnomalyStatsBinderSpam(BinderSpamData binderData) throws Exception {

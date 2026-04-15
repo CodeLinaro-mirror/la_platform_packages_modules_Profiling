@@ -18,20 +18,25 @@ package com.android.os.profiling.anomaly.detector;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import static org.junit.Assert.assertThrows;
 import static org.mockito.Mockito.when;
 
+import android.os.Bundle;
 import android.os.profiling.anomaly.RuleInternal;
+import android.profiling.utils.PerfettoMetadata;
 
 import androidx.test.runner.AndroidJUnit4;
 
-import com.android.os.profiling.anomaly.attribute.BinderSpamDetailsAttribute;
+import com.android.os.profiling.anomaly.attribute.ProfilingParamsAttribute;
 import com.android.os.profiling.anomaly.attribute.SummaryAttribute;
 import com.android.os.profiling.anomaly.attribute.UidAttribute;
 import com.android.os.profiling.anomaly.collector.binder.BinderSpamData;
 import com.android.os.profiling.anomaly.core.AnomalyReport;
 import com.android.os.profiling.anomaly.detector.BinderSpamAnomalyDetector.RuleEvaluator;
+import com.android.os.profiling.anomaly.attribute.AnomalyDetailsAttribute;
 
 import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
@@ -56,13 +61,19 @@ public final class BinderSpamRuleEvaluatorTests {
     @Mock private LongSupplier mMockElapsedRealtime;
     private int mCurrentTimeSeconds;
 
+    @Before
+    public void setUp() {
+        Bundle condition = new Bundle();
+        when(mMockRule.getRuleCondition()).thenReturn(condition);
+    }
+
     @After
     public void tearDown() {
         resetTime();
     }
 
     @Test
-    public void evaluate_singleCall_reportAnomaly() {
+    public void evaluate_singleCall_reportAnomaly() throws Exception {
         RuleEvaluator evaluator =
                 new RuleEvaluator(
                         mMockRule,
@@ -78,15 +89,33 @@ public final class BinderSpamRuleEvaluatorTests {
                 evaluator.evaluate(
                         createBinderSpamData(actualCallCount, actualInterval, TEST_CALLER_UID));
 
-        BinderSpamDetailsAttribute expectedDetails =
-                createBinderSpamDetails(actualCallCount, actualInterval);
+        PerfettoMetadata.AnomalyDetails expectedDetails =
+                PerfettoMetadata.AnomalyDetails.ofBinderSpam(
+                        TEST_INTERFACE,
+                        TEST_METHOD,
+                        actualCallCount / (actualInterval.toMillis() / 1000.0),
+                        TEST_CALL_COUNT_THRESHOLD / (TEST_WINDOW_SIZE.toMillis() / 1000.0));
+
+        SummaryAttribute expectedSummaryAttribute = new SummaryAttribute(
+                String.format(
+                        "UID %d made %d calls to %s#%s in %ds (Rate: %.2f calls/sec, "
+                                + "Threshold: %d calls/%ds)",
+                        TEST_CALLER_UID,
+                        actualCallCount,
+                        TEST_INTERFACE,
+                        TEST_METHOD,
+                        actualInterval.toSeconds(),
+                        actualCallCount / (actualInterval.toMillis() / 1000.0),
+                        TEST_CALL_COUNT_THRESHOLD,
+                        TEST_WINDOW_SIZE.toSeconds()));
 
         assertThat(actualReport).isNotNull();
         assertThat(actualReport.get(UidAttribute.class))
                 .isEqualTo(new UidAttribute(TEST_CALLER_UID));
-        assertThat(actualReport.get(BinderSpamDetailsAttribute.class)).isEqualTo(expectedDetails);
+        assertThat(actualReport.get(AnomalyDetailsAttribute.class).anomalyDetails().toString())
+                .isEqualTo(expectedDetails.toString());
         assertThat(actualReport.get(SummaryAttribute.class))
-                .isEqualTo(createSummaryAttribute(expectedDetails));
+                .isEqualTo(expectedSummaryAttribute);
     }
 
     @Test
@@ -106,7 +135,7 @@ public final class BinderSpamRuleEvaluatorTests {
     }
 
     @Test
-    public void evaluate_multipleCallDifferentUids_reportAnomaly() {
+    public void evaluate_multipleCallDifferentUids_reportAnomaly() throws Exception {
         RuleEvaluator evaluator =
                 new RuleEvaluator(
                         mMockRule,
@@ -138,14 +167,32 @@ public final class BinderSpamRuleEvaluatorTests {
                 evaluator.evaluate(
                         createBinderSpamData(100, Duration.ofSeconds(30), TEST_CALLER_UID));
 
-        BinderSpamDetailsAttribute expectedDetails =
-                createBinderSpamDetails(actualCallCount, actualInterval);
+        PerfettoMetadata.AnomalyDetails expectedDetails =
+                PerfettoMetadata.AnomalyDetails.ofBinderSpam(
+                        TEST_INTERFACE,
+                        TEST_METHOD,
+                        actualCallCount / (actualInterval.toMillis() / 1000.0),
+                        TEST_CALL_COUNT_THRESHOLD / (TEST_WINDOW_SIZE.toMillis() / 1000.0));
+
+        SummaryAttribute expectedSummaryAttribute = new SummaryAttribute(
+                String.format(
+                        "UID %d made %d calls to %s#%s in %ds (Rate: %.2f calls/sec, "
+                                + "Threshold: %d calls/%ds)",
+                        TEST_CALLER_UID,
+                        actualCallCount,
+                        TEST_INTERFACE,
+                        TEST_METHOD,
+                        actualInterval.toSeconds(),
+                        actualCallCount / (actualInterval.toMillis() / 1000.0),
+                        TEST_CALL_COUNT_THRESHOLD,
+                        TEST_WINDOW_SIZE.toSeconds()));
 
         assertThat(report3).isNotNull();
         assertThat(report3.get(UidAttribute.class)).isEqualTo(new UidAttribute(TEST_CALLER_UID));
-        assertThat(report3.get(BinderSpamDetailsAttribute.class)).isEqualTo(expectedDetails);
+        assertThat(report3.get(AnomalyDetailsAttribute.class).anomalyDetails().toString())
+                .isEqualTo(expectedDetails.toString());
         assertThat(report3.get(SummaryAttribute.class))
-                .isEqualTo(createSummaryAttribute(expectedDetails));
+                .isEqualTo(expectedSummaryAttribute);
     }
 
     @Test
@@ -196,6 +243,44 @@ public final class BinderSpamRuleEvaluatorTests {
         assertThat(report2).isNull();
     }
 
+    @Test
+    public void evaluate_withCustomProfilingSessionDuration_reportHasCorrectDuration() {
+        final long customDurationMs = 5000L;
+        Bundle condition = new Bundle();
+        condition.putLong(
+                RuleInternal.BUNDLE_KEY_PROFILING_SESSION_DURATION_MILLIS, customDurationMs);
+        when(mMockRule.getRuleCondition()).thenReturn(condition);
+
+        RuleEvaluator evaluator =
+                new RuleEvaluator(
+                        mMockRule,
+                        TEST_WINDOW_SIZE,
+                        TEST_CALL_COUNT_THRESHOLD,
+                        mMockElapsedRealtime);
+
+        advanceTimeInSeconds(60);
+        AnomalyReport actualReport =
+                evaluator.evaluate(
+                        createBinderSpamData(101, Duration.ofSeconds(60), TEST_CALLER_UID));
+
+        assertThat(actualReport).isNotNull();
+        ProfilingParamsAttribute profilingParams = actualReport.get(ProfilingParamsAttribute.class);
+        assertThat(profilingParams).isNotNull();
+        assertThat(profilingParams.maxSessionDurationMs()).isEqualTo(customDurationMs);
+    }
+
+    @Test
+    public void ruleEvaluator_invalidWindowSize_throwsIllegalArgumentException() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        new RuleEvaluator(
+                                mMockRule,
+                                Duration.ZERO,
+                                TEST_CALL_COUNT_THRESHOLD,
+                                mMockElapsedRealtime));
+    }
+
     private static BinderSpamData createBinderSpamData(
             int totalCalls, Duration timespan, int callerUid) {
         return new BinderSpamData.Builder()
@@ -206,36 +291,6 @@ public final class BinderSpamRuleEvaluatorTests {
                 .setCallCount(totalCalls)
                 .setTimespan(timespan)
                 .build();
-    }
-
-    private static BinderSpamDetailsAttribute createBinderSpamDetails(
-            int observedCallCount, Duration observedInterval) {
-        return new BinderSpamDetailsAttribute(
-                TEST_INTERFACE,
-                TEST_METHOD,
-                observedCallCount,
-                observedInterval,
-                BinderSpamRuleEvaluatorTests.TEST_CALL_COUNT_THRESHOLD,
-                BinderSpamRuleEvaluatorTests.TEST_WINDOW_SIZE);
-    }
-
-    private static SummaryAttribute createSummaryAttribute(
-            BinderSpamDetailsAttribute detailsAttribute) {
-        double actualCallsPerSecond =
-                (double) detailsAttribute.observedCallCount()
-                        / detailsAttribute.observedInterval().toSeconds();
-        return new SummaryAttribute(
-                String.format(
-                        "UID %d made %d calls to %s#%s in %ds (Rate: %.2f calls/sec, "
-                                + "Threshold: %d calls/%ds)",
-                        TEST_CALLER_UID,
-                        detailsAttribute.observedCallCount(),
-                        TEST_INTERFACE,
-                        TEST_METHOD,
-                        detailsAttribute.observedInterval().toSeconds(),
-                        actualCallsPerSecond,
-                        detailsAttribute.thresholdCallCount(),
-                        detailsAttribute.thresholdInterval().toSeconds()));
     }
 
     private void advanceTimeInSeconds(int seconds) {

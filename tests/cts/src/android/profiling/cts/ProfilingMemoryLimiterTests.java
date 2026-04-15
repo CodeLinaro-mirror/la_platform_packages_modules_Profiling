@@ -51,6 +51,8 @@ import android.util.Log;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 
+import com.android.modules.utils.build.SdkLevel;
+
 import com.google.common.truth.Expect;
 
 import org.junit.After;
@@ -89,7 +91,7 @@ public class ProfilingMemoryLimiterTests {
         // Ensure profiling is enabled and allow all apps (bypass debuggable check for test).
         executeShellCmd("device_config put profiling system_triggered_profiling_new true");
         executeShellCmd("device_config put profiling system_triggered_profiling_all_apps true");
-        ProfilingTestUtils.overrideDeviceConfig("backstage_power", "anomaly_detector_core", true);
+        ProfilingTestUtils.overrideDeviceConfig("backstage_power", "anomaly_detector_core_c", true);
 
         // Initialize the trigger first. This follows a "set-and-restart" pattern to verify that
         // profiling triggers (configured via addProfilingTriggers) correctly persist for the UID
@@ -127,6 +129,8 @@ public class ProfilingMemoryLimiterTests {
     @Test
     @RequiresFlagsEnabled({Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW})
     public void testMemoryAnomalyTrigger() throws Exception {
+        // Anomaly trigger was added in C.
+        assumeTrue(SdkLevel.isAtLeastC());
         assumeTrue(limiterEnabled());
 
         // Create a receiver to capture the broadcast intent sent by the test app.
@@ -138,8 +142,8 @@ public class ProfilingMemoryLimiterTests {
         startActivityWithAction(ACTION_REGISTER_AND_ALLOCATE_MEMORY);
         String pid = executeShellCmd("pidof " + STUB_PACKAGE_NAME).trim();
 
-        // Set a 5% limit to trigger the anomaly quickly.
-        executeShellCmd("am memory-limiter manual %s 5", pid);
+        // Set a 10MB limit to trigger the anomaly quickly.
+        executeShellCmd("am memory-limiter manual %s 10", pid);
 
         Log.d(TAG, "Waiting for broadcast receiver");
         if (!mResultReceiverFilter.waitForBroadcast()) {

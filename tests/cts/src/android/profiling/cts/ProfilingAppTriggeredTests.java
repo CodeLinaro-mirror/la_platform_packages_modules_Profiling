@@ -41,6 +41,7 @@ import static android.profiling.cts.ProfilingTestUtils.startSystemTriggeredTrace
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.junit.Assert.fail;
+import static org.junit.Assume.assumeTrue;
 
 import android.app.Instrumentation;
 import android.content.BroadcastReceiver;
@@ -61,6 +62,7 @@ import androidx.test.filters.LargeTest;
 import androidx.test.platform.app.InstrumentationRegistry;
 
 import com.android.compatibility.common.util.AmUtils;
+import com.android.modules.utils.build.SdkLevel;
 
 import com.google.common.truth.Expect;
 
@@ -117,6 +119,9 @@ public class ProfilingAppTriggeredTests {
     @Test
     @RequiresFlagsEnabled({Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW})
     public void testAppFullyDrawnTrigger() throws Exception {
+        // AppFullyDrawn trigger was added in B.
+        assumeTrue(SdkLevel.isAtLeastB());
+
         // Create a receiver to capture the broadcast intent sent by the test app.
         mResultReceiverFilter =
                 new ResultReceiverFilter(
@@ -151,6 +156,9 @@ public class ProfilingAppTriggeredTests {
     @LargeTest
     @RequiresFlagsEnabled({Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW})
     public void testAnrTrigger() throws Exception {
+        // Anr trigger was added in B and a bug fix added in C.
+        assumeTrue(SdkLevel.isAtLeastC());
+
         // Create a receiver to capture the broadcast intent sent by the test app.
         mResultReceiverFilter =
                 new ResultReceiverFilter(
@@ -244,6 +252,9 @@ public class ProfilingAppTriggeredTests {
     @Test
     @RequiresFlagsEnabled({Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW})
     public void testKillForceStopTrigger() throws Exception {
+        // Kill force stop trigger was added in C.
+        assumeTrue(SdkLevel.isAtLeastC());
+
         runKillTriggerTest(
                 ACTION_SETUP_KILL_FORCE_STOP_TRIGGER,
                 ProfilingTrigger.TRIGGER_TYPE_KILL_FORCE_STOP,
@@ -255,6 +266,9 @@ public class ProfilingAppTriggeredTests {
     @Test
     @RequiresFlagsEnabled({Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW})
     public void testKillTaskManagerTrigger() throws Exception {
+        // Kill task manager trigger was added in C.
+        assumeTrue(SdkLevel.isAtLeastC());
+
         runKillTriggerTest(
                 ACTION_SETUP_KILL_TASK_MANAGER_TRIGGER,
                 ProfilingTrigger.TRIGGER_TYPE_KILL_TASK_MANAGER,
@@ -266,6 +280,9 @@ public class ProfilingAppTriggeredTests {
     @Test
     @RequiresFlagsEnabled({Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW})
     public void testKillRecentsTrigger() throws Exception {
+        // Kill recents trigger was added in C.
+        assumeTrue(SdkLevel.isAtLeastC());
+
         runKillTriggerTest(
                 ACTION_SETUP_KILL_RECENTS_TRIGGER,
                 ProfilingTrigger.TRIGGER_TYPE_KILL_RECENTS,

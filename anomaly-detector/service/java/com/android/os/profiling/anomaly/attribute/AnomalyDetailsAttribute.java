@@ -16,18 +16,16 @@
 
 package com.android.os.profiling.anomaly.attribute;
 
-import android.os.Bundle;
-import android.os.ProfilingManager;
-
 import com.android.os.profiling.anomaly.core.AnomalyAttribute;
 
+import android.profiling.utils.PerfettoMetadata;
+
 /**
- * An attribute that contains parameters used for starting a profiling session with ProfilingManager
+ * An attribute for holding the anomaly details for the usage of
+ * {@link android.profiling.utils.PerfettoMetadata}.
  *
  * @hide
  */
-public record ProfilingParamsAttribute(
-        long maxSessionDurationMs,
-        @ProfilingManager.ProfilingType int profilingType,
-        Bundle sessionParams)
+public record AnomalyDetailsAttribute(
+    PerfettoMetadata.AnomalyDetails anomalyDetails, long durationMillis)
         implements AnomalyAttribute {}

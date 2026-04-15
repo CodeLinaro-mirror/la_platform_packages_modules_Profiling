@@ -38,7 +38,7 @@ import java.util.Objects;
  * @hide
  */
 @SystemApi(client = SYSTEM_SERVER)
-@FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE)
+@FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
 public final class BinderSpamData implements SignalCollectorData {
     /** Either the direct client process UID or the source client process UID. */
     private final int mCallingUid;
