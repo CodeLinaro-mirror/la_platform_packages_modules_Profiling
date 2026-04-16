@@ -378,6 +378,11 @@ public final class ProfilingTestUtils {
         }
     }
 
+    /** Returns true if the process with the given package name is alive. */
+    public static boolean isProcessAlive(String packageName) {
+        return !executeShellCmd("pidof %s", packageName).trim().isEmpty();
+    }
+
     /**
      * Waits until the given condition is true or the timeout is reached.
      *
@@ -388,12 +393,28 @@ public final class ProfilingTestUtils {
      */
     public static void waitForCondition(
             BooleanSupplier condition, int timeoutMs, boolean failIfTimedOut) {
-        int numIncrements = timeoutMs / WAIT_FOR_CONDITION_INCREMENT_MS;
+        waitForCondition(condition, timeoutMs, WAIT_FOR_CONDITION_INCREMENT_MS, failIfTimedOut);
+    }
+
+    /**
+     * Waits until the given condition is true or the timeout is reached.
+     *
+     * @param condition The condition to check.
+     * @param timeoutMs The maximum time to wait in milliseconds.
+     * @param frequencyMs The frequency to check the condition in milliseconds.
+     * @param failIfTimedOut Whether to fail test if the timeout is reached without the condition
+     *     passing.
+     */
+    public static void waitForCondition(
+            BooleanSupplier condition, int timeoutMs, int frequencyMs, boolean failIfTimedOut) {
+        assertThat(frequencyMs).isNotEqualTo(0);
+
+        int numIncrements = timeoutMs / frequencyMs;
         for (int i = 0; i < numIncrements; i++) {
             if (condition.getAsBoolean()) {
                 return;
             }
-            sleep(WAIT_FOR_CONDITION_INCREMENT_MS);
+            sleep(frequencyMs);
         }
 
         if (failIfTimedOut && !condition.getAsBoolean()) {
