@@ -28,6 +28,7 @@ android_test {
         "compatibility-device-util-axt",
         "ctstestrunner-axt",
         "cts-wm-util",
+        "framework-configinfrastructure.stubs.module_lib",
         "service-anomaly-detector.impl",
         "StatsdTestUtils",
         "statsdprotolite",

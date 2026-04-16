@@ -33,6 +33,7 @@ import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.os.profiling.anomaly.attribute.BinderSpamDetailsAttribute;
 import com.android.os.profiling.anomaly.attribute.ProfilingParamsAttribute;
+import com.android.os.profiling.anomaly.attribute.RateLimitSignatureAttribute;
 import com.android.os.profiling.anomaly.attribute.SummaryAttribute;
 import com.android.os.profiling.anomaly.attribute.UidAttribute;
 import com.android.os.profiling.anomaly.collector.SignalCollector;
@@ -50,6 +51,7 @@ import com.android.os.profiling.anomaly.util.LogUtil;
 
 import java.time.Duration;
 import java.util.Collections;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.LongSupplier;
 
@@ -61,6 +63,8 @@ import java.util.function.LongSupplier;
 public final class BinderSpamAnomalyDetector extends AnomalyDetector {
     private static final String TAG = "BinderSpamAnomalyDetector";
     private static final LogUtil sLog = new LogUtil(TAG);
+    private static final String BINDER_SPAM_INTERFACE_KEY = "binder_spam.interface";
+    private static final String BINDER_SPAM_METHOD_KEY = "binder_spam.method";
 
     private final LongSupplier mElapsedRealtime;
     private final SignalCollectorRegistry mRegistry;
@@ -333,6 +337,13 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
                                     MAX_SESSION_DURATION_MS,
                                     PROFILING_TYPE_STACK_SAMPLING,
                                     sessionParams))
+                    .addAttribute(
+                            new RateLimitSignatureAttribute(
+                                    Map.of(
+                                            BINDER_SPAM_INTERFACE_KEY,
+                                            data.getInterfaceName(),
+                                            BINDER_SPAM_METHOD_KEY,
+                                            data.getMethodName())))
                     .build();
         }
     }

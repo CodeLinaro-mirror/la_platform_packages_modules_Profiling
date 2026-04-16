@@ -48,6 +48,9 @@ java_sdk_library {
     static_libs: [
         "anomaly-detector-aconfig-flags-lib",
         "anomaly-detector-rules-proto-lite",
+        "anomaly-detector-ratelimiter-proto-lite",
+        "anomaly-detector-ratelimiter-config-proto-lite",
+        "libprotobuf-java-lite",
     ],
     jarjar_rules: "jarjar-rules.txt",
     lint: {

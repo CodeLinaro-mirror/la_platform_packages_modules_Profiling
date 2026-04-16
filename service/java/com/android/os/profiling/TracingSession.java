@@ -50,6 +50,8 @@ public final class TracingSession {
     // Expected to be populated with ProfilingResult.ERROR_* values.
     private int mErrorStatus = -1; // Default to invalid value.
     private long mProfilingStartTimeMs;
+    // A timestamp of when the request was received. Used for calculating request callback latency.
+    private final long mProfilingRequestTimeMs;
     // LINT.ThenChange(:from_proto)
 
     // Non-persisted params
@@ -65,8 +67,24 @@ public final class TracingSession {
     private boolean mReturnToAnomalyDetectorOnly = false;
 
     public TracingSession(
-            int profilingType, int uid, String packageName, int triggerType, String tag) {
-        this(profilingType, null, uid, packageName, tag, 0L, 0L, triggerType);
+            int profilingType,
+            Bundle params,
+            int uid,
+            String packageName,
+            String tag,
+            long keyMostSigBits,
+            long keyLeastSigBits,
+            int triggerType) {
+        this(
+                profilingType,
+                params,
+                uid,
+                packageName,
+                tag,
+                keyMostSigBits,
+                keyLeastSigBits,
+                triggerType,
+                System.currentTimeMillis());
     }
 
     public TracingSession(
@@ -77,7 +95,8 @@ public final class TracingSession {
             String tag,
             long keyMostSigBits,
             long keyLeastSigBits,
-            int triggerType) {
+            int triggerType,
+            long profilingRequestTimeMs) {
         mProfilingType = profilingType;
         mTriggerType = triggerType;
         mParams = params;
@@ -87,6 +106,7 @@ public final class TracingSession {
         mKeyMostSigBits = keyMostSigBits;
         mKeyLeastSigBits = keyLeastSigBits;
         mState = TracingState.REQUESTED;
+        mProfilingRequestTimeMs = profilingRequestTimeMs;
     }
 
     // LINT.IfChange(from_proto)
@@ -111,6 +131,10 @@ public final class TracingSession {
         mErrorStatus = sessionProto.getErrorStatus();
         mTriggerType = sessionProto.getTriggerType();
         mProfilingStartTimeMs = sessionProto.getProfilingStartTime();
+        mProfilingRequestTimeMs =
+                sessionProto.hasProfilingRequestTime()
+                        ? sessionProto.getProfilingRequestTime()
+                        : -1;
 
         // params is not persisted because we cannot guarantee that it does not contain some large
         // store of data, and because we don't need it anymore once the request has gotten to the
@@ -306,6 +330,10 @@ public final class TracingSession {
         return mProfilingStartTimeMs;
     }
 
+    public long getProfilingRequestTimeMs() {
+        return mProfilingRequestTimeMs;
+    }
+
     /**
      * Returns the relative path starting from apps storage dir including name of the file being
      * returned to the client.
@@ -387,6 +415,7 @@ public final class TracingSession {
         tracingSessionBuilder.setErrorStatus(mErrorStatus);
         tracingSessionBuilder.setTriggerType(mTriggerType);
         tracingSessionBuilder.setProfilingStartTime(mProfilingStartTimeMs);
+        tracingSessionBuilder.setProfilingRequestTime(mProfilingRequestTimeMs);
 
         return tracingSessionBuilder.build();
     }
