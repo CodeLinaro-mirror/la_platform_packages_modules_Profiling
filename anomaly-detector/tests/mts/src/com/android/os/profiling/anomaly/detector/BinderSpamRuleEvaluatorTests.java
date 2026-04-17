@@ -20,11 +20,13 @@ import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.Mockito.when;
 
+import android.os.Bundle;
 import android.os.profiling.anomaly.RuleInternal;
 
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.os.profiling.anomaly.attribute.BinderSpamDetailsAttribute;
+import com.android.os.profiling.anomaly.attribute.ProfilingParamsAttribute;
 import com.android.os.profiling.anomaly.attribute.SummaryAttribute;
 import com.android.os.profiling.anomaly.attribute.UidAttribute;
 import com.android.os.profiling.anomaly.collector.binder.BinderSpamData;
@@ -194,6 +196,32 @@ public final class BinderSpamRuleEvaluatorTests {
                 evaluator.evaluate(
                         createBinderSpamData(100, Duration.ofSeconds(1), TEST_CALLER_UID));
         assertThat(report2).isNull();
+    }
+
+    @Test
+    public void evaluate_withCustomProfilingSessionDuration_reportHasCorrectDuration() {
+        final long customDurationMs = 5000L;
+        Bundle condition = new Bundle();
+        condition.putLong(
+                RuleInternal.BUNDLE_KEY_PROFILING_SESSION_DURATION_MILLIS, customDurationMs);
+        when(mMockRule.getRuleCondition()).thenReturn(condition);
+
+        RuleEvaluator evaluator =
+                new RuleEvaluator(
+                        mMockRule,
+                        TEST_WINDOW_SIZE,
+                        TEST_CALL_COUNT_THRESHOLD,
+                        mMockElapsedRealtime);
+
+        advanceTimeInSeconds(60);
+        AnomalyReport actualReport =
+                evaluator.evaluate(
+                        createBinderSpamData(101, Duration.ofSeconds(60), TEST_CALLER_UID));
+
+        assertThat(actualReport).isNotNull();
+        ProfilingParamsAttribute profilingParams = actualReport.get(ProfilingParamsAttribute.class);
+        assertThat(profilingParams).isNotNull();
+        assertThat(profilingParams.maxSessionDurationMs()).isEqualTo(customDurationMs);
     }
 
     private static BinderSpamData createBinderSpamData(

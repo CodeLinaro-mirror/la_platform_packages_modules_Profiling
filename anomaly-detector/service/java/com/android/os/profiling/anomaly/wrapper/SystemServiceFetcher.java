@@ -17,6 +17,7 @@
 package com.android.os.profiling.anomaly.wrapper;
 
 import android.app.ActivityManager;
+import android.content.pm.PackageManager;
 
 /**
  * Interface to abstract system service access.
@@ -28,4 +29,9 @@ public interface SystemServiceFetcher {
      * @return The {@link ActivityManager} system service.
      */
     ActivityManager getActivityManager();
+
+    /**
+     * @return The {@link PackageManager} system service.
+     */
+    PackageManager getPackageManager();
 }

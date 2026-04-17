@@ -20,9 +20,14 @@ import static android.Manifest.permission.CONFIGURE_ANOMALY_DETECTOR;
 
 import android.annotation.FlaggedApi;
 import android.annotation.PermissionManuallyEnforced;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.OutcomeReceiver;
 import android.os.profiling.anomaly.IAnomalyDetectorService;
 import android.os.profiling.anomaly.RuleInternal;
@@ -35,6 +40,9 @@ import com.android.internal.annotations.VisibleForTesting;
 import com.android.os.profiling.anomaly.collector.SignalCollector;
 import com.android.os.profiling.anomaly.collector.SignalCollectorConfig;
 import com.android.os.profiling.anomaly.collector.SignalCollectorData;
+import com.android.os.profiling.anomaly.config.AnomalyDetectorProperties;
+import com.android.os.profiling.anomaly.config.ProfilingConcurrencyConfig;
+import com.android.os.profiling.anomaly.config.ProfilingConcurrencyConfigImpl;
 import com.android.os.profiling.anomaly.core.AnomalyDetector;
 import com.android.os.profiling.anomaly.core.AnomalyDetectorController;
 import com.android.os.profiling.anomaly.core.AnomalyDetectorRegistry;
@@ -47,7 +55,17 @@ import com.android.os.profiling.anomaly.internal.AnomalyDetectorRegistryImpl;
 import com.android.os.profiling.anomaly.internal.AnomalyHandlerRegistryImpl;
 import com.android.os.profiling.anomaly.internal.RuleStorageImpl;
 import com.android.os.profiling.anomaly.internal.SignalCollectorRegistryImpl;
+import com.android.os.profiling.anomaly.ratelimiter.ProfilingRateLimiter;
+import com.android.os.profiling.anomaly.ratelimiter.ProfilingRateLimiterImpl;
+import com.android.os.profiling.anomaly.ratelimiter.RateLimiterClock;
+import com.android.os.profiling.anomaly.ratelimiter.RateLimiterConfig;
+import com.android.os.profiling.anomaly.ratelimiter.RateLimiterConfigImpl;
+import com.android.os.profiling.anomaly.ratelimiter.SystemClockImpl;
+import com.android.os.profiling.anomaly.ratelimiter.persistence.ProtoStateStore;
+import com.android.os.profiling.anomaly.ratelimiter.persistence.RateLimiterState;
+import com.android.os.profiling.anomaly.ratelimiter.persistence.RateLimiterStateStore;
 import com.android.os.profiling.anomaly.util.LogUtil;
+import com.android.os.profiling.anomaly.wrapper.ContextSystemServiceFetcher;
 import com.android.server.LocalManagerRegistry;
 import com.android.server.SystemService;
 
@@ -80,6 +98,7 @@ public final class AnomalyDetectorService extends SystemService {
     private final SignalCollectorRegistry mSignalCollectorRegistry;
 
     @VisibleForTesting final AnomalyDetectorControllerImpl mController;
+    @VisibleForTesting final ProfilingRateLimiter mProfilingRateLimiter;
 
     /**
      * Constructs a new AnomalyDetectorService.
@@ -99,9 +118,12 @@ public final class AnomalyDetectorService extends SystemService {
         File systemDir = new File(Environment.getDataDirectory(), "system");
         File anomalyServiceDir = new File(systemDir, "anomaly_service");
         RuleStorage ruleStorage;
+        RateLimiterStateStore rateLimiterStateStore;
         if (anomalyServiceDir.exists() || anomalyServiceDir.mkdirs()) {
             File rulesFile = new File(anomalyServiceDir, "rules.pb");
             ruleStorage = new RuleStorageImpl(rulesFile, ioExecutor);
+            File rateLimiterFile = new File(anomalyServiceDir, "rate_limiter_state.pb");
+            rateLimiterStateStore = new ProtoStateStore(rateLimiterFile, ioExecutor);
         } else {
             sLog.e("Failed to create directory: " + anomalyServiceDir.getPath());
             // Create a no-op storage if the directory cannot be created.
@@ -122,10 +144,38 @@ public final class AnomalyDetectorService extends SystemService {
                             executor.execute(() -> callback.onResult(null));
                         }
                     };
+            rateLimiterStateStore =
+                    new RateLimiterStateStore() {
+                        @Override
+                        public void readState(
+                                OutcomeReceiver<RateLimiterState, Throwable> callback) {
+                            callback.onResult(RateLimiterState.createEmpty());
+                        }
+
+                        @Override
+                        public void writeState(RateLimiterState state) {
+                            // no-op
+                        }
+                    };
         }
 
         mSignalCollectorRegistry = new SignalCollectorRegistryImpl();
-        AnomalyHandlerRegistry handlerRegistry = new AnomalyHandlerRegistryImpl();
+        RateLimiterClock clock = new SystemClockImpl();
+        AnomalyDetectorProperties propertiesProvider = new AnomalyDetectorProperties();
+        RateLimiterConfig rateLimiterConfig = new RateLimiterConfigImpl(propertiesProvider);
+        ProfilingConcurrencyConfig profilingConcurrencyConfig =
+                new ProfilingConcurrencyConfigImpl(propertiesProvider);
+        HandlerThread rateLimiterHandlerThread = new HandlerThread("AnomalyRateLimiter");
+        rateLimiterHandlerThread.start();
+        Handler rateLimiterHandler = new Handler(rateLimiterHandlerThread.getLooper());
+        mProfilingRateLimiter =
+                new ProfilingRateLimiterImpl(
+                        rateLimiterStateStore, clock, rateLimiterConfig, rateLimiterHandler);
+        AnomalyHandlerRegistry handlerRegistry =
+                new AnomalyHandlerRegistryImpl(
+                        new ContextSystemServiceFetcher(context),
+                        mProfilingRateLimiter,
+                        profilingConcurrencyConfig);
 
         // Manually create the set of all known detector factories.
         // This is the central place to register a new detector with the system.
@@ -146,7 +196,6 @@ public final class AnomalyDetectorService extends SystemService {
         mLocalManager = new Local();
     }
 
-    /** {@inheritDoc} */
     @Override
     public void onStart() {
         sLog.i("onStart()");
@@ -154,9 +203,21 @@ public final class AnomalyDetectorService extends SystemService {
         LocalManagerRegistry.addManager(AnomalyDetectorManagerLocal.class, mLocalManager);
 
         publishBinderService(Context.ANOMALY_DETECTOR_SERVICE, mBinderService);
+
+        IntentFilter filter = new IntentFilter(Intent.ACTION_TIME_CHANGED);
+        getContext()
+                .registerReceiver(
+                        new BroadcastReceiver() {
+                            @Override
+                            public void onReceive(Context context, Intent intent) {
+                                if (Intent.ACTION_TIME_CHANGED.equals(intent.getAction())) {
+                                    mProfilingRateLimiter.onTimeChanged();
+                                }
+                            }
+                        },
+                        filter);
     }
 
-    /** {@inheritDoc} */
     @Override
     public void onBootPhase(int phase) {
         if (phase == SystemService.PHASE_SYSTEM_SERVICES_READY) {
@@ -250,7 +311,6 @@ public final class AnomalyDetectorService extends SystemService {
      * This would typically implement an updated AnomalyDetectorManagerLocal interface.
      */
     private final class Local implements AnomalyDetectorManagerLocal {
-        /** {@inheritDoc} */
         @Override
         public <T extends SignalCollectorConfig, U extends SignalCollectorData>
                 void registerSignalCollector(
@@ -258,7 +318,6 @@ public final class AnomalyDetectorService extends SystemService {
             mSignalCollectorRegistry.registerSignalCollector(configType, dataType, collector);
         }
 
-        /** {@inheritDoc} */
         @Override
         public <T extends SignalCollectorConfig, U extends SignalCollectorData>
                 void unregisterSignalCollector(Class<T> configType, Class<U> dataType) {

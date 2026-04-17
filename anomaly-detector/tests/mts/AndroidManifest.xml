@@ -21,7 +21,9 @@
 
     <uses-sdk android:minSdkVersion="36" android:targetSdkVersion="36" />
 
-    <application>
+    <application
+        android:debuggable="true"
+        >
       <uses-library android:name="android.test.runner"/>
     </application>
 

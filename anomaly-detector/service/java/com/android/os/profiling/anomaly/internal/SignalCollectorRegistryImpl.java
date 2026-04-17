@@ -58,7 +58,6 @@ public final class SignalCollectorRegistryImpl implements SignalCollectorRegistr
     private final ArrayMap<Consumer<SignalTypeId>, Executor> mCollectorUnregisteredCallbacks =
             new ArrayMap<>();
 
-    /** {@inheritDoc} */
     @Override
     public <T extends SignalCollectorConfig, U extends SignalCollectorData>
             void registerSignalCollector(
@@ -85,7 +84,6 @@ public final class SignalCollectorRegistryImpl implements SignalCollectorRegistr
         sLog.i("Registered SignalCollector for " + signalTypeId);
     }
 
-    /** {@inheritDoc} */
     @Override
     public <T extends SignalCollectorConfig, U extends SignalCollectorData>
             void unregisterSignalCollector(Class<T> configType, Class<U> dataType) {
@@ -113,7 +111,6 @@ public final class SignalCollectorRegistryImpl implements SignalCollectorRegistr
         }
     }
 
-    /** {@inheritDoc} */
     @Override
     public void addCollectorRegisteredCallback(Executor executor, Consumer<SignalTypeId> callback) {
         Objects.requireNonNull(executor, "Executor cannot be null");
@@ -128,7 +125,6 @@ public final class SignalCollectorRegistryImpl implements SignalCollectorRegistr
         }
     }
 
-    /** {@inheritDoc} */
     @Override
     public void removeCollectorRegisteredCallback(Consumer<SignalTypeId> callback) {
         Objects.requireNonNull(callback, "Callback cannot be null");
@@ -137,7 +133,6 @@ public final class SignalCollectorRegistryImpl implements SignalCollectorRegistr
         }
     }
 
-    /** {@inheritDoc} */
     @Override
     public void addCollectorUnregisteredCallback(
             Executor executor, Consumer<SignalTypeId> callback) {
@@ -148,7 +143,6 @@ public final class SignalCollectorRegistryImpl implements SignalCollectorRegistr
         }
     }
 
-    /** {@inheritDoc} */
     @Override
     public void removeCollectorUnregisteredCallback(Consumer<SignalTypeId> callback) {
         Objects.requireNonNull(callback, "Callback cannot be null");
@@ -157,7 +151,6 @@ public final class SignalCollectorRegistryImpl implements SignalCollectorRegistr
         }
     }
 
-    /** {@inheritDoc} */
     @Override
     @Nullable
     public <T extends SignalCollectorConfig, U extends SignalCollectorData>

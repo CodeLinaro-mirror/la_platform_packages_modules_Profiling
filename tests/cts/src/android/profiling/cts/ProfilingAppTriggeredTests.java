@@ -16,9 +16,16 @@
 
 package android.profiling.cts;
 
+import static android.content.Intent.FLAG_RECEIVER_FOREGROUND;
 import static android.profiling.cts.ProfilingTestConstants.ACTION_INIT_AND_ADD_APP_FULLY_DRAWN_TRIGGER;
+import static android.profiling.cts.ProfilingTestConstants.ACTION_INIT_AND_REQUEST_RUNNING_TRACE;
 import static android.profiling.cts.ProfilingTestConstants.ACTION_KEY;
 import static android.profiling.cts.ProfilingTestConstants.ACTION_REGISTER_AND_REPORT_FULLY_DRAWN;
+import static android.profiling.cts.ProfilingTestConstants.ACTION_REGISTER_PROFILING_CALLBACK;
+import static android.profiling.cts.ProfilingTestConstants.ACTION_SETUP_KILL_FORCE_STOP_TRIGGER;
+import static android.profiling.cts.ProfilingTestConstants.ACTION_SETUP_KILL_RECENTS_TRIGGER;
+import static android.profiling.cts.ProfilingTestConstants.ACTION_SETUP_KILL_TASK_MANAGER_TRIGGER;
+import static android.profiling.cts.ProfilingTestConstants.ACTION_SETUP_PROFILING_TRIGGER_AND_TRIGGER_ANR;
 import static android.profiling.cts.ProfilingTestConstants.FILE_VALIDATION_RESULT_NONE;
 import static android.profiling.cts.ProfilingTestConstants.FILE_VALIDATION_RESULT_SUCCESS;
 import static android.profiling.cts.ProfilingTestConstants.REPLY_ACTION_COMPLETE;
@@ -50,6 +57,7 @@ import android.platform.test.flag.junit.DeviceFlagsValueProvider;
 import android.util.Log;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.filters.LargeTest;
 import androidx.test.platform.app.InstrumentationRegistry;
 
 import com.android.compatibility.common.util.AmUtils;
@@ -64,6 +72,8 @@ import org.junit.runner.RunWith;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @RunWith(AndroidJUnit4.class)
 public class ProfilingAppTriggeredTests {
@@ -71,7 +81,14 @@ public class ProfilingAppTriggeredTests {
     private static final String STUB_PACKAGE_NAME = "android.profiling.cts.profilingapp";
     private static final String SIMPLE_ACTIVITY = ".ProfilingTriggerTestActivity";
 
-    private static final int WAIT_TIME_FOR_APP_START_MS = 1000;
+    private static final int BROADCAST_RECEIVER_TIMEOUT_MS = 15_000;
+    private static final int WAIT_TIME_FOR_APP_START_MS = 500;
+    private static final int WAIT_TIME_FOR_KILL_PROCESS_MS = 2_000;
+    private static final int BROADCAST_FG_TIMEOUT_MS = 10_000;
+    // ActivityManager will dump the ANR info and send the ANR trigger to ProfilingService in the
+    // end. Adding delay to make sure the ANR handled by ActivityManager is finished and
+    // send the trigger to ProfilingService.
+    private static final int ANR_POST_PROCESS_DELAY_MS = 10_000;
 
     private Instrumentation mInstrumentation;
     private ResultReceiverFilter mResultReceiverFilter;
@@ -103,7 +120,9 @@ public class ProfilingAppTriggeredTests {
         // Create a receiver to capture the broadcast intent sent by the test app.
         mResultReceiverFilter =
                 new ResultReceiverFilter(
-                        REPLY_ACTION_COMPLETE, /* resultsToWaitFor= */ 1, /* timeoutMs= */ 15_000);
+                        REPLY_ACTION_COMPLETE,
+                        /* resultsToWaitFor= */ 1,
+                        BROADCAST_RECEIVER_TIMEOUT_MS);
 
         // Start the activity in the test app, which will clears all profiling triggers and adds an
         // app fully drawn profiling trigger.
@@ -111,36 +130,197 @@ public class ProfilingAppTriggeredTests {
         sleep(WAIT_TIME_FOR_APP_START_MS);
 
         // Stop the test app.
-        executeShellCmd("am force-stop " + STUB_PACKAGE_NAME);
+        AmUtils.runStopApp(STUB_PACKAGE_NAME, true /* waitForStop */);
 
         startSystemTriggeredTraceForTesting(STUB_PACKAGE_NAME);
 
         // Start the test app again to trigger reportFullyDrawn().
         startActivityWithAction(ACTION_REGISTER_AND_REPORT_FULLY_DRAWN);
+        sleep(WAIT_TIME_FOR_APP_START_MS);
 
         Log.d(TAG, "Waiting for broadcast receiver");
         if (!mResultReceiverFilter.waitForBroadcast()) {
             fail("Test timed out waiting for BroadcastReceiver");
         }
 
-        // Assert that exactly one intent was received.
-        assertThat(mResultReceiverFilter.getIntents().size()).isEqualTo(1);
-        Bundle extras = mResultReceiverFilter.getIntents().getFirst().getExtras();
-        assertThat(extras).isNotNull();
+        assertProfilingResultAndFileValidation(
+                mResultReceiverFilter, ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN);
+    }
 
-        ProfilingResult result =
-                extras.getParcelable(REPLY_EXTRA_PROFILING_RESULT, ProfilingResult.class);
-        assertProfilingResultSuccess(
-                expect,
-                result,
-                OUTPUT_FILE_TRACE_SUFFIX,
-                ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN);
+    @Test
+    @LargeTest
+    @RequiresFlagsEnabled({Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW})
+    public void testAnrTrigger() throws Exception {
+        // Create a receiver to capture the broadcast intent sent by the test app.
+        mResultReceiverFilter =
+                new ResultReceiverFilter(
+                        REPLY_ACTION_COMPLETE,
+                        /* resultsToWaitFor= */ 1,
+                        /* timeoutMs= */ BROADCAST_RECEIVER_TIMEOUT_MS);
 
-        int fileValidationResult =
-                extras.getInt(REPLY_EXTRA_FILE_VALIDATION_RESULT, FILE_VALIDATION_RESULT_NONE);
-        // Profiling caller test app receives the result file and validates it. Here we verify the
-        // validation result code.
-        assertThat(fileValidationResult).isEqualTo(FILE_VALIDATION_RESULT_SUCCESS);
+        startSystemTriggeredTraceForTesting(STUB_PACKAGE_NAME);
+
+        // Start the test app to register the ANR trigger, attach a listener, start broadcast
+        // receiver and trigger ANR.
+        startActivityWithAction(ACTION_SETUP_PROFILING_TRIGGER_AND_TRIGGER_ANR);
+        sleep(WAIT_TIME_FOR_APP_START_MS);
+
+        // Send a broadcast to test app. The test app handles this in an infinite loop, which will
+        // cause ANR. The foreground priority flag will cause ANR in a shorter timeout.
+        // This command can block until the ANR is complete, so we run it asynchronously to allow
+        // the test to detect the ANR state and proceed.
+        new Thread(
+                        () ->
+                                executeShellCmd(
+                                        "am broadcast -a action_anr -p "
+                                                + STUB_PACKAGE_NAME
+                                                + " -f "
+                                                + FLAG_RECEIVER_FOREGROUND))
+                .start();
+
+        // Get the hardware timeout multiplier to account for slower devices/emulators. Default to 1
+        // because real devices and hardware-accelerated virtualized devices don't have this set.
+        int timeoutMultiplier = 1;
+        try {
+            String output = executeShellCmd("getprop ro.hw_timeout_multiplier").trim();
+            if (!output.isEmpty()) {
+                timeoutMultiplier = Integer.parseInt(output);
+            }
+        } catch (NumberFormatException e) {
+            // Ignore, use default
+        }
+        // Calculate the timeout for ANR. The default timeout for foreground broadcast is 10s *
+        // timeoutMultiplier.
+        // We add an extra 10s buffer to ensure ActivityManager and ProfilingService has finished
+        // processing the ANR.
+        int timeoutMs = BROADCAST_FG_TIMEOUT_MS * timeoutMultiplier + ANR_POST_PROCESS_DELAY_MS;
+        Log.d(TAG, "Wait for ANR to complete: " + timeoutMs + " ms");
+        sleep(timeoutMs);
+
+        // Stop the test app.
+        AmUtils.runStopApp(STUB_PACKAGE_NAME, /* waitForStop= */ true);
+
+        // Restart the app and register the callback to receive the results of the ANR trace
+        startActivityWithAction(ACTION_REGISTER_PROFILING_CALLBACK);
+        sleep(WAIT_TIME_FOR_APP_START_MS);
+
+        Log.d(TAG, "Waiting for broadcast receiver");
+        if (!mResultReceiverFilter.waitForBroadcast()) {
+            fail("Test timed out waiting for BroadcastReceiver");
+        }
+
+        assertProfilingResultAndFileValidation(
+                mResultReceiverFilter, ProfilingTrigger.TRIGGER_TYPE_ANR);
+    }
+
+    @Test
+    @RequiresFlagsEnabled({
+        Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW,
+    })
+    public void testAppRequestRunningTraceTrigger() throws Exception {
+        // Create a receiver to capture the broadcast intent sent by the test app.
+        mResultReceiverFilter =
+                new ResultReceiverFilter(
+                        REPLY_ACTION_COMPLETE,
+                        /* resultsToWaitFor= */ 1,
+                        BROADCAST_RECEIVER_TIMEOUT_MS);
+
+        startSystemTriggeredTraceForTesting(STUB_PACKAGE_NAME);
+
+        // Start the activity in the test app, which will clears all profiling triggers, adds a
+        // request running trace trigger, registers for results, and requests a running trace.
+        startActivityWithAction(ACTION_INIT_AND_REQUEST_RUNNING_TRACE);
+        sleep(WAIT_TIME_FOR_APP_START_MS);
+
+        Log.d(TAG, "Waiting for broadcast receiver");
+        if (!mResultReceiverFilter.waitForBroadcast()) {
+            fail("Test timed out waiting for BroadcastReceiver");
+        }
+
+        assertProfilingResultAndFileValidation(
+                mResultReceiverFilter, ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE);
+    }
+
+    @Test
+    @RequiresFlagsEnabled({Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW})
+    public void testKillForceStopTrigger() throws Exception {
+        runKillTriggerTest(
+                ACTION_SETUP_KILL_FORCE_STOP_TRIGGER,
+                ProfilingTrigger.TRIGGER_TYPE_KILL_FORCE_STOP,
+                // This command invokes ActivityManagerService.forceStopPackage(), which sends
+                // ProfilingTrigger.TRIGGER_KILL_FORCE_STOP.
+                () -> executeShellCmd("am force-stop " + STUB_PACKAGE_NAME));
+    }
+
+    @Test
+    @RequiresFlagsEnabled({Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW})
+    public void testKillTaskManagerTrigger() throws Exception {
+        runKillTriggerTest(
+                ACTION_SETUP_KILL_TASK_MANAGER_TRIGGER,
+                ProfilingTrigger.TRIGGER_TYPE_KILL_TASK_MANAGER,
+                // AmUtils.runStopApp uses "am stop-app" command", which sends
+                // ProfilingTrigger.TRIGGER_KILL_TASK_MANAGER.
+                () -> AmUtils.runStopApp(STUB_PACKAGE_NAME, /* waitForStop= */ true));
+    }
+
+    @Test
+    @RequiresFlagsEnabled({Flags.FLAG_SYSTEM_TRIGGERED_PROFILING_NEW})
+    public void testKillRecentsTrigger() throws Exception {
+        runKillTriggerTest(
+                ACTION_SETUP_KILL_RECENTS_TRIGGER,
+                ProfilingTrigger.TRIGGER_TYPE_KILL_RECENTS,
+                // In AMS, the command "am stack remove" triggers
+                // ActivityManagerService.killProcessesForRemovedTask(), which is responsible for
+                // cleaning up processes when their task is removed from the recent task list. This
+                // method contains the logic that sends ProfilingTrigger.TRIGGER_TYPE_KILL_RECENTS.
+                () -> {
+                    String output = executeShellCmd("am stack list");
+                    String taskId = parseTaskId(output, STUB_PACKAGE_NAME);
+                    executeShellCmd("am stack remove %s", taskId);
+                });
+    }
+
+    private interface ThrowingRunnable {
+        void run() throws Exception;
+    }
+
+    /**
+     * Common test logic for app kill-based profiling triggers.
+     *
+     * @param setupAction The action to initialize the trigger in the test app.
+     * @param triggerType The expected {@link ProfilingTrigger} type.
+     * @param stopAction The action that will cause the app to be killed or stopped.
+     * @throws Exception if any error occurs during execution.
+     */
+    private void runKillTriggerTest(int setupAction, int triggerType, ThrowingRunnable stopAction)
+            throws Exception {
+        // Create a receiver to capture the broadcast intent sent by the test app.
+        mResultReceiverFilter =
+                new ResultReceiverFilter(
+                        REPLY_ACTION_COMPLETE,
+                        /* resultsToWaitFor= */ 1,
+                        BROADCAST_RECEIVER_TIMEOUT_MS);
+
+        // Start the activity in the test app to setup the trigger.
+        startActivityWithAction(setupAction);
+        sleep(WAIT_TIME_FOR_APP_START_MS);
+
+        startSystemTriggeredTraceForTesting(STUB_PACKAGE_NAME);
+
+        // Stop or kill the app based on how the trigger occurs.
+        stopAction.run();
+        sleep(WAIT_TIME_FOR_KILL_PROCESS_MS);
+
+        // Start the test app again to register callback.
+        startActivityWithAction(ACTION_REGISTER_PROFILING_CALLBACK);
+        sleep(WAIT_TIME_FOR_APP_START_MS);
+
+        Log.d(TAG, "Waiting for broadcast receiver");
+        if (!mResultReceiverFilter.waitForBroadcast()) {
+            fail("Test timed out waiting for BroadcastReceiver");
+        }
+
+        assertProfilingResultAndFileValidation(mResultReceiverFilter, triggerType);
     }
 
     /**
@@ -154,6 +334,43 @@ public class ProfilingAppTriggeredTests {
         executeShellCmd(
                 "am start -W -n %s/%s --ei %s %d",
                 STUB_PACKAGE_NAME, SIMPLE_ACTIVITY, ACTION_KEY, action);
+    }
+
+    /** Asserts that the profiling result and file validation are successful. */
+    private void assertProfilingResultAndFileValidation(
+            ResultReceiverFilter resultReceiverFilter, int triggerType) {
+        // Assert that exactly one intent was received.
+        assertThat(resultReceiverFilter.getIntents().size()).isEqualTo(1);
+        Bundle extras = resultReceiverFilter.getIntents().getFirst().getExtras();
+        assertThat(extras).isNotNull();
+
+        ProfilingResult result =
+                extras.getParcelable(REPLY_EXTRA_PROFILING_RESULT, ProfilingResult.class);
+        assertProfilingResultSuccess(expect, result, OUTPUT_FILE_TRACE_SUFFIX, triggerType);
+
+        int fileValidationResult =
+                extras.getInt(REPLY_EXTRA_FILE_VALIDATION_RESULT, FILE_VALIDATION_RESULT_NONE);
+        // Profiling caller test app receives the result file and validates it. Here we verify the
+        // validation result code.
+        assertThat(fileValidationResult).isEqualTo(FILE_VALIDATION_RESULT_SUCCESS);
+    }
+
+    /**
+     * Parses the task ID for a given package from the "am stack list" output.
+     *
+     * @param output The output string from the shell command.
+     * @param packageName The name of the package to search for.
+     * @return The task ID associated with the package as a String.
+     */
+    private String parseTaskId(String output, String packageName) {
+        // Example output format: "  taskId=123: android.profiling.cts.profilingapp/..."
+        Pattern pattern = Pattern.compile("taskId=(\\d+):.*" + Pattern.quote(packageName));
+        Matcher matcher = pattern.matcher(output);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        throw new RuntimeException(
+                "Could not find taskId for package: " + packageName + "\nOutput: " + output);
     }
 
     // Helper class to receive and manage broadcast intents.

@@ -39,8 +39,17 @@ import java.util.Set;
 public class RuleInternal {
     private static final String RULE_KEY_PREFIX = "android.os.profiling.anomaly.Rule.";
 
+    /**
+     * The integer values for @IntDef definitions
+     *
+     * <p>The integer value 0 - 1000 is reserved for Android Platform use.
+     */
     /** Action to write a detailed report of the anomaly to the system log. */
     public static final int ACTION_TYPE_LOG = 1;
+
+    // TODO: b/482942778 - Also add this to the Rule class
+    /** Action to collect a profile of the package the anomaly originated from. */
+    public static final int ACTION_TYPE_COLLECT_PROFILE = 2;
 
     /**
      * Condition type for monitoring excessive Binder Inter-Process Calls (IPCs), also known as
@@ -97,6 +106,16 @@ public class RuleInternal {
      */
     public static final String BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS =
             RULE_KEY_PREFIX + "binder_call_interval_millis";
+
+    /**
+     * {@link Bundle} key for the maximum duration of the profiling session in milliseconds. This
+     * value is a long.
+     *
+     * <p>This is an optional key in the rule condition bundle. If not provided, a default value
+     * will be used.
+     */
+    public static final String BUNDLE_KEY_PROFILING_SESSION_DURATION_MILLIS =
+            RULE_KEY_PREFIX + "profiling_session_duration_millis";
 
     private static final Set<String> BINDER_SPAM_CONDITION_KEYS =
             Set.of(
@@ -266,9 +285,12 @@ public class RuleInternal {
      */
     @Target(ElementType.TYPE_USE)
     @Retention(RetentionPolicy.SOURCE)
+    // LINT.IfChange(supported_actions)
     @IntDef({
         ACTION_TYPE_LOG,
+        ACTION_TYPE_COLLECT_PROFILE,
     })
+    // LINT.ThenChange(/anomaly-detector/tests/scripts/generate_anomaly_rules.py:supported_actions)
     // TODO(b/416804300): Add default and other action once finalized.
     public @interface AnomalyActionTypeInternal {}
 
@@ -279,9 +301,12 @@ public class RuleInternal {
      */
     @Target(ElementType.TYPE_USE)
     @Retention(RetentionPolicy.SOURCE)
+    // LINT.IfChange(supported_condition_types)
     @StringDef({
         CONDITION_TYPE_BINDER_SPAM,
     })
+    // LINT.ThenChange(
+    //     /anomaly-detector/tests/scripts/generate_anomaly_rules.py:supported_condition_types)
     public @interface ConditionTypeInternal {}
 
     /**
@@ -419,6 +444,16 @@ public class RuleInternal {
                 case CONDITION_TYPE_BINDER_SPAM -> validateBinderSpamBundleValuesType();
                     // add validation for other types.
             }
+
+            if (mRuleCondition.containsKey(BUNDLE_KEY_PROFILING_SESSION_DURATION_MILLIS)) {
+                if (!mAnomalyActions.contains(ACTION_TYPE_COLLECT_PROFILE)) {
+                    throw new IllegalArgumentException(
+                            "Profiling session duration should only be set if"
+                                    + " ACTION_TYPE_COLLECT_PROFILE is present.");
+                }
+                validateBundleValueType(
+                        mRuleCondition, BUNDLE_KEY_PROFILING_SESSION_DURATION_MILLIS, Long.class);
+            }
         }
 
         /*
@@ -426,8 +461,8 @@ public class RuleInternal {
          * runtime type checking.
          */
         @SuppressWarnings("deprecation")
-        private void validateBinderSpamBundleValueType(String key, Class<?> expectedType) {
-            Object value = mRuleCondition.get(key);
+        private void validateBundleValueType(Bundle bundle, String key, Class<?> expectedType) {
+            Object value = bundle.get(key);
 
             if (!expectedType.isInstance(value)) {
                 throw new IllegalArgumentException(
@@ -441,14 +476,16 @@ public class RuleInternal {
 
         // TODO(b/440140585): Validate the format of the interface name and method.
         private void validateBinderSpamBundleValuesType() {
-            validateBinderSpamBundleValueType(
-                    BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME, String.class);
-            validateBinderSpamBundleValueType(
-                    BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME, String.class);
-            validateBinderSpamBundleValueType(
-                    BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT, Integer.class);
-            validateBinderSpamBundleValueType(
-                    BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS, Long.class);
+            validateBundleValueType(
+                    mRuleCondition, BUNDLE_KEY_CONDITION_BINDER_SPAM_INTERFACE_NAME, String.class);
+            validateBundleValueType(
+                    mRuleCondition, BUNDLE_KEY_CONDITION_BINDER_SPAM_METHOD_NAME, String.class);
+            validateBundleValueType(
+                    mRuleCondition, BUNDLE_KEY_CONDITION_BINDER_SPAM_CALL_LIMIT, Integer.class);
+            validateBundleValueType(
+                    mRuleCondition,
+                    BUNDLE_KEY_CONDITION_BINDER_SPAM_BINDER_CALL_INTERVAL_MILLIS,
+                    Long.class);
         }
     }
 }

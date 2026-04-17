@@ -31,16 +31,26 @@ java_sdk_library {
         "framework-system-server-module-defaults",
         "framework-system-server-module-optimize-defaults",
     ],
-    srcs: [":service-anomaly-detector-sources"],
+    srcs: [
+        ":service-anomaly-detector-sources",
+        ":anomaly-statslog-java-gen-src",
+    ],
     sdk_version: "system_server_current",
     libs: [
         "framework-annotations-lib",
         "framework-anomaly-detector.impl",
         "framework-configinfrastructure.stubs.module_lib",
+        "framework-statsd.stubs.module_lib",
+        // TODO: b/467021367 - Maybe add a build target to Profiling/framework/Android.bp that
+        // contains only more specific classes that are needeed by Pulse, e.g. a java_library
+        "framework-profiling.impl",
     ],
     static_libs: [
         "anomaly-detector-aconfig-flags-lib",
         "anomaly-detector-rules-proto-lite",
+        "anomaly-detector-ratelimiter-proto-lite",
+        "anomaly-detector-ratelimiter-config-proto-lite",
+        "libprotobuf-java-lite",
     ],
     jarjar_rules: "jarjar-rules.txt",
     lint: {
@@ -56,4 +66,12 @@ java_sdk_library {
     ],
     min_sdk_version: "36",
     installable: true,
+}
+
+genrule {
+    name: "anomaly-statslog-java-gen-src",
+    visibility: ["//packages/modules/Profiling/anomaly-detector/tests:__subpackages__"],
+    tools: ["stats-log-api-gen"],
+    cmd: "$(location stats-log-api-gen) --java $(out) --module anomalystats --javaPackage com.android.os.profiling.anomaly.core --javaClass AnomalyStatsAtomsLog",
+    out: ["com/android/os/profiling/anomaly/core/AnomalyStatsAtomsLog.java"],
 }

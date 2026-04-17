@@ -18,9 +18,15 @@ package android.profiling.cts.profilingapp;
 
 import static android.profiling.cts.ProfilingTestConstants.ACTION_INIT_AND_ADD_ANOMALY_TRIGGER;
 import static android.profiling.cts.ProfilingTestConstants.ACTION_INIT_AND_ADD_APP_FULLY_DRAWN_TRIGGER;
+import static android.profiling.cts.ProfilingTestConstants.ACTION_INIT_AND_REQUEST_RUNNING_TRACE;
 import static android.profiling.cts.ProfilingTestConstants.ACTION_KEY;
 import static android.profiling.cts.ProfilingTestConstants.ACTION_REGISTER_AND_ALLOCATE_MEMORY;
 import static android.profiling.cts.ProfilingTestConstants.ACTION_REGISTER_AND_REPORT_FULLY_DRAWN;
+import static android.profiling.cts.ProfilingTestConstants.ACTION_REGISTER_PROFILING_CALLBACK;
+import static android.profiling.cts.ProfilingTestConstants.ACTION_SETUP_KILL_FORCE_STOP_TRIGGER;
+import static android.profiling.cts.ProfilingTestConstants.ACTION_SETUP_KILL_RECENTS_TRIGGER;
+import static android.profiling.cts.ProfilingTestConstants.ACTION_SETUP_KILL_TASK_MANAGER_TRIGGER;
+import static android.profiling.cts.ProfilingTestConstants.ACTION_SETUP_PROFILING_TRIGGER_AND_TRIGGER_ANR;
 import static android.profiling.cts.ProfilingTestConstants.FILE_VALIDATION_RESULT_FILE_DOES_NOT_EXIST;
 import static android.profiling.cts.ProfilingTestConstants.FILE_VALIDATION_RESULT_FILE_EMPTY;
 import static android.profiling.cts.ProfilingTestConstants.FILE_VALIDATION_RESULT_FILE_PATH_EMPTY;
@@ -30,14 +36,19 @@ import static android.profiling.cts.profilingapp.ProfilingAppUtils.reply;
 
 import android.app.Activity;
 import android.app.ActivityManager;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Bundle;
 import android.os.ProfilingManager;
 import android.os.ProfilingResult;
 import android.os.ProfilingTrigger;
 import android.os.SharedMemory;
+import android.os.SystemClock;
 import android.system.ErrnoException;
 import android.util.Log;
+import android.view.WindowManager;
 
 import java.io.File;
 import java.nio.ByteBuffer;
@@ -49,6 +60,7 @@ import java.util.function.Consumer;
 
 public class ProfilingTriggerTestActivity extends Activity {
     private static final String TAG = ProfilingTriggerTestActivity.class.getSimpleName();
+    private static final String ACTION_ANR = "action_anr";
 
     private final List<ByteBuffer> mAllocations = new ArrayList<>();
     private volatile boolean mStopAllocation = false;
@@ -68,6 +80,13 @@ public class ProfilingTriggerTestActivity extends Activity {
             case ACTION_REGISTER_AND_REPORT_FULLY_DRAWN -> registerAndReportFullyDrawn();
             case ACTION_INIT_AND_ADD_ANOMALY_TRIGGER -> initAndAddAnomalyTrigger();
             case ACTION_REGISTER_AND_ALLOCATE_MEMORY -> registerAndAllocateMemory();
+            case ACTION_SETUP_PROFILING_TRIGGER_AND_TRIGGER_ANR ->
+                    setupProfilingTriggersAndTriggerAnr();
+            case ACTION_REGISTER_PROFILING_CALLBACK -> registerProfilingCallback();
+            case ACTION_INIT_AND_REQUEST_RUNNING_TRACE -> initAndRequestRunningTrace();
+            case ACTION_SETUP_KILL_FORCE_STOP_TRIGGER -> setupKillForceStopTrigger();
+            case ACTION_SETUP_KILL_TASK_MANAGER_TRIGGER -> setupKillTaskManagerTrigger();
+            case ACTION_SETUP_KILL_RECENTS_TRIGGER -> setupKillRecentsTrigger();
             default -> {
                 Log.e(TAG, "Unknown action: " + action);
                 finish();
@@ -77,20 +96,13 @@ public class ProfilingTriggerTestActivity extends Activity {
 
     /** Clears all profiling triggers and adds an anomaly profiling trigger. */
     private void initAndAddAnomalyTrigger() {
-        ProfilingManager profilingManager = getSystemService(ProfilingManager.class);
-        profilingManager.clearProfilingTriggers();
-        ProfilingTrigger trigger =
-                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_ANOMALY).build();
-        profilingManager.addProfilingTriggers(Collections.singletonList(trigger));
+        clearAndAddTrigger(ProfilingTrigger.TRIGGER_TYPE_ANOMALY);
     }
 
     /** Registers for profiling results and allocates memory. */
     private void registerAndAllocateMemory() {
         Log.i(TAG, "registerAndAllocateMemory starting");
-        ProfilingManager profilingManager = getSystemService(ProfilingManager.class);
-
-        profilingManager.registerForAllProfilingResults(
-                Executors.newSingleThreadExecutor(), new AppCallback(this));
+        registerCallback();
 
         new Thread(
                         () -> {
@@ -156,19 +168,97 @@ public class ProfilingTriggerTestActivity extends Activity {
 
     /** Clears all profiling triggers and adds an app fully drawn profiling trigger. */
     private void initAndAddAppFullyDrawnTrigger() {
-        ProfilingManager profilingManager = getSystemService(ProfilingManager.class);
-        profilingManager.clearProfilingTriggers();
-        ProfilingTrigger trigger =
-                new ProfilingTrigger.Builder(ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN).build();
-        profilingManager.addProfilingTriggers(Collections.singletonList(trigger));
+        clearAndAddTrigger(ProfilingTrigger.TRIGGER_TYPE_APP_FULLY_DRAWN);
     }
 
     /** Registers for profiling results and reports that the app is fully drawn. */
     private void registerAndReportFullyDrawn() {
-        ProfilingManager profilingManager = getSystemService(ProfilingManager.class);
-        profilingManager.registerForAllProfilingResults(
-                Executors.newSingleThreadExecutor(), new AppCallback(this));
+        registerCallback();
         reportFullyDrawn();
+    }
+
+    /** Triggers an ANR by registering a broadcast receiver that enters an infinite loop. */
+    private void triggerAnr() {
+        registerReceiver(
+                new BroadcastReceiver() {
+                    @Override
+                    public void onReceive(Context context, Intent intent) {
+                        Log.d(TAG, "Received broadcast: " + intent.getAction());
+                        while (true) {
+                            SystemClock.sleep(2);
+                        }
+                    }
+                },
+                new IntentFilter(ACTION_ANR),
+                Context.RECEIVER_EXPORTED);
+
+        getWindow()
+                .addFlags(
+                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                                | WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+                                | WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+                                | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
+    }
+
+    /**
+     * Sets up ANR profiling triggers, registers for profiling results, and then triggers an ANR.
+     */
+    private void setupProfilingTriggersAndTriggerAnr() {
+        clearAndAddTrigger(ProfilingTrigger.TRIGGER_TYPE_ANR);
+        triggerAnr();
+    }
+
+    /** Registers for profiling trigger results. */
+    private void registerProfilingCallback() {
+        registerCallback();
+    }
+
+    /**
+     * Clears triggers, adds a request running trace trigger, registers for results, and requests a
+     * trace.
+     */
+    private void initAndRequestRunningTrace() {
+        clearAndAddTrigger(ProfilingTrigger.TRIGGER_TYPE_APP_REQUEST_RUNNING_TRACE);
+        registerCallback();
+        getSystemService(ProfilingManager.class).requestRunningSystemTrace(null);
+    }
+
+    /**
+     * Clears triggers and adds a {@link ProfilingTrigger#TRIGGER_TYPE_KILL_FORCE_STOP} profiling
+     * trigger.
+     */
+    private void setupKillForceStopTrigger() {
+        clearAndAddTrigger(ProfilingTrigger.TRIGGER_TYPE_KILL_FORCE_STOP);
+    }
+
+    /**
+     * Clears triggers and adds a {@link ProfilingTrigger#TRIGGER_TYPE_KILL_TASK_MANAGER} profiling
+     * trigger.
+     */
+    private void setupKillTaskManagerTrigger() {
+        clearAndAddTrigger(ProfilingTrigger.TRIGGER_TYPE_KILL_TASK_MANAGER);
+    }
+
+    /**
+     * Clears triggers and adds a {@link ProfilingTrigger#TRIGGER_TYPE_KILL_RECENTS} profiling
+     * trigger.
+     */
+    private void setupKillRecentsTrigger() {
+        clearAndAddTrigger(ProfilingTrigger.TRIGGER_TYPE_KILL_RECENTS);
+    }
+
+    private void clearAndAddTrigger(int triggerType) {
+        Log.d(TAG, "clearAndAddTrigger: " + triggerType);
+        ProfilingManager profilingManager = getSystemService(ProfilingManager.class);
+        profilingManager.clearProfilingTriggers();
+        ProfilingTrigger trigger = new ProfilingTrigger.Builder(triggerType).build();
+        profilingManager.addProfilingTriggers(Collections.singletonList(trigger));
+    }
+
+    private void registerCallback() {
+        getSystemService(ProfilingManager.class)
+                .registerForAllProfilingResults(
+                        Executors.newSingleThreadExecutor(), new AppCallback(this));
     }
 
     private class AppCallback implements Consumer<ProfilingResult> {

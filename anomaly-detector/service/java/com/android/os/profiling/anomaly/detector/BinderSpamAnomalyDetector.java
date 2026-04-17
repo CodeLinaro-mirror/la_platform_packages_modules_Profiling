@@ -16,6 +16,9 @@
 
 package com.android.os.profiling.anomaly.detector;
 
+import static android.os.ProfilingManager.KEY_SAMPLE_BINDER_ONLY;
+import static android.os.ProfilingManager.PROFILING_TYPE_STACK_SAMPLING;
+
 import android.annotation.Nullable;
 import android.os.Bundle;
 import android.os.OutcomeReceiver;
@@ -29,6 +32,8 @@ import android.util.SparseLongArray;
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.os.profiling.anomaly.attribute.BinderSpamDetailsAttribute;
+import com.android.os.profiling.anomaly.attribute.ProfilingParamsAttribute;
+import com.android.os.profiling.anomaly.attribute.RateLimitSignatureAttribute;
 import com.android.os.profiling.anomaly.attribute.SummaryAttribute;
 import com.android.os.profiling.anomaly.attribute.UidAttribute;
 import com.android.os.profiling.anomaly.collector.SignalCollector;
@@ -38,6 +43,7 @@ import com.android.os.profiling.anomaly.collector.binder.BinderSpamConfigList;
 import com.android.os.profiling.anomaly.collector.binder.BinderSpamData;
 import com.android.os.profiling.anomaly.core.AnomalyDetector;
 import com.android.os.profiling.anomaly.core.AnomalyReport;
+import com.android.os.profiling.anomaly.core.AnomalyStatsAtomsLog;
 import com.android.os.profiling.anomaly.core.SignalCollectorRegistry;
 import com.android.os.profiling.anomaly.core.SignalTypeId;
 import com.android.os.profiling.anomaly.internal.AnomalyReportImpl;
@@ -45,6 +51,7 @@ import com.android.os.profiling.anomaly.util.LogUtil;
 
 import java.time.Duration;
 import java.util.Collections;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.LongSupplier;
 
@@ -56,6 +63,8 @@ import java.util.function.LongSupplier;
 public final class BinderSpamAnomalyDetector extends AnomalyDetector {
     private static final String TAG = "BinderSpamAnomalyDetector";
     private static final LogUtil sLog = new LogUtil(TAG);
+    private static final String BINDER_SPAM_INTERFACE_KEY = "binder_spam.interface";
+    private static final String BINDER_SPAM_METHOD_KEY = "binder_spam.method";
 
     private final LongSupplier mElapsedRealtime;
     private final SignalCollectorRegistry mRegistry;
@@ -72,6 +81,8 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
 
     @GuardedBy("mLock")
     private SignalCollector<BinderSpamConfigList, BinderSpamData> mCollector;
+
+    @VisibleForTesting static final long DEFAULT_PROFILING_SESSION_DURATION_MILLIS = 20000L;
 
     /**
      * Constructs a new BinderSpamAnomalyDetector.
@@ -107,7 +118,6 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
                 }
             };
 
-    /** {@inheritDoc} */
     @Override
     public void setRules(Set<RuleInternal> rules) {
         synchronized (mLock) {
@@ -297,6 +307,25 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
                             actualCallsPerSecond,
                             mCallCountThreshold,
                             mWindowSize.toSeconds());
+
+            Bundle sessionParams = new Bundle();
+            sessionParams.putBoolean(KEY_SAMPLE_BINDER_ONLY, true);
+
+            // Only log the anomaly if there is a rule violation
+            AnomalyStatsAtomsLog.write(
+                    AnomalyStatsAtomsLog.ANOMALY_STATS_BINDER_SPAM,
+                    data.getCallingUid(),
+                    data.getInterfaceName(),
+                    data.getMethodName(),
+                    callCount,
+                    timespan.toMillis());
+            long maxSessionDurationMs =
+                    mRule.getRuleCondition()
+                            .getLong(
+                                    RuleInternal.BUNDLE_KEY_PROFILING_SESSION_DURATION_MILLIS,
+                                    BinderSpamAnomalyDetector
+                                            .DEFAULT_PROFILING_SESSION_DURATION_MILLIS);
+
             return new AnomalyReportImpl.Builder(mRule)
                     .addAttribute(new UidAttribute(data.getCallingUid()))
                     .addAttribute(new SummaryAttribute(summary))
@@ -308,6 +337,18 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
                                     timespan,
                                     mCallCountThreshold,
                                     mWindowSize))
+                    .addAttribute(
+                            new ProfilingParamsAttribute(
+                                    maxSessionDurationMs,
+                                    PROFILING_TYPE_STACK_SAMPLING,
+                                    sessionParams))
+                    .addAttribute(
+                            new RateLimitSignatureAttribute(
+                                    Map.of(
+                                            BINDER_SPAM_INTERFACE_KEY,
+                                            data.getInterfaceName(),
+                                            BINDER_SPAM_METHOD_KEY,
+                                            data.getMethodName())))
                     .build();
         }
     }
@@ -331,7 +372,6 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
         }
     }
 
-    /** {@inheritDoc} */
     @Override
     public void onSignalCollectorUnregistered(SignalTypeId signalTypeId) {
         synchronized (mLock) {

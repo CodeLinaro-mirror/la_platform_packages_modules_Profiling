@@ -23,28 +23,47 @@ import android.os.profiling.anomaly.RuleInternal.AnomalyActionTypeInternal;
 
 import androidx.test.runner.AndroidJUnit4;
 
+import com.android.os.profiling.anomaly.config.ProfilingConcurrencyConfig;
 import com.android.os.profiling.anomaly.internal.AnomalyHandlerRegistryImpl;
+import com.android.os.profiling.anomaly.ratelimiter.ProfilingRateLimiter;
+import com.android.os.profiling.anomaly.wrapper.SystemServiceFetcher;
 
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 
 /** Tests for {@link AnomalyHandlerRegistryImpl}. */
 @RunWith(AndroidJUnit4.class)
 public final class AnomalyHandlerRegistryImplTests {
+    @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
+    @Mock private ProfilingRateLimiter mMockProfilingRateLimiter;
+    @Mock private ProfilingConcurrencyConfig mMockProfilingConcurrencyConfig;
+
     @AnomalyActionTypeInternal private static final int UNREGISTERED_ACTION = 999;
+
+    @Mock private SystemServiceFetcher mContextSystemServiceFetcher;
 
     private AnomalyHandlerRegistryImpl mRegistry;
 
     @Before
     public void setUp() {
-        mRegistry = new AnomalyHandlerRegistryImpl();
+        mRegistry =
+                new AnomalyHandlerRegistryImpl(
+                        mContextSystemServiceFetcher,
+                        mMockProfilingRateLimiter,
+                        mMockProfilingConcurrencyConfig);
     }
 
     @Test
     public void constructor_registersDefaultHandlers() {
         assertThat(mRegistry.getHandler(RuleInternal.ACTION_TYPE_LOG))
                 .isInstanceOf(LogAnomalyHandler.class);
+        assertThat(mRegistry.getHandler(RuleInternal.ACTION_TYPE_COLLECT_PROFILE))
+                .isInstanceOf(ProfileAnomalyHandler.class);
     }
 
     @Test
