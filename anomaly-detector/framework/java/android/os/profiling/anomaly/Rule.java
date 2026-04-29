@@ -45,7 +45,7 @@ import java.util.Objects;
  */
 @RequiresApi(37)
 @SystemApi(client = SystemApi.Client.PRIVILEGED_APPS)
-@FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE)
+@FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
 public final class Rule extends RuleInternal {
     /**
      * Defines the types of actions to be executed by the {@code

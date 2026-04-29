@@ -35,7 +35,7 @@ import java.util.UUID;
  * @hide
  */
 @SystemApi(client = SYSTEM_SERVER)
-@FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE)
+@FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
 public final class SubscriptionId {
     private final UUID mUuid;
 

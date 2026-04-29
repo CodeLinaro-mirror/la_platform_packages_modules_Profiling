@@ -19,6 +19,7 @@ package com.android.os.profiling.anomaly;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assume.assumeTrue;
 
 import android.content.Context;
 import android.os.Bundle;
@@ -27,6 +28,7 @@ import android.os.profiling.anomaly.RuleInternal;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.runner.AndroidJUnit4;
 
+import com.android.modules.utils.build.SdkLevel;
 import com.android.os.profiling.anomaly.collector.SignalCollector;
 import com.android.os.profiling.anomaly.collector.SignalCollectorConfig;
 import com.android.os.profiling.anomaly.collector.SignalCollectorData;
@@ -73,6 +75,7 @@ public final class AnomalyDetectorServiceTests {
 
     @Before
     public void setUp() {
+        assumeTrue(SdkLevel.isAtLeastC());
         mContext = ApplicationProvider.getApplicationContext();
         mService = new AnomalyDetectorService(mContext);
         mLocalManager = mService.mLocalManager;

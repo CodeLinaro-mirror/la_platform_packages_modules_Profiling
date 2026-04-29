@@ -68,6 +68,7 @@ public class ProfilingRateLimiterImplTest {
     private static final long TEST_WINDOW_MILLIS = TimeUnit.SECONDS.toMillis(10);
     private static final long OLD_TIMESTAMP_OFFSET_MILLIS = TimeUnit.SECONDS.toMillis(20);
     private static final long RECENT_TIMESTAMP_OFFSET_MILLIS = TimeUnit.SECONDS.toMillis(5);
+    private static final long MOCK_MAX_COOLDOWN_FOR_EVICTION_MILLIS = TimeUnit.DAYS.toMillis(7);
 
     private ProfilingRateLimiterImpl mRateLimiter;
     private RateLimiterState mState;
@@ -96,6 +97,8 @@ public class ProfilingRateLimiterImplTest {
         when(mTestConfig.getUidCoolDownMillis()).thenReturn(MOCK_UID_COOL_DOWN_MILLIS);
         when(mTestConfig.getSignatureCoolDownMillis(any(), any()))
                 .thenReturn(MOCK_SIGNATURE_COOL_DOWN_MILLIS);
+        when(mTestConfig.getMaxCoolDownForEvictionMillis())
+                .thenReturn(MOCK_MAX_COOLDOWN_FOR_EVICTION_MILLIS);
 
         doAnswer(
                         invocation -> {
@@ -165,7 +168,7 @@ public class ProfilingRateLimiterImplTest {
     @Test
     public void isRequestAllowed_signatureInCoolDown_isDenied() {
         Map<String, String> signature = Map.of(INTERFACE_KEY, INTERFACE_VAL);
-        String key = TEST_UID + "|" + INTERFACE_KEY + "=" + INTERFACE_VAL + ";";
+        String key = ProfilingRateLimiterImpl.generateCanonicalKey(TEST_UID, signature);
         mState.getSignatureTimestamps().put(key, MOCK_CURRENT_TIME_MS - MILLISECONDS_IN_SECOND);
 
         boolean allowed = mRateLimiter.isRequestAllowed(TEST_UID, TEST_CONDITION_TYPE, signature);
@@ -188,7 +191,7 @@ public class ProfilingRateLimiterImplTest {
         // Verify all relevant timestamps are updated.
         assertThat(savedState.getDeviceTimestamps()).containsExactly(MOCK_CURRENT_TIME_MS);
         assertThat(savedState.getUidTimestamps().get(TEST_UID)).isEqualTo(MOCK_CURRENT_TIME_MS);
-        String key = TEST_UID + "|" + INTERFACE_KEY + "=" + INTERFACE_VAL + ";";
+        String key = ProfilingRateLimiterImpl.generateCanonicalKey(TEST_UID, signature);
         assertThat(savedState.getSignatureTimestamps().get(key)).isEqualTo(MOCK_CURRENT_TIME_MS);
     }
 
@@ -229,5 +232,46 @@ public class ProfilingRateLimiterImplTest {
         boolean allowedAfterWindow =
                 mRateLimiter.isRequestAllowed(TEST_UID + 1, TEST_CONDITION_TYPE, null);
         assertThat(allowedAfterWindow).isTrue();
+    }
+
+    @Test
+    public void isRequestAllowed_oldTimestampsEvicted_fromUidAndSignatureMaps() {
+        long oldTime = MOCK_CURRENT_TIME_MS - MOCK_MAX_COOLDOWN_FOR_EVICTION_MILLIS - 1000;
+        mState.getUidTimestamps().put(TEST_UID + 1, oldTime);
+
+        String oldSignatureKey = (TEST_UID + 1) + "|old=sig;";
+        mState.getSignatureTimestamps().put(oldSignatureKey, oldTime);
+
+        boolean allowed = mRateLimiter.isRequestAllowed(TEST_UID, TEST_CONDITION_TYPE, null);
+        assertThat(allowed).isTrue();
+
+        ArgumentCaptor<RateLimiterState> captor = ArgumentCaptor.forClass(RateLimiterState.class);
+        verify(mMockStateStore).writeState(captor.capture());
+        RateLimiterState savedState = captor.getValue();
+
+        assertThat(savedState.getUidTimestamps().containsKey(TEST_UID + 1)).isFalse();
+        assertThat(savedState.getSignatureTimestamps().containsKey(oldSignatureKey)).isFalse();
+    }
+
+    @Test
+    public void isRequestAllowed_zeroCooldown_allowedEvenIfTimeGoesBackwards() {
+        // Set cooldown to 0
+        when(mTestConfig.getUidCoolDownMillis()).thenReturn(0L);
+        when(mTestConfig.getSignatureCoolDownMillis(any(), any())).thenReturn(0L);
+
+        // Record an initial request at MOCK_CURRENT_TIME_MS
+        mState.getUidTimestamps().put(TEST_UID, MOCK_CURRENT_TIME_MS);
+
+        Map<String, String> signature = Map.of(INTERFACE_KEY, INTERFACE_VAL);
+        String signatureKey = ProfilingRateLimiterImpl.generateCanonicalKey(TEST_UID, signature);
+        mState.getSignatureTimestamps().put(signatureKey, MOCK_CURRENT_TIME_MS);
+
+        // Move time backwards!
+        long pastTimeMs = MOCK_CURRENT_TIME_MS - 5000L;
+        when(mMockClock.currentTimeMillis()).thenReturn(pastTimeMs);
+
+        // Verify request is allowed despite time being < lastRequestTime
+        boolean allowed = mRateLimiter.isRequestAllowed(TEST_UID, TEST_CONDITION_TYPE, signature);
+        assertThat(allowed).isTrue();
     }
 }

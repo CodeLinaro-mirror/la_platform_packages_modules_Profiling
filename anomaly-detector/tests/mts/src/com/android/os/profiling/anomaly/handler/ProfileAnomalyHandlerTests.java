@@ -22,6 +22,8 @@ import static android.os.ProfilingTrigger.TRIGGER_TYPE_ANOMALY;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -31,9 +33,11 @@ import android.content.pm.PackageManager;
 import android.os.AnomalyProfilingClient;
 import android.os.Bundle;
 import android.os.profiling.anomaly.RuleInternal;
+import android.profiling.utils.PerfettoMetadata;
 
 import androidx.test.runner.AndroidJUnit4;
 
+import com.android.os.profiling.anomaly.attribute.AnomalyDetailsAttribute;
 import com.android.os.profiling.anomaly.attribute.ProfilingParamsAttribute;
 import com.android.os.profiling.anomaly.attribute.RateLimitSignatureAttribute;
 import com.android.os.profiling.anomaly.attribute.UidAttribute;
@@ -79,6 +83,8 @@ public class ProfileAnomalyHandlerTests {
             new ProfilingParamsAttribute(
                     MAX_SESSION_DURATION_MS, PROFILING_TYPE_STACK_SAMPLING, sSessionParams);
 
+    private static final long ANOMALY_DURATION_MS = 1000L;
+
     @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
 
     @Mock private AnomalyReport mMockReport;
@@ -96,10 +102,16 @@ public class ProfileAnomalyHandlerTests {
 
     @Mock private RuleInternal mMockRule;
 
+    private PerfettoMetadata.AnomalyDetails mMockAnomalyDetails = null;
+
     private ProfileAnomalyHandler mHandler;
 
+    private AnomalyDetailsAttribute mAnomalyDetailsAttribute;
+
     @Before
-    public void setUp() {
+    public void setUp() throws Exception {
+        mMockAnomalyDetails = PerfettoMetadata.AnomalyDetails.ofBinderSpam(
+                "interface.name", "methodName", 1.0, 2.0);
         mHandler =
                 new ProfileAnomalyHandler(
                         mSystemServiceFetcher,
@@ -107,12 +119,15 @@ public class ProfileAnomalyHandlerTests {
                         mAnomalyProfilingManager,
                         mProfilingRateLimiter,
                         mProfilingConcurrencyConfig);
+        mAnomalyDetailsAttribute =
+                new AnomalyDetailsAttribute(mMockAnomalyDetails, ANOMALY_DURATION_MS);
         when(mSystemServiceFetcher.getPackageManager()).thenReturn(mPackageManager);
         when(mMockReport.get(ProfilingParamsAttribute.class)).thenReturn(PROFILING_PARAMS);
     }
 
     @Test
     public void execute_normalCondition_shouldStartProfile() {
+        when(mMockReport.get(AnomalyDetailsAttribute.class)).thenReturn(mAnomalyDetailsAttribute);
         when(mMockReport.get(UidAttribute.class)).thenReturn(new UidAttribute(UID));
         when(mMockRule.getConditionType()).thenReturn(RuleInternal.CONDITION_TYPE_BINDER_SPAM);
         when(mMockReport.getRule()).thenReturn(mMockRule);
@@ -127,17 +142,20 @@ public class ProfileAnomalyHandlerTests {
                 .requestProfiling(
                         eq(UID),
                         eq(PACKAGE_NAME),
-                        anyInt(),
+                        anyLong(),
                         any(),
                         anyInt(),
                         eq(RuleInternal.CONDITION_TYPE_BINDER_SPAM),
                         eq(mProfilingRateLimiter),
                         eq(null),
-                        eq(mProfilingConcurrencyConfig));
+                        eq(mProfilingConcurrencyConfig),
+                        eq(mMockAnomalyDetails),
+                        eq(ANOMALY_DURATION_MS));
     }
 
     @Test
     public void execute_withRateLimitSignature_shouldPassSignatureToHelper() {
+        when(mMockReport.get(AnomalyDetailsAttribute.class)).thenReturn(mAnomalyDetailsAttribute);
         when(mMockReport.get(UidAttribute.class)).thenReturn(new UidAttribute(UID));
         when(mMockRule.getConditionType()).thenReturn(RuleInternal.CONDITION_TYPE_BINDER_SPAM);
         when(mMockReport.getRule()).thenReturn(mMockRule);
@@ -155,17 +173,20 @@ public class ProfileAnomalyHandlerTests {
                 .requestProfiling(
                         eq(UID),
                         eq(PACKAGE_NAME),
-                        anyInt(),
+                        anyLong(),
                         any(),
                         anyInt(),
                         eq(RuleInternal.CONDITION_TYPE_BINDER_SPAM),
                         eq(mProfilingRateLimiter),
                         eq(testSignature), // Verify the signature is passed correctly
-                        eq(mProfilingConcurrencyConfig));
+                        eq(mProfilingConcurrencyConfig),
+                        any(),
+                        anyLong());
     }
 
     @Test
     public void execute_multiplePackageName_shouldNotStartProfile() {
+        when(mMockReport.get(AnomalyDetailsAttribute.class)).thenReturn(mAnomalyDetailsAttribute);
         when(mMockReport.get(UidAttribute.class)).thenReturn(new UidAttribute(UID));
         when(mMockRule.getConditionType()).thenReturn(RuleInternal.CONDITION_TYPE_BINDER_SPAM);
         when(mMockReport.getRule()).thenReturn(mMockRule);
@@ -181,11 +202,22 @@ public class ProfileAnomalyHandlerTests {
 
         verify(mProfilingSessionHelper, never())
                 .requestProfiling(
-                        anyInt(), any(), anyInt(), any(), anyInt(), any(), any(), any(), any());
+                        eq(UID),
+                        anyString(),
+                        anyLong(),
+                        any(),
+                        anyInt(),
+                        eq(RuleInternal.CONDITION_TYPE_BINDER_SPAM),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyLong());
     }
 
     @Test
     public void execute_noTriggerRegistered_shouldNotStartProfiling() {
+        when(mMockReport.get(AnomalyDetailsAttribute.class)).thenReturn(mAnomalyDetailsAttribute);
         when(mMockReport.get(UidAttribute.class)).thenReturn(new UidAttribute(UID));
         when(mMockRule.getConditionType()).thenReturn(RuleInternal.CONDITION_TYPE_BINDER_SPAM);
         when(mMockReport.getRule()).thenReturn(mMockRule);
@@ -201,11 +233,22 @@ public class ProfileAnomalyHandlerTests {
 
         verify(mProfilingSessionHelper, never())
                 .requestProfiling(
-                        anyInt(), any(), anyInt(), any(), anyInt(), any(), any(), any(), any());
+                        eq(UID),
+                        anyString(),
+                        anyLong(),
+                        any(),
+                        anyInt(),
+                        eq(RuleInternal.CONDITION_TYPE_BINDER_SPAM),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyLong());
     }
 
     @Test
     public void execute_noPackageName_shouldNotStartProfiling() {
+        when(mMockReport.get(AnomalyDetailsAttribute.class)).thenReturn(mAnomalyDetailsAttribute);
         when(mMockReport.get(UidAttribute.class)).thenReturn(new UidAttribute(UID));
         when(mMockRule.getConditionType()).thenReturn(RuleInternal.CONDITION_TYPE_BINDER_SPAM);
         when(mMockReport.getRule()).thenReturn(mMockRule);
@@ -215,11 +258,22 @@ public class ProfileAnomalyHandlerTests {
 
         verify(mProfilingSessionHelper, never())
                 .requestProfiling(
-                        anyInt(), any(), anyInt(), any(), anyInt(), any(), any(), any(), any());
+                        anyInt(),
+                        anyString(),
+                        anyLong(),
+                        any(),
+                        anyInt(),
+                        eq(RuleInternal.CONDITION_TYPE_BINDER_SPAM),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyLong());
     }
 
     @Test
     public void execute_noUidAttribute_shouldNotStartProfiling() {
+        when(mMockReport.get(AnomalyDetailsAttribute.class)).thenReturn(mAnomalyDetailsAttribute);
         when(mMockReport.get(UidAttribute.class)).thenReturn(null);
         when(mMockRule.getConditionType()).thenReturn(RuleInternal.CONDITION_TYPE_BINDER_SPAM);
         when(mMockReport.getRule()).thenReturn(mMockRule);
@@ -229,6 +283,44 @@ public class ProfileAnomalyHandlerTests {
 
         verify(mProfilingSessionHelper, never())
                 .requestProfiling(
-                        anyInt(), any(), anyInt(), any(), anyInt(), any(), any(), any(), any());
+                        anyInt(),
+                        anyString(),
+                        anyLong(),
+                        any(),
+                        anyInt(),
+                        eq(RuleInternal.CONDITION_TYPE_BINDER_SPAM),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyLong());
+    }
+
+    @Test
+    public void execute_noAnomalyDetailsAttribute_shouldNotStartProfiling() {
+        when(mMockReport.get(UidAttribute.class)).thenReturn(new UidAttribute(UID));
+        when(mMockReport.get(AnomalyDetailsAttribute.class)).thenReturn(null);
+        when(mMockRule.getConditionType()).thenReturn(RuleInternal.CONDITION_TYPE_BINDER_SPAM);
+        when(mMockReport.getRule()).thenReturn(mMockRule);
+        when(mPackageManager.getPackagesForUid(UID)).thenReturn(SINGLE_PACKAGE_NAME_ARRAY);
+
+        when(mAnomalyProfilingManager.isTriggerRegistered(UID, PACKAGE_NAME, TRIGGER_TYPE_ANOMALY))
+                .thenReturn(true);
+
+        mHandler.execute(mMockReport);
+
+        verify(mProfilingSessionHelper, never())
+                .requestProfiling(
+                        anyInt(),
+                        anyString(),
+                        anyLong(),
+                        any(),
+                        anyInt(),
+                        eq(RuleInternal.CONDITION_TYPE_BINDER_SPAM),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyLong());
     }
 }

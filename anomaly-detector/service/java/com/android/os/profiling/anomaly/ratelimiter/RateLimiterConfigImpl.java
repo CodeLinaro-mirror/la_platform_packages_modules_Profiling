@@ -64,6 +64,10 @@ public final class RateLimiterConfigImpl implements RateLimiterConfig {
     static final String KEY_PERSISTENCE_DELAY_MILLIS = KEY_PREFIX + "persistence_delay_millis";
 
     @VisibleForTesting
+    static final String KEY_MAX_COOLDOWN_FOR_EVICTION_MILLIS =
+            KEY_PREFIX + "max_cooldown_for_eviction_millis";
+
+    @VisibleForTesting
     static final long DEFAULT_PERSISTENCE_DELAY_MILLIS = TimeUnit.SECONDS.toMillis(10);
 
     @VisibleForTesting
@@ -71,6 +75,9 @@ public final class RateLimiterConfigImpl implements RateLimiterConfig {
 
     @VisibleForTesting static final int DEFAULT_DEVICE_FREQUENCY_MAX_COUNT = 4;
     @VisibleForTesting static final long DEFAULT_UID_COOL_DOWN_MILLIS = TimeUnit.HOURS.toMillis(12);
+
+    @VisibleForTesting
+    static final long DEFAULT_MAX_COOLDOWN_FOR_EVICTION_MILLIS = TimeUnit.DAYS.toMillis(7);
 
     private final Object mLock = new Object();
 
@@ -81,6 +88,7 @@ public final class RateLimiterConfigImpl implements RateLimiterConfig {
     private volatile int mDeviceFrequencyMaxCount = DEFAULT_DEVICE_FREQUENCY_MAX_COUNT;
     private volatile long mUidCoolDownMillis = DEFAULT_UID_COOL_DOWN_MILLIS;
     private volatile long mPersistenceDelayMillis = DEFAULT_PERSISTENCE_DELAY_MILLIS;
+    private volatile long mMaxCoolDownForEvictionMillis = DEFAULT_MAX_COOLDOWN_FOR_EVICTION_MILLIS;
 
     public RateLimiterConfigImpl(AnomalyDetectorProperties propertiesProvider) {
         updateAllProperties(propertiesProvider.getProperties());
@@ -116,6 +124,11 @@ public final class RateLimiterConfigImpl implements RateLimiterConfig {
                     mPersistenceDelayMillis =
                             properties.getLong(
                                     KEY_PERSISTENCE_DELAY_MILLIS, DEFAULT_PERSISTENCE_DELAY_MILLIS);
+            case KEY_MAX_COOLDOWN_FOR_EVICTION_MILLIS ->
+                    mMaxCoolDownForEvictionMillis =
+                            properties.getLong(
+                                    KEY_MAX_COOLDOWN_FOR_EVICTION_MILLIS,
+                                    DEFAULT_MAX_COOLDOWN_FOR_EVICTION_MILLIS);
         }
     }
 
@@ -170,6 +183,21 @@ public final class RateLimiterConfigImpl implements RateLimiterConfig {
     @Override
     public long getPersistenceDelayMillis() {
         return mPersistenceDelayMillis;
+    }
+
+    @Override
+    public long getMaxCoolDownForEvictionMillis() {
+        long maxCoolDown = Math.max(mMaxCoolDownForEvictionMillis, mUidCoolDownMillis);
+        synchronized (mLock) {
+            if (mSignatureCoolDownRules != null) {
+                for (SignatureCoolDownRule rule : mSignatureCoolDownRules) {
+                    if (rule.getCoolDownMillis() > maxCoolDown) {
+                        maxCoolDown = rule.getCoolDownMillis();
+                    }
+                }
+            }
+        }
+        return maxCoolDown;
     }
 
     @Override

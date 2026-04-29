@@ -35,7 +35,7 @@ import android.os.profiling.anomaly.flags.Flags;
  * @hide
  */
 @SystemApi(client = SYSTEM_SERVER)
-@FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE)
+@FlaggedApi(Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
 public interface SignalCollector<T extends SignalCollectorConfig, U extends SignalCollectorData> {
 
     /**
