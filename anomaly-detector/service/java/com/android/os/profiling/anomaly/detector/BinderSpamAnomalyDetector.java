@@ -24,6 +24,7 @@ import android.os.Bundle;
 import android.os.OutcomeReceiver;
 import android.os.SystemClock;
 import android.os.profiling.anomaly.RuleInternal;
+import android.profiling.utils.PerfettoMetadata;
 import android.util.ArrayMap;
 import android.util.ArraySet;
 import android.util.SparseIntArray;
@@ -31,7 +32,7 @@ import android.util.SparseLongArray;
 
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
-import com.android.os.profiling.anomaly.attribute.BinderSpamDetailsAttribute;
+import com.android.os.profiling.anomaly.attribute.AnomalyDetailsAttribute;
 import com.android.os.profiling.anomaly.attribute.ProfilingParamsAttribute;
 import com.android.os.profiling.anomaly.attribute.RateLimitSignatureAttribute;
 import com.android.os.profiling.anomaly.attribute.SummaryAttribute;
@@ -48,6 +49,8 @@ import com.android.os.profiling.anomaly.core.SignalCollectorRegistry;
 import com.android.os.profiling.anomaly.core.SignalTypeId;
 import com.android.os.profiling.anomaly.internal.AnomalyReportImpl;
 import com.android.os.profiling.anomaly.util.LogUtil;
+
+import org.json.JSONException;
 
 import java.time.Duration;
 import java.util.Collections;
@@ -230,6 +233,9 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
                 Duration windowSize,
                 int callCountThreshold,
                 LongSupplier elapsedRealTime) {
+            if (windowSize.toMillis() <= 0) {
+                throw new IllegalArgumentException("Window size is less than or equal to 0.");
+            }
             mRule = rule;
             mWindowSize = windowSize;
             mCallCountThreshold = callCountThreshold;
@@ -294,7 +300,11 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
             }
 
             // For logging purposes, calculate the actual rate.
-            double actualCallsPerSecond = (double) callCount / timespan.toSeconds();
+            if (timespan.toMillis() <= 0) {
+                sLog.e("RuleEvaluator: Timespan is less than or equal to 0.");
+                return null;
+            }
+            double actualCallsPerSecond = callCount / (timespan.toMillis() / 1000.0);
             String summary =
                     String.format(
                             "UID %d made %d calls to %s#%s in %ds (Rate: %.2f calls/sec, "
@@ -326,17 +336,21 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
                                     BinderSpamAnomalyDetector
                                             .DEFAULT_PROFILING_SESSION_DURATION_MILLIS);
 
-            return new AnomalyReportImpl.Builder(mRule)
+            PerfettoMetadata.AnomalyDetails anomalyDetails = null;
+            try {
+                anomalyDetails =
+                        PerfettoMetadata.AnomalyDetails.ofBinderSpam(
+                                data.getInterfaceName(),
+                                data.getMethodName(),
+                                actualCallsPerSecond,
+                                mCallCountThreshold / (mWindowSize.toMillis() / 1000.0));
+            } catch (JSONException e) {
+                sLog.e("Failed to create anomaly details", e);
+            }
+
+            AnomalyReportImpl.Builder reportBuilder = new AnomalyReportImpl.Builder(mRule)
                     .addAttribute(new UidAttribute(data.getCallingUid()))
                     .addAttribute(new SummaryAttribute(summary))
-                    .addAttribute(
-                            new BinderSpamDetailsAttribute(
-                                    data.getInterfaceName(),
-                                    data.getMethodName(),
-                                    callCount,
-                                    timespan,
-                                    mCallCountThreshold,
-                                    mWindowSize))
                     .addAttribute(
                             new ProfilingParamsAttribute(
                                     maxSessionDurationMs,
@@ -348,8 +362,12 @@ public final class BinderSpamAnomalyDetector extends AnomalyDetector {
                                             BINDER_SPAM_INTERFACE_KEY,
                                             data.getInterfaceName(),
                                             BINDER_SPAM_METHOD_KEY,
-                                            data.getMethodName())))
-                    .build();
+                                            data.getMethodName())));
+            if (anomalyDetails != null) {
+                reportBuilder.addAttribute(
+                        new AnomalyDetailsAttribute(anomalyDetails, timespan.toMillis()));
+            }
+            return reportBuilder.build();
         }
     }
 

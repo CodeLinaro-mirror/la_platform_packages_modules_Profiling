@@ -46,13 +46,13 @@ java_sdk_library {
 
     static_libs: [
         "anomaly-detector-aconfig-flags-lib",
+        "modules-utils-build",
     ],
 
     permitted_packages: [
         "android.app",
         "android.os.profiling.anomaly",
         "android.util",
-        "com.android.modules.utils.build",
         "com.android.internal.profiling.anomaly",
     ],
 
@@ -72,5 +72,5 @@ java_sdk_library {
     apex_available: [
         "com.android.profiling",
     ],
-    min_sdk_version: "36",
+    min_sdk_version: "37",
 }

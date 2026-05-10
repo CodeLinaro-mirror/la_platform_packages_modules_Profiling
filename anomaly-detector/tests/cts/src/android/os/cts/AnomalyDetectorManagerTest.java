@@ -19,6 +19,7 @@ package android.os.cts;
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assume.assumeTrue;
 
 import android.content.Context;
 import android.os.Bundle;
@@ -33,6 +34,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 
 import com.android.compatibility.common.util.ApiTest;
+import com.android.modules.utils.build.SdkLevel;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -44,7 +46,7 @@ import java.util.Collections;
 
 /** Cts tests for {@link AnomalyDetectorManager}. */
 @RunWith(AndroidJUnit4.class)
-@RequiresFlagsEnabled(Flags.FLAG_ANOMALY_DETECTOR_CORE)
+@RequiresFlagsEnabled(Flags.FLAG_ANOMALY_DETECTOR_CORE_C)
 public final class AnomalyDetectorManagerTest {
     @org.junit.Rule
     public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
@@ -58,6 +60,7 @@ public final class AnomalyDetectorManagerTest {
 
     @Before
     public void setUp() {
+        assumeTrue(SdkLevel.isAtLeastC());
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         mManager = context.getSystemService(AnomalyDetectorManager.class);
     }
