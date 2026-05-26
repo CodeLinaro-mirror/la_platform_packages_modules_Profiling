@@ -22,6 +22,7 @@ import android.annotation.FlaggedApi;
 import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.annotation.RequiresApi;
 import android.app.ActivityManager;
 import android.app.AnrWarningResult;
 import android.content.Context;
@@ -30,6 +31,7 @@ import android.util.Log;
 
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.modules.utils.build.SdkLevel;
 
 import java.io.File;
 import java.io.FileFilter;
@@ -490,7 +492,6 @@ public final class ProfilingManager {
         registerAnrWarningListenerIfNeeded();
     }
 
-    @SuppressWarnings("NewApi")
     void registerAnrWarningListenerIfNeeded() {
         if (mLastAppProvidedExecutor == null) {
             // We don't have any known executor, so we skip until app has registered one
@@ -498,13 +499,9 @@ public final class ProfilingManager {
             return;
         }
 
-        if (SDK_INT < Build.VERSION_CODES.CINNAMON_BUN) {
-            // ANR Warning callback is not supported before then.
-            return;
-        }
-
-        if (mRegisteredTriggerTypes.contains(ProfilingTrigger.TRIGGER_TYPE_ANR)
-                || mRegisteredTriggerTypes.contains(TRIGGER_ALL)) {
+        if (SdkLevel.isAtLeastC()
+                && (mRegisteredTriggerTypes.contains(ProfilingTrigger.TRIGGER_TYPE_ANR)
+                        || mRegisteredTriggerTypes.contains(TRIGGER_ALL))) {
             // We register an ANR warning to add the ANR Id for two reasons:
             // 1) it provides a timestamp when the ANR is imminent which is useful debugging
             // information.
@@ -512,19 +509,25 @@ public final class ProfilingManager {
             // having the trace slice trimmed by redactor.
             ActivityManager am = mContext.getSystemService(ActivityManager.class);
             if (mAnrWarningListener == null) {
-                mAnrWarningListener =
-                        result -> {
-                            Trace.beginSection(
-                                    "ANR Warning ANR-Id: "
-                                            + result.getAnrId()
-                                            + " consumedMs= "
-                                            + result.getConsumedMillis()
-                                            + " timeoutMs="
-                                            + result.getTimeoutMillis());
-                            Trace.endSection();
-                        };
+                mAnrWarningListener = AnrWarningListenerFactory.create();
             }
             am.registerAnrWarningListener(mLastAppProvidedExecutor, mAnrWarningListener);
+        }
+    }
+
+    private static class AnrWarningListenerFactory {
+        @RequiresApi(Build.VERSION_CODES.CINNAMON_BUN)
+        static Consumer<AnrWarningResult> create() {
+            return result -> {
+                Trace.beginSection(
+                        "ANR Warning ANR-Id: "
+                                + result.getAnrId()
+                                + " consumedMs= "
+                                + result.getConsumedMillis()
+                                + " timeoutMs="
+                                + result.getTimeoutMillis());
+                Trace.endSection();
+            };
         }
     }
 
