@@ -2925,6 +2925,8 @@ public class ProfilingService extends IProfilingService.Stub {
 
         enforceAnomalyTriggerType(triggerType);
 
+        enforceValidResultFileName(resultFileName);
+
         if (DEBUG) Log.d(TAG, "sendAnomalyProfile passed validation.");
 
         // Move off the calling thread.
@@ -3072,6 +3074,32 @@ public class ProfilingService extends IProfilingService.Stub {
         if (!ProfilingTrigger.isAnomalyTriggerType(triggerType)) {
             throw new IllegalArgumentException(
                     "Expected anomaly trigger type but received: " + triggerType);
+        }
+    }
+
+    private void enforceValidResultFileName(@Nullable String resultFileName) {
+        if (TextUtils.isEmpty(resultFileName)) {
+            throw new IllegalArgumentException("resultFileName cannot be null or empty");
+        }
+        if (resultFileName.contains("/")
+                || resultFileName.contains("\\")
+                || resultFileName.contains("..")
+                || !resultFileName.equals(new File(resultFileName).getName())) {
+            throw new IllegalArgumentException(
+                    "Invalid resultFileName (contains path traversal characters): "
+                            + resultFileName);
+        }
+        try {
+            Path baseDir = Path.of(sTempTracePath).toAbsolutePath().normalize();
+            Path resolvedPath = baseDir.resolve(resultFileName).toAbsolutePath().normalize();
+            if (!resolvedPath.startsWith(baseDir) || !baseDir.equals(resolvedPath.getParent())) {
+                throw new IllegalArgumentException(
+                        "resultFileName traverses outside temporary directory: " + resultFileName);
+            }
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Invalid resultFileName: " + resultFileName, e);
         }
     }
 
